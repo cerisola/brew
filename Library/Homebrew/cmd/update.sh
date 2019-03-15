@@ -23,7 +23,7 @@ git_init_if_necessary() {
   BREW_OFFICIAL_REMOTE="https://github.com/cerisola/brew"
   if [[ -n "$HOMEBREW_MACOS" ]] || [[ -n "$HOMEBREW_FORCE_HOMEBREW_ON_LINUX" ]]
   then
-    CORE_OFFICIAL_REMOTE="https://github.com/Homebrew/homebrew-core"
+    CORE_OFFICIAL_REMOTE="https://github.com/cerisola/homebrew-core"
   else
     CORE_OFFICIAL_REMOTE="https://github.com/Homebrew/linuxbrew-core"
   fi
