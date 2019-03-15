@@ -211,7 +211,7 @@ module OS
         Homebrew doesn't know what compiler versions ship with your version
         of Xcode (#{Xcode.version}). Please `brew update` and if that doesn't
         help, file an issue with the output of `brew --config`:
-          https://github.com/Homebrew/brew/issues
+          https://github.com/cerisola/brew/issues
 
         Note that we only track stable, released versions of Xcode.
 
