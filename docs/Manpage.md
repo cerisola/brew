@@ -84,37 +84,38 @@ report, you will likely be asked for this information if you do not provide it.
 
 ### `deps` [*`options`*] *`formula`*
 
-Show dependencies for *`formula`*. When given multiple formula arguments, show the
-intersection of dependencies for *`formula`*.
+Show dependencies for *`formula`*. Additional options specific to *`formula`* may be
+appended to the command. When given multiple formula arguments, show the
+intersection of dependencies for each formula.
 
-* `--1`:
-  Only show dependencies one level down, instead of recursing.
 * `-n`:
   Show dependencies in topological order.
+* `--1`:
+  Only show dependencies one level down, instead of recursing.
 * `--union`:
-  Show the union of dependencies for *`formula`*, instead of the intersection.
+  Show the union of dependencies for multiple *`formula`*, instead of the intersection.
 * `--full-name`:
   List dependencies by their full name.
-* `--installed`:
-  Only list those dependencies that are currently installed.
-* `--all`:
-  List all the dependencies for all available formulae.
 * `--include-build`:
-  Show `:build` type dependencies for *`formula`*.
+  Include `:build` dependencies for *`formula`*.
 * `--include-optional`:
-  Show `:optional` dependencies for *`formula`*.
+  Include `:optional` dependencies for *`formula`*.
 * `--include-test`:
-  Show `:test` dependencies for *`formula`* (non-recursive).
+  Include `:test` dependencies for *`formula`* (non-recursive).
 * `--skip-recommended`:
-  Skip `:recommended` type dependencies for *`formula`*.
+  Skip `:recommended` dependencies for *`formula`*.
 * `--include-requirements`:
   Include requirements in addition to dependencies for *`formula`*.
 * `--tree`:
-  Show dependencies as a tree. When given multiple formula arguments output individual trees for every formula.
+  Show dependencies as a tree. When given multiple formula arguments, show individual trees for each formula.
 * `--annotate`:
   Mark any build, test, optional, or recommended dependencies as such in the output.
+* `--installed`:
+  List dependencies for formulae that are currently installed. If *`formula`* is specified, list only its dependencies that are currently installed.
+* `--all`:
+  List dependencies for all available formulae.
 * `--for-each`:
-  Switch into the mode used by `deps --all`, but only list dependencies for specified formula one specified formula per line. This is used for debugging the `--installed`/`--all` display mode.
+  Switch into the mode used by the `--all` option, but only list dependencies for the specified *`formula`*, one formula per line. This is used for debugging the `--installed`/`--all` display mode.
 
 ### `desc` [*`options`*] (*`text`*|`/`*`text`*`/`|*`formula`*)
 
@@ -539,9 +540,6 @@ Fetch the newest version of Homebrew and all formulae from GitHub using `git`(1)
 * `--merge`:
   `git merge` is used to include updates (rather than `git rebase`).
 
-* `--force`:
-  Always do a slower, full update check (even if unnecessary).
-
 ### `update-reset` [*`repository`*]
 Fetches and resets Homebrew and all tap repositories (or any specified `repository`) using `git`(1) to their latest `origin/master`. Note this will destroy all your uncommitted or committed changes.
 
@@ -784,7 +782,8 @@ Homebrew repository for editing if no *`formula`* is provided.
 
 Look through repository history to find the most recent version of *`formula`* and
 create a copy in *`tap`*`/Formula/`*`formula`*`@`*`version`*`.rb`. If the tap is not
-installed yet, attempt to install/clone the tap before continuing.
+installed yet, attempt to install/clone the tap before continuing. To extract a
+*`formula`* from a tap that is not homebrew/core use *`user`*/*`repo`*/*`formula`*.
 
 * `--version`:
   Extract the provided *`version`* of *`formula`* instead of the most recent.

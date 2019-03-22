@@ -109,7 +109,7 @@ module Homebrew
         odie "Couldn't guess formula for sure: could be one of these:\n#{guesses}"
       end
     end
-    odie "No formula found!" unless formula
+    raise FormulaUnspecifiedError unless formula
 
     check_for_duplicate_pull_requests(formula) unless checked_for_duplicates
 
@@ -164,12 +164,6 @@ module Homebrew
       else
         new_hash = resource_path.sha256
       end
-    end
-
-    if args.dry_run?
-      ohai "brew update"
-    else
-      safe_system "brew", "update"
     end
 
     old_formula_version = formula_version(formula, requested_spec)
