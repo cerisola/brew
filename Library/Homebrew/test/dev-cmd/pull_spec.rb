@@ -18,12 +18,12 @@ describe "brew pull", :integration_test do
         .and be_a_failure
     end
 
-    expect { brew "pull", "--bump", "https://api.github.com/repos/Homebrew/homebrew-core/pulls/122" }
+    expect { brew "pull", "--bump", "https://api.github.com/repos/cerisola/homebrew-core/pulls/122" }
       .to output(/Fetching patch/).to_stdout
       .and output(/Can only bump one changed formula/).to_stderr
       .and be_a_failure
 
-    expect { brew "pull", "https://github.com/Homebrew/brew/pull/1249" }
+    expect { brew "pull", "https://github.com/cerisola/brew/pull/1249" }
       .to output(/Fetching patch/).to_stdout
       .and output(/Patch failed to apply/).to_stderr
       .and be_a_failure

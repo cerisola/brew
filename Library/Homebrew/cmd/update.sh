@@ -28,7 +28,7 @@ git_init_if_necessary() {
   then
     CORE_OFFICIAL_REMOTE="https://github.com/cerisola/homebrew-core"
   else
-    CORE_OFFICIAL_REMOTE="https://github.com/Homebrew/linuxbrew-core"
+    CORE_OFFICIAL_REMOTE="https://github.com/cerisola/linuxbrew-core"
   fi
 
   safe_cd "$HOMEBREW_REPOSITORY"

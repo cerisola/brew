@@ -52,7 +52,7 @@ describe Tap do
   def setup_git_repo
     path.cd do
       system "git", "init"
-      system "git", "remote", "add", "origin", "https://github.com/Homebrew/homebrew-foo"
+      system "git", "remote", "add", "origin", "https://github.com/cerisola/homebrew-foo"
       system "git", "add", "--all"
       system "git", "commit", "-m", "init"
     end
@@ -121,7 +121,7 @@ describe Tap do
           "https://github.com/someone/homebrew-foo"
       end
       expect(t.issues_url).to eq("https://github.com/someone/homebrew-foo/issues")
-      expect(subject.issues_url).to eq("https://github.com/Homebrew/homebrew-foo/issues")
+      expect(subject.issues_url).to eq("https://github.com/cerisola/homebrew-foo/issues")
 
       (Tap::TAP_DIRECTORY/"someone/homebrew-no-git").mkpath
       expect(described_class.new("someone", "no-git").issues_url).to be nil
@@ -153,7 +153,7 @@ describe Tap do
     it "returns the remote URL" do
       setup_git_repo
 
-      expect(subject.remote).to eq("https://github.com/Homebrew/homebrew-foo")
+      expect(subject.remote).to eq("https://github.com/cerisola/homebrew-foo")
       expect { described_class.new("Homebrew", "bar").remote }.to raise_error(TapUnavailableError)
       expect(subject).not_to have_custom_remote
 
@@ -161,7 +161,7 @@ describe Tap do
       services_tap.path.mkpath
       services_tap.path.cd do
         system "git", "init"
-        system "git", "remote", "add", "origin", "https://github.com/Homebrew/homebrew-services"
+        system "git", "remote", "add", "origin", "https://github.com/cerisola/homebrew-services"
       end
       expect(services_tap).not_to be_private
     end

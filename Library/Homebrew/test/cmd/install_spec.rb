@@ -125,7 +125,7 @@ describe "brew install", :integration_test do
 
     repo_path.cd do
       system "git", "init"
-      system "git", "remote", "add", "origin", "https://github.com/Homebrew/homebrew-foo"
+      system "git", "remote", "add", "origin", "https://github.com/cerisola/homebrew-foo"
       FileUtils.touch "bin/something.bin"
       FileUtils.touch "README"
       system "git", "add", "--all"

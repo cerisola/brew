@@ -104,7 +104,7 @@ module Homebrew
           CoreTap.instance
         end
         _, testing_job = *testing_match
-        url = "https://github.com/Homebrew/homebrew-#{tap.repo}/compare/master...BrewTestBot:testing-#{testing_job}"
+        url = "https://github.com/cerisola/homebrew-#{tap.repo}/compare/master...BrewTestBot:testing-#{testing_job}"
         odie "Testing URLs require `--bottle`!" unless args.bottle?
       elsif (api_match = arg.match HOMEBREW_PULL_API_REGEX)
         _, user, repo, issue = *api_match

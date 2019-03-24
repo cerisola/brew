@@ -80,7 +80,7 @@ describe GitDownloadStrategy do
 
   def setup_git_repo
     system "git", "init"
-    system "git", "remote", "add", "origin", "https://github.com/Homebrew/homebrew-foo"
+    system "git", "remote", "add", "origin", "https://github.com/cerisola/homebrew-foo"
     FileUtils.touch "README"
     git_commit_all
   end
