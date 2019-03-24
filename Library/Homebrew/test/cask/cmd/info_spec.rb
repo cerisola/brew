@@ -12,7 +12,7 @@ describe Cask::Cmd::Info, :cask do
       local-caffeine: 1.2.3
       https://brew.sh
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/local-caffeine.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/local-caffeine.rb
       ==> Name
       None
       ==> Artifacts
@@ -27,7 +27,7 @@ describe Cask::Cmd::Info, :cask do
       with-auto-updates: 1.0 (auto_updates)
       https://brew.sh/autoupdates
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/with-auto-updates.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/with-auto-updates.rb
       ==> Name
       AutoUpdates
       ==> Artifacts
@@ -41,7 +41,7 @@ describe Cask::Cmd::Info, :cask do
         local-caffeine: 1.2.3
         https://brew.sh
         Not installed
-        From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/local-caffeine.rb
+        From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/local-caffeine.rb
         ==> Name
         None
         ==> Artifacts
@@ -49,7 +49,7 @@ describe Cask::Cmd::Info, :cask do
         local-transmission: 2.61
         https://brew.sh
         Not installed
-        From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/local-transmission.rb
+        From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/local-transmission.rb
         ==> Name
         Transmission
         ==> Artifacts
@@ -71,7 +71,7 @@ describe Cask::Cmd::Info, :cask do
       with-caveats: 1.2.3
       https://brew.sh
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/with-caveats.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/with-caveats.rb
       ==> Name
       None
       ==> Artifacts
@@ -97,7 +97,7 @@ describe Cask::Cmd::Info, :cask do
       with-conditional-caveats: 1.2.3
       https://brew.sh
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/with-conditional-caveats.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/with-conditional-caveats.rb
       ==> Name
       None
       ==> Artifacts
@@ -112,7 +112,7 @@ describe Cask::Cmd::Info, :cask do
       with-languages: 1.2.3
       https://brew.sh
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/with-languages.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/with-languages.rb
       ==> Name
       None
       ==> Languages
@@ -129,7 +129,7 @@ describe Cask::Cmd::Info, :cask do
       without-languages: 1.2.3
       https://brew.sh
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/without-languages.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/without-languages.rb
       ==> Name
       None
       ==> Artifacts
@@ -139,12 +139,12 @@ describe Cask::Cmd::Info, :cask do
 
   it "can run be run with a url twice" do
     expect {
-      described_class.run("https://raw.githubusercontent.com/Homebrew/homebrew-cask" \
+      described_class.run("https://raw.githubusercontent.com/cerisola/homebrew-cask" \
                           "/d0b2c58652ae5eff20a7a4ac93292a08b250912b/Casks/docker.rb")
-      described_class.run("https://raw.githubusercontent.com/Homebrew/homebrew-cask" \
+      described_class.run("https://raw.githubusercontent.com/cerisola/homebrew-cask" \
                           "/d0b2c58652ae5eff20a7a4ac93292a08b250912b/Casks/docker.rb")
     }.to output(<<~EOS).to_stdout
-      ==> Downloading https://raw.githubusercontent.com/Homebrew/homebrew-cask/d0b2c58652ae5eff20a7a4ac93292a08b250912b/Casks/docker.rb.
+      ==> Downloading https://raw.githubusercontent.com/cerisola/homebrew-cask/d0b2c58652ae5eff20a7a4ac93292a08b250912b/Casks/docker.rb.
       docker: 2.0.0.2-ce-mac81,30215 (auto_updates)
       https://www.docker.com/community-edition
       Not installed
@@ -153,7 +153,7 @@ describe Cask::Cmd::Info, :cask do
       Docker CE
       ==> Artifacts
       Docker.app (App)
-      ==> Downloading https://raw.githubusercontent.com/Homebrew/homebrew-cask/d0b2c58652ae5eff20a7a4ac93292a08b250912b/Casks/docker.rb.
+      ==> Downloading https://raw.githubusercontent.com/cerisola/homebrew-cask/d0b2c58652ae5eff20a7a4ac93292a08b250912b/Casks/docker.rb.
       docker: 2.0.0.2-ce-mac81,30215 (auto_updates)
       https://www.docker.com/community-edition
       Not installed
