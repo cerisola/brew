@@ -5,7 +5,7 @@ require "messages"
 module Homebrew
   module_function
 
-  def reinstall_formula(f, build_from_source: false)
+  def reinstall_formula(f, build_from_source: true)
     if f.opt_prefix.directory?
       keg = Keg.new(f.opt_prefix.resolved_path)
       keg_had_linked_opt = true

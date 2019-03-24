@@ -86,6 +86,7 @@ class FormulaInstaller
   end
 
   def pour_bottle?(install_bottle_options = { warn: false })
+    return false
     return false if @pour_failed
 
     return false if !formula.bottled? && !formula.local_bottle_path
