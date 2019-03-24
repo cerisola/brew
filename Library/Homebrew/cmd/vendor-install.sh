@@ -9,7 +9,7 @@ source "$HOMEBREW_LIBRARY/Homebrew/utils/lock.sh"
 
 VENDOR_DIR="$HOMEBREW_LIBRARY/Homebrew/vendor"
 
-# Built from https://github.com/Homebrew/homebrew-portable-ruby.
+# Built from https://github.com/cerisola/homebrew-portable-ruby.
 #
 # Dynamic variables can't be detected by shellcheck
 # shellcheck disable=SC2034
@@ -18,7 +18,7 @@ then
   if [[ "$HOMEBREW_PROCESSOR" = "Intel" ]]
   then
     ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.3.7.mavericks.bottle.tar.gz"
-    ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.3.7/portable-ruby-2.3.7.mavericks.bottle.tar.gz"
+    ruby_URL2="https://github.com/cerisola/homebrew-portable-ruby/releases/download/2.3.7/portable-ruby-2.3.7.mavericks.bottle.tar.gz"
     ruby_SHA="539ae571968fc74d4ec3a839cb33edc5786c219a5e6ae7fb6a09ec5fc1b04e4e"
   fi
 elif [[ -n "$HOMEBREW_LINUX" ]]
@@ -26,17 +26,17 @@ then
   case "$HOMEBREW_PROCESSOR" in
     x86_64)
       ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.3.7.x86_64_linux.bottle.tar.gz"
-      ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.3.7/portable-ruby-2.3.7.x86_64_linux.bottle.tar.gz"
+      ruby_URL2="https://github.com/cerisola/homebrew-portable-ruby/releases/download/2.3.7/portable-ruby-2.3.7.x86_64_linux.bottle.tar.gz"
       ruby_SHA="9df214085a0e566a580eea3dd9eab14a2a94930ff74fbf97fb1284e905c8921d"
       ;;
     aarch64)
       ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.3.7.aarch64_linux.bottle.tar.gz"
-      ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.3.7/portable-ruby-2.3.7.aarch64_linux.bottle.tar.gz"
+      ruby_URL2="https://github.com/cerisola/homebrew-portable-ruby/releases/download/2.3.7/portable-ruby-2.3.7.aarch64_linux.bottle.tar.gz"
       ruby_SHA="e5a72a9deabe500d5d2eaed29e2eb84868ade962eda3ddc68ea169adbb7ac5a2"
       ;;
     armv[67]*)
       ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.3.7.armv6_linux.bottle.tar.gz"
-      ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.3.7/portable-ruby-2.3.7.armv6_linux.bottle.tar.gz"
+      ruby_URL2="https://github.com/cerisola/homebrew-portable-ruby/releases/download/2.3.7/portable-ruby-2.3.7.armv6_linux.bottle.tar.gz"
       ruby_SHA="17dce8965d7c935ec1dd0c5bb0be937b685ffe65529141d9e6ed78f4925b4570"
       ;;
   esac
