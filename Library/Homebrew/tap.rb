@@ -631,7 +631,7 @@ end
 class CoreTap < Tap
   # @private
   def initialize
-    super "Homebrew", "core"
+    super "cerisola", "core"
   end
 
   def self.instance
