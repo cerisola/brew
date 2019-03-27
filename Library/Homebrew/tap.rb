@@ -28,7 +28,7 @@ class Tap
     user = user.capitalize if ["homebrew", "linuxbrew"].include? user
     repo = repo.sub(HOMEBREW_OFFICIAL_REPO_PREFIXES_REGEX, "")
 
-    return CoreTap.instance if ["Homebrew", "Linuxbrew"].include?(user) && ["core", "homebrew"].include?(repo)
+    return CoreTap.instance if ["Homebrew", "Linuxbrew", "cerisola"].include?(user) && ["core", "homebrew"].include?(repo)
 
     cache_key = "#{user}/#{repo}".downcase
     cache.fetch(cache_key) { |key| cache[key] = Tap.new(user, repo) }
