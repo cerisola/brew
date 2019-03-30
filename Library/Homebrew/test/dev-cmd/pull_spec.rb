@@ -1,27 +1,15 @@
+require "cmd/shared_examples/args_parse"
+
+describe "Homebrew.pull_args" do
+  it_behaves_like "parseable arguments"
+end
+
 describe "brew pull", :integration_test do
   it "fetches a patch from a GitHub commit or pull request and applies it", :needs_network do
     CoreTap.instance.path.cd do
       system "git", "init"
       system "git", "checkout", "-b", "new-branch"
     end
-
-    expect { brew "pull", "https://jenkins.brew.sh/job/Homebrew\%20Testing/1028/" }
-      .to output(/Testing URLs require `\-\-bottle`!/).to_stderr
-      .and not_to_output.to_stdout
-      .and be_a_failure
-
-    # Needs Homebrew/homebrew-core
-    if OS.mac?
-      expect { brew "pull", "1" }
-        .to output(/Fetching patch/).to_stdout
-        .and output(/Current branch is new\-branch/).to_stderr
-        .and be_a_failure
-    end
-
-    expect { brew "pull", "--bump", "https://api.github.com/repos/cerisola/homebrew-core/pulls/122" }
-      .to output(/Fetching patch/).to_stdout
-      .and output(/Can only bump one changed formula/).to_stderr
-      .and be_a_failure
 
     expect { brew "pull", "https://github.com/cerisola/brew/pull/1249" }
       .to output(/Fetching patch/).to_stdout

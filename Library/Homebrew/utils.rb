@@ -24,9 +24,13 @@ rescue LoadError => e
   raise unless e.message.include?(path)
 end
 
-def ohai(title, *sput)
+def ohai_title(title)
   title = Tty.truncate(title) if $stdout.tty? && !ARGV.verbose?
-  puts Formatter.headline(title, color: :blue)
+  Formatter.headline(title, color: :blue)
+end
+
+def ohai(title, *sput)
+  puts ohai_title(title)
   puts sput
 end
 
@@ -317,7 +321,7 @@ end
 
 def exec_editor(*args)
   puts "Editing #{args.join "\n"}"
-  with_homebrew_path { safe_exec(which_editor, *args) }
+  with_homebrew_path { safe_system(which_editor, *args) }
 end
 
 def exec_browser(*args)
@@ -327,13 +331,7 @@ def exec_browser(*args)
 
   ENV["DISPLAY"] = ENV["HOMEBREW_DISPLAY"]
 
-  safe_exec(browser, *args)
-end
-
-def safe_exec(cmd, *args)
-  # This buys us proper argument quoting and evaluation
-  # of environment variables in the cmd parameter.
-  exec "/bin/sh", "-c", "#{cmd} \"$@\"", "--", *args
+  safe_system(browser, *args)
 end
 
 # GZips the given paths, and returns the gzipped paths

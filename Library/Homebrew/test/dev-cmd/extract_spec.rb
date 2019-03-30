@@ -1,3 +1,9 @@
+require "cmd/shared_examples/args_parse"
+
+describe "Homebrew.extract_args" do
+  it_behaves_like "parseable arguments"
+end
+
 describe "brew extract", :integration_test do
   it "retrieves the specified version of formula, defaulting to most recent" do
     path = Tap::TAP_DIRECTORY/"homebrew/homebrew-foo"
@@ -15,12 +21,6 @@ describe "brew extract", :integration_test do
       system "git", "add", "--all"
       system "git", "commit", "-m", "testball 0.2"
     end
-    expect { brew "extract", "testball", target.name }
-      .to be_a_success
-
-    expect(path/"Formula/testball@0.2.rb").to exist
-
-    expect(Formulary.factory(path/"Formula/testball@0.2.rb").version).to be == "0.2"
 
     expect { brew "extract", "testball", target.name, "--version=0.1" }
       .to be_a_success
