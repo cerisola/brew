@@ -54,11 +54,11 @@ class AbstractDownloadStrategy
   # Unlike {Resource#stage}, this does not take a block.
   def stage
     UnpackStrategy.detect(cached_location,
-                          extension_only: true,
+                          prioritise_extension: true,
                           ref_type: @ref_type, ref: @ref)
-                  .extract_nestedly(basename:       basename,
-                                    extension_only: true,
-                                    verbose:        ARGV.verbose? && !shutup)
+                  .extract_nestedly(basename:             basename,
+                                    prioritise_extension: true,
+                                    verbose:              ARGV.verbose? && !shutup)
     chdir
   end
 
@@ -344,7 +344,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
       url = url.sub(%r{^((ht|f)tps?://)?}, ENV["HOMEBREW_ARTIFACT_DOMAIN"].chomp("/") + "/")
     end
 
-    out, _, status= curl_output("--location", "--silent", "--head", url.to_s)
+    out, _, status= curl_output("--location", "--silent", "--head", "--request", "GET", url.to_s)
 
     lines = status.success? ? out.lines.map(&:chomp) : []
 

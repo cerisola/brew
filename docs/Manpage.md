@@ -229,7 +229,7 @@ installed formulae or, every 30 days, for all formulae.
 * `--env`:
   If `std` is passed, use the standard build environment instead of superenv.If `super` is passed, use superenv even if the formula specifies the standard build environment.
 * `--ignore-dependencies`:
-  Skip installing any dependencies of any kind. If they are not already present, the formula will probably fail to install.
+  An unsupported Homebrew development flag to skip installing any dependencies of any kind. If the dependencies are not already present, the formula will have issues. If you're not developing Homebrew, consider adjusting your PATH rather than using this flag.
 * `--only-dependencies`:
   Install the dependencies with specified options but do not install the specified formula.
 * `--cc`:
@@ -488,15 +488,6 @@ summary of all installed taps if no *`tap`* are passed.
 * `--json`:
   Print a JSON representation of *`taps`*. Currently the default and only accepted value for *`version`* is `v1`. See the docs for examples of using the JSON output: <https://docs.brew.sh/Querying-Brew>
 
-### `tap-pin` *`tap`*
-
-Pin *`tap`*, prioritising its formulae over core when formula names are supplied
-by the user. See also `tap-unpin`.
-
-### `tap-unpin` *`tap`*
-
-Unpin *`tap`* so its formulae are no longer prioritised. See also `tap-pin`.
-
 ### `uninstall`, `rm`, `remove` [*`options`*] *`formula`*
 
 Uninstall *`formula`*.
@@ -545,7 +536,7 @@ Fetches and resets Homebrew and all tap repositories (or any specified `reposito
 
 ### `upgrade` [*`options`*] *`formula`*
 
-Upgrade outdated, unpinned brews (with existing and any appended install
+Upgrade outdated, unpinned formulae (with existing and any appended brew formula
 options).
 
 If *`formula`* are given, upgrade only the specified brews (unless they are
