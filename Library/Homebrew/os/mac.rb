@@ -8,7 +8,11 @@ module OS
   module Mac
     module_function
 
-    ::MacOS = self # rubocop:disable Naming/ConstantName
+    # rubocop:disable Naming/ConstantName
+    # rubocop:disable Style/MutableConstant
+    ::MacOS = self
+    # rubocop:enable Naming/ConstantName
+    # rubocop:enable Style/MutableConstant
 
     raise "Loaded OS::Mac on generic OS!" if ENV["HOMEBREW_TEST_GENERIC_OS"]
 
@@ -212,7 +216,7 @@ module OS
         Homebrew doesn't know what compiler versions ship with your version
         of Xcode (#{Xcode.version}). Please `brew update` and if that doesn't
         help, file an issue with the output of `brew --config`:
-          https://github.com/cerisola/brew/issues
+          #{Formatter.url("https://github.com/cerisola/brew/issues")}
 
         Note that we only track stable, released versions of Xcode.
 

@@ -100,12 +100,12 @@ then
   # Refuse to run on pre-Mavericks
   if [[ "$HOMEBREW_MACOS_VERSION_NUMERIC" -lt "100900" ]]
   then
-    printf "ERROR: Your version of macOS (%s) is too old to run Homebrew!" "$HOMEBREW_MACOS_VERSION" >&2
+    printf "ERROR: Your version of macOS (%s) is too old to run Homebrew!\\n" "$HOMEBREW_MACOS_VERSION" >&2
     if [[ "$HOMEBREW_MACOS_VERSION_NUMERIC" -lt "100700" ]]
     then
-      printf "         For 10.4 - 10.6 support see: https://github.com/mistydemeo/tigerbrew\n" >&2
+      printf "         For 10.4 - 10.6 support see: https://github.com/mistydemeo/tigerbrew\\n" >&2
     fi
-    printf "\n" >&2
+    printf "\\n" >&2
   fi
 
   # The system Curl is too old for some modern HTTPS certificates on
@@ -127,6 +127,17 @@ then
   HOMEBREW_CACHE="${HOMEBREW_CACHE:-${HOME}/Library/Caches/Homebrew}"
   HOMEBREW_LOGS="${HOMEBREW_LOGS:-${HOME}/Library/Logs/Homebrew}"
   HOMEBREW_SYSTEM_TEMP="/private/tmp"
+
+  # Set a variable when the macOS system Ruby is new enough to avoid spawning
+  # a Ruby process unnecessarily.
+  if [[ "$HOMEBREW_MACOS_VERSION_NUMERIC" -lt "101303" ]]
+  then
+    unset HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH
+  else
+    # Used in ruby.sh.
+    # shellcheck disable=SC2034
+    HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH="1"
+  fi
 else
   HOMEBREW_PROCESSOR="$(uname -m)"
   HOMEBREW_PRODUCT="${HOMEBREW_SYSTEM}brew"
@@ -157,6 +168,8 @@ else
   HOMEBREW_CACHE="${HOMEBREW_CACHE:-${CACHE_HOME}/Homebrew}"
   HOMEBREW_LOGS="${HOMEBREW_LOGS:-${CACHE_HOME}/Homebrew/Logs}"
   HOMEBREW_SYSTEM_TEMP="/tmp"
+
+  unset HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH
 fi
 
 if [[ -n "$HOMEBREW_MACOS" || -n "$HOMEBREW_FORCE_HOMEBREW_ON_LINUX" ]]
@@ -327,7 +340,16 @@ then
 
   # Don't allow non-developers to customise Ruby warnings.
   unset HOMEBREW_RUBY_WARNINGS
+
+  # Disable Ruby options we don't need. RubyGems provides a decent speedup.
+  RUBY_DISABLE_OPTIONS="--disable=gems,did_you_mean,rubyopt"
+else
+  # Don't disable did_you_mean for developers as it's useful.
+  RUBY_DISABLE_OPTIONS="--disable=gems,rubyopt"
 fi
+
+# Don't set this for anyone (yet)
+unset HOMEBREW_FROZEN_STRING_LITERAL
 
 if [[ -z "$HOMEBREW_RUBY_WARNINGS" ]]
 then
@@ -480,5 +502,5 @@ else
 
   # Unshift command back into argument list (unless argument list was empty).
   [[ "$HOMEBREW_ARG_COUNT" -gt 0 ]] && set -- "$HOMEBREW_COMMAND" "$@"
-  { update-preinstall "$@"; exec "$HOMEBREW_RUBY_PATH" $HOMEBREW_RUBY_WARNINGS "$HOMEBREW_LIBRARY/Homebrew/brew.rb" "$@"; }
+  { update-preinstall "$@"; exec "$HOMEBREW_RUBY_PATH" $HOMEBREW_FROZEN_STRING_LITERAL $HOMEBREW_RUBY_WARNINGS "$RUBY_DISABLE_OPTIONS" "$HOMEBREW_LIBRARY/Homebrew/brew.rb" "$@"; }
 fi

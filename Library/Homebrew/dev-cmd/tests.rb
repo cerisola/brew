@@ -1,4 +1,4 @@
-require "cli_parser"
+require "cli/parser"
 require "fileutils"
 
 module Homebrew
@@ -55,7 +55,7 @@ module Homebrew
 
       ENV["USER"] ||= system_command!("id", args: ["-nu"]).stdout.chomp
 
-      # Avoid local configuration messing with tests e.g. git being configured
+      # Avoid local configuration messing with tests, e.g. git being configured
       # to use GPG to sign by default
       ENV["HOME"] = "#{HOMEBREW_LIBRARY_PATH}/test"
 

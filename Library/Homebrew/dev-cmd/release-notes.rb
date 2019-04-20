@@ -1,4 +1,4 @@
-require "cli_parser"
+require "cli/parser"
 
 module Homebrew
   module_function
@@ -49,7 +49,7 @@ module Homebrew
       end
     end
 
-    puts "Release notes between #{previous_tag} and #{end_ref}:"
+    $stderr.puts "Release notes between #{previous_tag} and #{end_ref}:"
     puts output
   end
 end

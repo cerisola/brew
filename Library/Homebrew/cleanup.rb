@@ -8,30 +8,6 @@ CLEANUP_DEFAULT_DAYS = 30
 CLEANUP_MAX_AGE_DAYS = 120
 
 module CleanupRefinement
-  refine Enumerator do
-    def parallel
-      queue = Queue.new
-
-      each do |element|
-        queue.enq(element)
-      end
-
-      workers = (0...Hardware::CPU.cores).map do
-        Thread.new do
-          Kernel.loop do
-            begin
-              yield queue.deq(true)
-            rescue ThreadError
-              break # if queue is empty
-            end
-          end
-        end
-      end
-
-      workers.each(&:join)
-    end
-  end
-
   refine Pathname do
     def incomplete?
       extname.end_with?(".incomplete")
@@ -143,7 +119,7 @@ module Homebrew
   class Cleanup
     extend Predicable
 
-    PERIODIC_CLEAN_FILE = HOMEBREW_CACHE/".cleaned"
+    PERIODIC_CLEAN_FILE = (HOMEBREW_CACHE/".cleaned").freeze
 
     attr_predicate :dry_run?, :scrub?
     attr_reader :args, :days, :cache
@@ -300,6 +276,8 @@ module Homebrew
       entries ||= [cache, cache/"Cask"].select(&:directory?).flat_map(&:children)
 
       entries.each do |path|
+        next if path == PERIODIC_CLEAN_FILE
+
         FileUtils.chmod_R 0755, path if path.go_cache_directory? && !dry_run?
         next cleanup_path(path) { path.unlink } if path.incomplete?
         next cleanup_path(path) { FileUtils.rm_rf path } if path.nested_cache?
@@ -403,7 +381,7 @@ module Homebrew
           HOMEBREW_PREFIX/"Caskroom",
         ]
       end
-      dirs.select(&:directory?).each.parallel do |dir|
+      dirs.select(&:directory?).each do |dir|
         system_command "find",
           args:         [dir, "-name", ".DS_Store", "-delete"],
           print_stderr: false

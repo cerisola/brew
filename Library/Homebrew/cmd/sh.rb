@@ -1,6 +1,6 @@
 require "extend/ENV"
 require "formula"
-require "cli_parser"
+require "cli/parser"
 
 module Homebrew
   module_function
@@ -48,7 +48,7 @@ module Homebrew
       gem and pip will ignore our configuration and insist on using the
       environment they were built under (mostly). Sadly, scons will also
       ignore our configuration.
-      When done, type `exit'.
+      When done, type `exit`.
     EOS
     $stdout.flush
     safe_system ENV["SHELL"]

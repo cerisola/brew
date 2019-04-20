@@ -5,19 +5,19 @@ module UnpackStrategy
     include UnpackStrategy
 
     module Bom
-      DMG_METADATA = Set.new %w[
-        .background
-        .com.apple.timemachine.donotpresent
-        .com.apple.timemachine.supported
-        .DocumentRevisions-V100
-        .DS_Store
-        .fseventsd
-        .MobileBackups
-        .Spotlight-V100
-        .TemporaryItems
-        .Trashes
-        .VolumeIcon.icns
-      ].freeze
+      DMG_METADATA = Set.new(%w[
+                               .background
+                               .com.apple.timemachine.donotpresent
+                               .com.apple.timemachine.supported
+                               .DocumentRevisions-V100
+                               .DS_Store
+                               .fseventsd
+                               .MobileBackups
+                               .Spotlight-V100
+                               .TemporaryItems
+                               .Trashes
+                               .VolumeIcon.icns
+                             ]).freeze
       private_constant :DMG_METADATA
 
       refine Pathname do
@@ -115,7 +115,7 @@ module UnpackStrategy
 
     def extract_to_dir(unpack_dir, basename:, verbose:)
       mount(verbose: verbose) do |mounts|
-        raise "No mounts found in '#{path}'; perhaps it is a bad disk image?" if mounts.empty?
+        raise "No mounts found in '#{path}'; perhaps this is a bad disk image?" if mounts.empty?
 
         mounts.each do |mount|
           mount.extract(to: unpack_dir, verbose: verbose)
