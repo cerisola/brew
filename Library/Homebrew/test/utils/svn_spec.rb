@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "utils/svn"
 
 describe Utils do
@@ -33,8 +35,8 @@ describe Utils do
       it "returns true when remote exists", :needs_network, :needs_svn do
         HOMEBREW_CACHE.cd do
           system HOMEBREW_SHIMS_PATH/"scm/svn", "checkout",
-            "--non-interactive", "--trust-server-cert", "--quiet",
-            "https://github.com/cerisola/install"
+                 "--non-interactive", "--trust-server-cert", "--quiet",
+                 "https://github.com/cerisola/install"
         end
 
         expect(described_class).to be_svn_remote_exists(HOMEBREW_CACHE/"install")

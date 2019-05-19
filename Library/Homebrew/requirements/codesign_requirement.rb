@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class CodesignRequirement < Requirement
   fatal true
 
@@ -16,7 +18,7 @@ class CodesignRequirement < Requirement
     mktemp do
       FileUtils.cp "/usr/bin/false", "codesign_check"
       quiet_system "/usr/bin/codesign", "-f", "-s", @identity,
-                                        "--dryrun", "codesign_check"
+                   "--dryrun", "codesign_check"
     end
   end
 

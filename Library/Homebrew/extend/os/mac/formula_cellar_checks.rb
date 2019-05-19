@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "cache_store"
 require "linkage_checker"
 
@@ -43,6 +45,28 @@ module FormulaCellarChecks
       the system's private LibreSSL.
       Adding `depends_on "openssl"` to the formula may help.
         #{system_openssl * "\n        "}
+    EOS
+  end
+
+  def check_accelerate_framework_links
+    return unless @core_tap
+    return unless formula.prefix.directory?
+    return if formula.name == "veclibfort" # veclibfort exists to wrap accelerate
+
+    keg = Keg.new(formula.prefix)
+    system_accelerate = keg.mach_o_files.select do |obj|
+      dlls = obj.dynamically_linked_libraries
+      dlls.any? { |dll| %r{^/System/Library/Frameworks/Accelerate.framework}.match dll }
+    end
+    return if system_accelerate.empty?
+
+    <<~EOS
+      object files were linked against system Accelerate
+      These object files were linked against the outdated system Accelerate framework.
+      Core tap formulae should link against OpenBLAS instead.
+      Removing `depends_on "veclibfort" and/or adding `depends_on "openblas"` to the
+      formula may help.
+        #{system_accelerate * "\n  "}
     EOS
   end
 
@@ -93,6 +117,7 @@ module FormulaCellarChecks
     generic_audit_installed
     problem_if_output(check_shadowed_headers)
     problem_if_output(check_openssl_links)
+    problem_if_output(check_accelerate_framework_links)
     problem_if_output(check_python_framework_links(formula.lib))
     check_linkage
   end

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 old_trap = trap("INT") { exit! 130 }
 
 require "global"
@@ -31,7 +33,7 @@ rescue Exception => e # rubocop:disable Lint/RescueException
   error_pipe.puts e.to_json
   error_pipe.close
   pid = Process.pid.to_s
-  if which("pgrep") && which("pkill") && system("pgrep", "-qP", pid)
+  if which("pgrep") && which("pkill") && system("pgrep", "-P", pid, out: :close)
     $stderr.puts "Killing child processes..."
     system "pkill", "-P", pid
     sleep 1

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "install"
 require "reinstall"
 require "formula_installer"
@@ -22,28 +24,28 @@ module Homebrew
         Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will be run for the upgraded formulae or, every 30 days, for all formulae.
       EOS
       switch :debug,
-        description: "If brewing fails, open an interactive debugging session with access to IRB "\
-                     "or a shell inside the temporary build directory"
+             description: "If brewing fails, open an interactive debugging session with access to IRB "\
+                          "or a shell inside the temporary build directory"
       switch "-s", "--build-from-source",
-        description: "Compile <formula> from source even if a bottle is available."
+             description: "Compile <formula> from source even if a bottle is available."
       switch "--force-bottle",
-        description: "Install from a bottle if it exists for the current or newest version of "\
-                     "macOS, even if it would not normally be used for installation."
+             description: "Install from a bottle if it exists for the current or newest version of "\
+                          "macOS, even if it would not normally be used for installation."
       switch "--fetch-HEAD",
-        description: "Fetch the upstream repository to detect if the HEAD installation of the "\
-                     "formula is outdated. Otherwise, the repository's HEAD will be checked for "\
-                     "updates when a new stable or development version has been released."
+             description: "Fetch the upstream repository to detect if the HEAD installation of the "\
+                          "formula is outdated. Otherwise, the repository's HEAD will be checked for "\
+                          "updates when a new stable or development version has been released."
       switch "--ignore-pinned",
-        description: "Set a 0 exit code even if pinned formulae are not upgraded."
+             description: "Set a 0 exit code even if pinned formulae are not upgraded."
       switch "--keep-tmp",
-        description: "Don't delete the temporary files created during installation."
+             description: "Don't delete the temporary files created during installation."
       switch :force,
-        description: "Install without checking for previously installed keg-only or "\
-                     "non-migrated versions."
+             description: "Install without checking for previously installed keg-only or "\
+                          "non-migrated versions."
       switch :verbose,
-        description: "Print the verification and postinstall steps."
+             description: "Print the verification and postinstall steps."
       switch "--display-times",
-        description: "Print install times for each formula at the end of the run."
+             description: "Print install times for each formula at the end of the run."
       conflicts "--build-from-source", "--force-bottle"
       formula_options
     end
@@ -162,10 +164,11 @@ module Homebrew
 
     fi = FormulaInstaller.new(f)
     fi.options = options
-    fi.build_bottle = args.build_bottle? || (!f.bottle_defined? && f.build.bottle?)
+    fi.build_bottle = args.build_bottle?
     fi.installed_on_request = !ARGV.named.empty?
     fi.link_keg           ||= keg_was_linked if keg_had_linked_opt
     if tab
+      fi.build_bottle          ||= tab.built_bottle?
       fi.installed_as_dependency = tab.installed_as_dependency
       fi.installed_on_request  ||= tab.installed_on_request
     end

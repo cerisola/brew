@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "digest"
 require "erb"
 
@@ -97,7 +99,7 @@ module Homebrew
         <% if mode == :cmake %>
           depends_on "cmake" => :build
         <% elsif mode == :meson %>
-          depends_on "meson-internal" => :build
+          depends_on "meson" => :build
           depends_on "ninja" => :build
           depends_on "python" => :build
         <% elsif mode.nil? %>
@@ -115,12 +117,10 @@ module Homebrew
                                   "--disable-silent-rules",
                                   "--prefix=\#{prefix}"
         <% elsif mode == :meson %>
-            ENV.refurbish_args
-
             mkdir "build" do
               system "meson", "--prefix=\#{prefix}", ".."
-              system "ninja"
-              system "ninja", "install"
+              system "ninja", "-v"
+              system "ninja", "install", "-v"
             end
         <% else %>
             # Remove unrecognized options if warned by configure

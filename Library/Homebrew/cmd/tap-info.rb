@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "cli/parser"
 
 module Homebrew
@@ -12,11 +14,11 @@ module Homebrew
         Display a brief summary of all installed taps if no <tap> are passed.
       EOS
       switch "--installed",
-        description: "Display information on all installed taps."
+             description: "Display information on all installed taps."
       flag "--json",
-        description: "Print a JSON representation of <taps>. Currently the default and only accepted "\
-                     "value for <version> is `v1`. See the docs for examples of using the JSON "\
-                     "output: <https://docs.brew.sh/Querying-Brew>"
+           description: "Print a JSON representation of <taps>. Currently the default and only accepted "\
+                        "value for <version> is `v1`. See the docs for examples of using the JSON "\
+                        "output: <https://docs.brew.sh/Querying-Brew>"
       switch :debug
     end
   end
@@ -60,7 +62,7 @@ module Homebrew
       info += ", #{private_count} private"
       info += ", #{formula_count} #{"formula".pluralize(formula_count)}"
       info += ", #{command_count} #{"command".pluralize(command_count)}"
-      info += ", #{Tap::TAP_DIRECTORY.abv}" if Tap::TAP_DIRECTORY.directory?
+      info += ", #{Tap::TAP_DIRECTORY.dup.abv}" if Tap::TAP_DIRECTORY.directory?
       puts info
     else
       taps.each_with_index do |tap, i|

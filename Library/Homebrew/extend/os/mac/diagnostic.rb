@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Homebrew
   module Diagnostic
     class Checks
@@ -45,7 +47,7 @@ module Homebrew
       def check_for_unsupported_macos
         return if ARGV.homebrew_developer?
 
-        who = "We"
+        who = +"We"
         if OS::Mac.prerelease?
           what = "pre-release version"
         elsif OS::Mac.outdated_release?
@@ -54,6 +56,7 @@ module Homebrew
         else
           return
         end
+        who.freeze
 
         <<~EOS
           You are using macOS #{MacOS.version}.

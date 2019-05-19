@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "resource"
 require "erb"
 
@@ -115,8 +117,8 @@ class ExternalPatch
   attr_reader :resource, :strip
 
   def_delegators :resource,
-    :url, :fetch, :patch_files, :verify_download_integrity, :cached_download,
-    :clear_cache
+                 :url, :fetch, :patch_files, :verify_download_integrity, :cached_download,
+                 :clear_cache
 
   def initialize(strip, &block)
     @strip    = strip

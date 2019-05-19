@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "cxxstdlib"
 require "formula"
 require "keg"
@@ -195,8 +197,8 @@ class FormulaInstaller
     return if pinned_unsatisfied_deps.empty?
 
     raise CannotInstallFormulaError,
-      "You must `brew unpin #{pinned_unsatisfied_deps * " "}` as installing " \
-      "#{formula.full_name} requires the latest version of pinned dependencies"
+          "You must `brew unpin #{pinned_unsatisfied_deps * " "}` as installing " \
+          "#{formula.full_name} requires the latest version of pinned dependencies"
   end
 
   def build_bottle_preinstall
@@ -665,7 +667,7 @@ class FormulaInstaller
   end
 
   def summary
-    s = ""
+    s = +""
     s << "#{Emoji.install_badge}  " if Emoji.enabled?
     s << "#{formula.prefix.resolved_path}: #{formula.prefix.abv}"
     s << ", built in #{pretty_duration build_time}" if build_time

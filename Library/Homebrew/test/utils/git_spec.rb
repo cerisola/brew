@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "utils/git"
 
 describe Git do
@@ -33,8 +35,8 @@ describe Git do
     it "gives revision commit based on before_commit when it is not nil" do
       expect(
         described_class.last_revision_commit_of_file(HOMEBREW_CACHE,
-                                                    file,
-                                                    before_commit: hash2),
+                                                     file,
+                                                     before_commit: hash2),
       ).to eq(hash2)
     end
   end

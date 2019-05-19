@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module UnpackStrategy
   class Zip
     prepend Module.new {
@@ -7,9 +9,9 @@ module UnpackStrategy
           # folder has incorrect permissions.
           # (Also, Homebrew's ZIP artifact automatically deletes this folder.)
           return system_command! "ditto",
-                          args:         ["-x", "-k", path, unpack_dir],
-                          verbose:      verbose,
-                          print_stderr: false
+                                 args:         ["-x", "-k", path, unpack_dir],
+                                 verbose:      verbose,
+                                 print_stderr: false
         end
 
         result = begin

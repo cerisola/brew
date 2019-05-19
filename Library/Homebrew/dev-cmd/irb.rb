@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "cli/parser"
 
 class Symbol
@@ -23,10 +25,10 @@ module Homebrew
         Enter the interactive Homebrew Ruby shell.
       EOS
       switch "--examples",
-        description: "Show several examples."
+             description: "Show several examples."
       switch "--pry",
-        env:         :pry,
-        description: "Use Pry instead of IRB. Implied if `HOMEBREW_PRY` is set."
+             env:         :pry,
+             description: "Use Pry instead of IRB. Implied if `HOMEBREW_PRY` is set."
     end
   end
 

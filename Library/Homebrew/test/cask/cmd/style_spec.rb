@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "open3"
 require "rubygems"
 
@@ -79,7 +81,7 @@ describe Cask::Cmd::Style, :cask do
 
       it {
         expect(subject).to contain_exactly(a_path_ending_with("/homebrew/homebrew-cask/Casks"),
-                                       a_path_ending_with("/third-party/homebrew-tap/Casks"))
+                                           a_path_ending_with("/third-party/homebrew-tap/Casks"))
       }
     end
 

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "hardware"
 require "software_spec"
 require "rexml/document"
@@ -137,6 +139,7 @@ class SystemConfig
         HOMEBREW_BREW_FILE
         HOMEBREW_COMMAND_DEPTH
         HOMEBREW_CURL
+        HOMEBREW_DISPLAY
         HOMEBREW_GIT
         HOMEBREW_GIT_CONFIG_FILE
         HOMEBREW_LIBRARY

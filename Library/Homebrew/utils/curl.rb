@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "open3"
 
 def curl_executable
@@ -34,6 +36,8 @@ def curl_args(*extra_args, show_output: false, user_agent: :default)
     args << "--verbose" if ENV["HOMEBREW_CURL_VERBOSE"]
     args << "--silent" unless $stdout.tty?
   end
+
+  args << "--retry" << ENV["HOMEBREW_CURL_RETRIES"] if ENV["HOMEBREW_CURL_RETRIES"]
 
   args + extra_args
 end

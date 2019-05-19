@@ -47,9 +47,9 @@ If you're using an older distribution of Linux, installing your first package wi
 
 ## Linux/WSL Requirements
 
-+ **GCC** 4.4 or newer
++ **GCC** 4.7.0 or newer
 + **Linux** 2.6.32 or newer
-+ **Glibc** 2.12 or newer
++ **Glibc** 2.13 or newer
 + **64-bit x86_64** CPU
 
 Paste at a terminal prompt:
@@ -63,7 +63,9 @@ sudo apt-get install build-essential curl file git
 ### Fedora, CentOS, or Red Hat
 
 ```sh
-sudo yum groupinstall 'Development Tools' && sudo yum install curl file git
+sudo yum groupinstall 'Development Tools'
+sudo yum install curl file git
+sudo yum install libxcrypt-compat # needed by Fedora 30 and up
 ```
 
 ### ARM

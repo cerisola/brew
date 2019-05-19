@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 PYTHON_VIRTUALENV_URL =
-  "https://files.pythonhosted.org/packages/37/db" \
-  "/89d6b043b22052109da35416abc3c397655e4bd3cff031446ba02b9654fa" \
-  "/virtualenv-16.4.3.tar.gz".freeze
+  "https://files.pythonhosted.org/packages/53/c0" \
+  "/c7819f0bb2cf83e1b4b0d96c901b85191f598a7b534d297c2ef6dc80e2d3" \
+  "/virtualenv-16.6.0.tar.gz"
 PYTHON_VIRTUALENV_SHA256 =
-  "984d7e607b0a5d1329425dd8845bd971b957424b5ba664729fab51ab8c11bc39".freeze
+  "99acaf1e35c7ccf9763db9ba2accbca2f4254d61d1912c5ee364f9cc4a8942a0"

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "utils/bottles"
 require "utils/gems"
 require "formula"
@@ -383,8 +385,8 @@ module Homebrew
       end
       dirs.select(&:directory?).each do |dir|
         system_command "find",
-          args:         [dir, "-name", ".DS_Store", "-delete"],
-          print_stderr: false
+                       args:         [dir, "-name", ".DS_Store", "-delete"],
+                       print_stderr: false
       end
     end
 

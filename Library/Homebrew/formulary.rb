@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "digest/md5"
 require "extend/cachable"
 
@@ -29,12 +31,12 @@ module Formulary
 
     begin
       mod.const_get(class_name)
-    rescue NameError => original_exception
+    rescue NameError => e
       class_list = mod.constants
                       .map { |const_name| mod.const_get(const_name) }
                       .select { |const| const.is_a?(Class) }
-      e = FormulaClassUnavailableError.new(name, path, class_name, class_list)
-      raise e, "", original_exception.backtrace
+      new_exception = FormulaClassUnavailableError.new(name, path, class_name, class_list)
+      raise new_exception, "", e.backtrace
     end
   end
 
@@ -193,6 +195,15 @@ module Formulary
     end
 
     def load_file
+      if url =~ %r{githubusercontent.com/[\w-]+/[\w-]+/[a-f0-9]{40}(/Formula)?/([\w+-.@]+).rb}
+        formula_name = Regexp.last_match(2)
+        ohai "Consider using `brew extract #{formula_name} ...`!"
+        puts <<~EOS
+          This will extract your desired #{formula_name} version to a stable tap instead of
+          installing from an unstable URL!
+
+        EOS
+      end
       HOMEBREW_CACHE_FORMULA.mkpath
       FileUtils.rm_f(path)
       curl_download url, to: path
@@ -461,7 +472,7 @@ module Formulary
       selected_formula = factory(possible_pinned_tap_formulae.first, spec)
       if core_path(ref).file?
         odeprecated "brew tap-pin user/tap",
-          "fully-scoped user/tap/formula naming"
+                    "fully-scoped user/tap/formula naming"
         opoo <<~EOS
           #{ref} is provided by core, but is now shadowed by #{selected_formula.full_name}.
           This behaviour is deprecated and will be removed in Homebrew 2.2.0.

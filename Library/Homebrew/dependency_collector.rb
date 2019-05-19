@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "dependency"
 require "dependencies"
 require "requirement"
@@ -161,7 +163,7 @@ class DependencyCollector
       # allow unknown strategies to pass through
     else
       raise TypeError,
-        "#{strategy.inspect} is not an AbstractDownloadStrategy subclass"
+            "#{strategy.inspect} is not an AbstractDownloadStrategy subclass"
     end
   end
 

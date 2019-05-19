@@ -739,6 +739,16 @@ formula already uses.
 * `--revision`:
   Specify the new git commit *`revision`* corresponding to a specified *`tag`*.
 
+### `bump-revision` [*`options`*] [*`formula`*]
+
+Create a commit to increment the revision of the formula. If no revision is
+ present, "revision 1" will be added.
+
+* `-n`, `--dry-run`:
+  Print what would be done rather than doing it.
+* `--message`:
+  Append the provided *`message`* to the default commit message.
+
 ### `create` [*`options`*] *`URL`*
 
 Generate a formula for the downloadable file at *`URL`* and open it in the editor.
@@ -992,6 +1002,9 @@ Note that environment variables must have a value set to be detected. For exampl
 `export HOMEBREW_NO_INSECURE_REDIRECT=1` rather than just
 `export HOMEBREW_NO_INSECURE_REDIRECT`.
 
+  * `HOMEBREW_ARCH`:
+    Linux only: If set, Homebrew will pass the set value to type name to the compiler's `-march` option instead of using the default (`-march=native`).
+
   * `HOMEBREW_ARTIFACT_DOMAIN`:
     If set, instructs Homebrew to prefix all download URLs, including those for bottles,
     with this variable. For example, `HOMEBREW_ARTIFACT_DOMAIN=http://localhost:8080`
@@ -1031,6 +1044,9 @@ Note that environment variables must have a value set to be detected. For exampl
 
   * `HOMEBREW_CURL_VERBOSE`:
     If set, Homebrew will pass `--verbose` when invoking `curl`(1).
+
+  * `HOMEBREW_CURL_RETRIES`:
+    If set, Homebrew will pass the given retry count to `--retry` when invoking `curl`(1).
 
   * `HOMEBREW_DEBUG`:
     If set, any commands that can emit debugging information will do so.

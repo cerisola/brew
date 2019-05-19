@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Cask
   class CaskError < RuntimeError; end
 
@@ -172,7 +174,7 @@ module Cask
     end
 
     def to_s
-      s = "Failed to quarantine #{path}."
+      s = +"Failed to quarantine #{path}."
 
       unless reason.empty?
         s << " Here's the reason:\n"
@@ -180,13 +182,13 @@ module Cask
         s << "\n" unless reason.end_with?("\n")
       end
 
-      s
+      s.freeze
     end
   end
 
   class CaskQuarantinePropagationError < CaskQuarantineError
     def to_s
-      s = "Failed to quarantine one or more files within #{path}."
+      s = +"Failed to quarantine one or more files within #{path}."
 
       unless reason.empty?
         s << " Here's the reason:\n"
@@ -194,13 +196,13 @@ module Cask
         s << "\n" unless reason.end_with?("\n")
       end
 
-      s
+      s.freeze
     end
   end
 
   class CaskQuarantineReleaseError < CaskQuarantineError
     def to_s
-      s = "Failed to release #{path} from quarantine."
+      s = +"Failed to release #{path} from quarantine."
 
       unless reason.empty?
         s << " Here's the reason:\n"
@@ -208,7 +210,7 @@ module Cask
         s << "\n" unless reason.end_with?("\n")
       end
 
-      s
+      s.freeze
     end
   end
 end

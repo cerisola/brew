@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "formula"
 require "install"
 require "system_config"
@@ -21,13 +23,13 @@ module Homebrew
         If no logs are found, an error message is presented.
       EOS
       switch "--with-hostname",
-        description: "Include the hostname in the Gist."
+             description: "Include the hostname in the Gist."
       switch "-n", "--new-issue",
-        description: "Automatically create a new issue in the appropriate GitHub repository as "\
-                     "well as creating the Gist."
+             description: "Automatically create a new issue in the appropriate GitHub repository as "\
+                          "well as creating the Gist."
       switch "-p", "--private",
-        description: "The Gist will be marked private and will not appear in listings but will "\
-                     "be accessible with the link."
+             description: "The Gist will be marked private and will not appear in listings but will "\
+                          "be accessible with the link."
       switch :verbose
       switch :debug
     end
@@ -80,7 +82,7 @@ module Homebrew
 
   def brief_build_info(f)
     build_time_str = f.logs.ctime.strftime("%Y-%m-%d %H:%M:%S")
-    s = <<~EOS
+    s = +<<~EOS
       Homebrew build logs for #{f.full_name} on #{OS_VERSION}
     EOS
     if args.with_hostname?
@@ -88,7 +90,7 @@ module Homebrew
       s << "Host: #{hostname}\n"
     end
     s << "Build date: #{build_time_str}\n"
-    s
+    s.freeze
   end
 
   # Causes some terminals to display secure password entry indicators

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "extend/ENV"
 require "build_environment"
 require "utils/shell"
@@ -17,10 +19,10 @@ module Homebrew
         the list is formatted for export to `bash`(1) unless `--plain` is passed.
       EOS
       flag "--shell=",
-        description: "Generate a list of environment variables for the specified shell, " \
-                     "or `--shell=auto` to detect the current shell."
+           description: "Generate a list of environment variables for the specified shell, " \
+                        "or `--shell=auto` to detect the current shell."
       switch "--plain",
-        description: "Plain output even when piped."
+             description: "Plain output even when piped."
     end
   end
 

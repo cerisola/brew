@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rubygems"
 
 require "formula_installer"
@@ -136,9 +138,10 @@ module Cask
     end
 
     def summary
-      s = ""
+      s = +""
       s << "#{Emoji.install_badge}  " if Emoji.enabled?
       s << "#{@cask} was successfully #{upgrade? ? "upgraded" : "installed"}!"
+      s.freeze
     end
 
     def download
@@ -255,22 +258,22 @@ module Cask
         operator, release = @cask.depends_on.macos.first
         unless MacOS.version.send(operator, release)
           raise CaskError,
-            "Cask #{@cask} depends on macOS release #{operator} #{release}, " \
-            "but you are running release #{MacOS.version}."
+                "Cask #{@cask} depends on macOS release #{operator} #{release}, " \
+                "but you are running release #{MacOS.version}."
         end
       elsif @cask.depends_on.macos.length > 1
         unless @cask.depends_on.macos.include?(Gem::Version.new(MacOS.version.to_s))
           raise CaskError,
-            "Cask #{@cask} depends on macOS release being one of " \
-            "[#{@cask.depends_on.macos.map(&:to_s).join(", ")}], " \
-            "but you are running release #{MacOS.version}."
+                "Cask #{@cask} depends on macOS release being one of " \
+                "[#{@cask.depends_on.macos.map(&:to_s).join(", ")}], " \
+                "but you are running release #{MacOS.version}."
         end
       else
         unless MacOS.version == @cask.depends_on.macos.first
           raise CaskError,
-            "Cask #{@cask} depends on macOS release " \
-            "#{@cask.depends_on.macos.first}, " \
-            "but you are running release #{MacOS.version}."
+                "Cask #{@cask} depends on macOS release " \
+                "#{@cask.depends_on.macos.first}, " \
+                "but you are running release #{MacOS.version}."
         end
       end
     end
@@ -285,9 +288,9 @@ module Cask
       end
 
       raise CaskError,
-        "Cask #{@cask} depends on hardware architecture being one of " \
-        "[#{@cask.depends_on.arch.map(&:to_s).join(", ")}], " \
-        "but you are running #{@current_arch}"
+            "Cask #{@cask} depends on hardware architecture being one of " \
+            "[#{@cask.depends_on.arch.map(&:to_s).join(", ")}], " \
+            "but you are running #{@current_arch}"
     end
 
     def x11_dependencies

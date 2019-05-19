@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 source "https://rubygems.org"
 
 # installed gems
@@ -18,5 +20,6 @@ gem "backports"
 gem "concurrent-ruby"
 gem "mechanize"
 gem "plist"
+gem "rubocop-performance"
 gem "rubocop-rspec"
 gem "ruby-macho"

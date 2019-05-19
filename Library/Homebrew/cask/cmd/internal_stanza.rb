@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Cask
   class Cmd
     class InternalStanza < AbstractInternalCommand
@@ -47,10 +49,10 @@ module Cask
         return if DSL::DSL_METHODS.include?(stanza)
 
         raise ArgumentError,
-          <<~EOS
-            Unknown/unsupported stanza: '#{stanza}'
-            Check Cask reference for supported stanzas.
-          EOS
+              <<~EOS
+                Unknown/unsupported stanza: '#{stanza}'
+                Check Cask reference for supported stanzas.
+              EOS
       end
 
       def run

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 describe Tap do
   alias_matcher :have_formula_file, :be_formula_file
   alias_matcher :have_custom_remote, :be_custom_remote
@@ -118,7 +120,7 @@ describe Tap do
       cd path do
         system "git", "init"
         system "git", "remote", "add", "origin",
-          "https://github.com/someone/homebrew-foo"
+               "https://github.com/someone/homebrew-foo"
       end
       expect(t.issues_url).to eq("https://github.com/someone/homebrew-foo/issues")
       expect(subject.issues_url).to eq("https://github.com/cerisola/homebrew-foo/issues")

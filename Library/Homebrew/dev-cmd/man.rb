@@ -1,3 +1,7 @@
+# Uses ERB so can't use Frozen String Literals until >=Ruby 2.4:
+# https://bugs.ruby-lang.org/issues/12031
+# frozen_string_literal: false
+
 require "formula"
 require "erb"
 require "ostruct"
@@ -14,18 +18,18 @@ module Homebrew
 
   def man_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
+      usage_banner <<~EOS.freeze
         `man` [<options>]
 
         Generate Homebrew's manpages.
       EOS
       switch "--fail-if-changed",
-        description: "Return a failing status code if changes are detected in the manpage outputs. This "\
-                     "can be used for CI to be notified when the manpages are out of date. Additionally, "\
-                     "the date used in new manpages will match those in the existing manpages (to allow "\
-                     "comparison without factoring in the date)."
+             description: "Return a failing status code if changes are detected in the manpage outputs. This "\
+                          "can be used for CI to be notified when the manpages are out of date. Additionally, "\
+                          "the date used in new manpages will match those in the existing manpages (to allow "\
+                          "comparison without factoring in the date)."
       switch "--link",
-        description: "This is now done automatically by `brew update`."
+             description: "This is now done automatically by `brew update`."
     end
   end
 

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_relative "shared_examples/requires_cask_token"
 require_relative "shared_examples/invalid_option"
 
@@ -46,6 +48,7 @@ describe Cask::Cmd::Info, :cask do
         None
         ==> Artifacts
         Caffeine.app (App)
+
         local-transmission: 2.61
         https://brew.sh
         Not installed
