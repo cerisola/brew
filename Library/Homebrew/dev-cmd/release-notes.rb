@@ -10,7 +10,7 @@ module Homebrew
       usage_banner <<~EOS
         `release-notes` [<options>] [<previous_tag>] [<end_ref>]
 
-        Print the merged pull requests on Homebrew/brew between two Git refs.
+        Print the merged pull requests on cerisola/brew between two Git refs.
         If no <previous_tag> is provided it defaults to the latest tag.
         If no <end_ref> is provided it defaults to `origin/master`.
       EOS
@@ -42,7 +42,7 @@ module Homebrew
 
     output.map! do |s|
       s.gsub(%r{.*Merge pull request #(\d+) from ([^/]+)/[^>]*(>>)*},
-             "https://github.com/Homebrew/brew/pull/\\1 (@\\2)")
+             "https://github.com/cerisola/brew/pull/\\1 (@\\2)")
     end
     if args.markdown?
       output.map! do |s|

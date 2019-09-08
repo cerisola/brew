@@ -10,7 +10,7 @@ describe "brew pull", :integration_test do
   it "fetches a patch from a GitHub commit or pull request and applies it", :needs_network do
     HOMEBREW_REPOSITORY.cd do
       system "git", "init"
-      system "git", "remote", "add", "origin", "https://github.com/Homebrew/brew"
+      system "git", "remote", "add", "origin", "https://github.com/cerisola/brew"
     end
 
     expect { brew "pull", "https://github.com/cerisola/brew/pull/1249" }
