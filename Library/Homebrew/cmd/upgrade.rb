@@ -14,18 +14,18 @@ module Homebrew
   def upgrade_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
-        `upgrade` [<options>] <formula>
+        `upgrade` [<options>] [<formula>]
 
-        Upgrade outdated, unpinned formulae (with existing and any appended brew formula options).
+        Upgrade outdated, unpinned formulae using the same options they were originally
+        installed with, plus any appended brew formula options. If <formula> are specified,
+        upgrade only the given <formula> kegs (unless they are pinned; see `pin`, `unpin`).
 
-        If <formula> are given, upgrade only the specified brews (unless they
-        are pinned; see `pin`, `unpin`).
-
-        Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will be run for the upgraded formulae or, every 30 days, for all formulae.
+        Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for the
+        upgraded formulae or, every 30 days, for all formulae.
       EOS
       switch :debug,
              description: "If brewing fails, open an interactive debugging session with access to IRB "\
-                          "or a shell inside the temporary build directory"
+                          "or a shell inside the temporary build directory."
       switch "-s", "--build-from-source",
              description: "Compile <formula> from source even if a bottle is available."
       switch "--force-bottle",
@@ -33,19 +33,22 @@ module Homebrew
                           "macOS, even if it would not normally be used for installation."
       switch "--fetch-HEAD",
              description: "Fetch the upstream repository to detect if the HEAD installation of the "\
-                          "formula is outdated. Otherwise, the repository's HEAD will be checked for "\
+                          "formula is outdated. Otherwise, the repository's HEAD will only be checked for "\
                           "updates when a new stable or development version has been released."
       switch "--ignore-pinned",
-             description: "Set a 0 exit code even if pinned formulae are not upgraded."
+             description: "Set a successful exit status even if pinned formulae are not upgraded."
       switch "--keep-tmp",
-             description: "Don't delete the temporary files created during installation."
+             description: "Retain the temporary files created during installation."
       switch :force,
              description: "Install without checking for previously installed keg-only or "\
                           "non-migrated versions."
       switch :verbose,
              description: "Print the verification and postinstall steps."
       switch "--display-times",
+             env:         :display_install_times,
              description: "Print install times for each formula at the end of the run."
+      switch "-n", "--dry-run",
+             description: "Show what would be upgraded, but do not actually upgrade anything."
       conflicts "--build-from-source", "--force-bottle"
       formula_options
     end
@@ -93,7 +96,8 @@ module Homebrew
     if formulae_to_install.empty?
       oh1 "No packages to upgrade"
     else
-      oh1 "Upgrading #{formulae_to_install.count} outdated #{"package".pluralize(formulae_to_install.count)}:"
+      verb = args.dry_run? ? "Would upgrade" : "Upgrading"
+      oh1 "#{verb} #{formulae_to_install.count} outdated #{"package".pluralize(formulae_to_install.count)}:"
       formulae_upgrades = formulae_to_install.map do |f|
         if f.optlinked?
           "#{f.full_specified_name} #{Keg.new(f.opt_prefix).version} -> #{f.pkg_version}"
@@ -103,6 +107,7 @@ module Homebrew
       end
       puts formulae_upgrades.join(", ")
     end
+    return if args.dry_run?
 
     upgrade_formulae(formulae_to_install)
 
@@ -208,37 +213,43 @@ module Homebrew
     formulae_to_upgrade = Set.new
     formulae_pinned = Set.new
 
-    formulae.each do |formula|
+    formulae_to_check = formulae
+    checked_formulae = Set.new
+
+    until formulae_to_check.empty?
       descendants = Set.new
 
-      dependents = kegs.select do |keg|
-        keg.runtime_dependencies
-           .any? { |d| d["full_name"] == formula.full_name }
-      end
+      formulae_to_check.each do |formula|
+        next if checked_formulae.include?(formula)
 
-      next if dependents.empty?
-
-      dependent_formulae = dependents.map(&:to_formula)
-
-      dependent_formulae.each do |f|
-        next if formulae_to_upgrade.include?(f)
-        next if formulae_pinned.include?(f)
-
-        if f.outdated?(fetch_head: args.fetch_HEAD?)
-          if f.pinned?
-            formulae_pinned << f
-          else
-            formulae_to_upgrade << f
-          end
+        dependents = kegs.select do |keg|
+          keg.runtime_dependencies
+             .any? { |d| d["full_name"] == formula.full_name }
         end
 
-        descendants << f
+        next if dependents.empty?
+
+        dependent_formulae = dependents.map(&:to_formula)
+
+        dependent_formulae.each do |f|
+          next if formulae_to_upgrade.include?(f)
+          next if formulae_pinned.include?(f)
+
+          if f.outdated?(fetch_head: args.fetch_HEAD?)
+            if f.pinned?
+              formulae_pinned << f
+            else
+              formulae_to_upgrade << f
+            end
+          end
+
+          descendants << f
+        end
+
+        checked_formulae << formula
       end
 
-      upgradable_descendants, pinned_descendants = upgradable_dependents(kegs, descendants)
-
-      formulae_to_upgrade.merge upgradable_descendants
-      formulae_pinned.merge pinned_descendants
+      formulae_to_check = descendants
     end
 
     [formulae_to_upgrade, formulae_pinned]

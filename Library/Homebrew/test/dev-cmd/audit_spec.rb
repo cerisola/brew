@@ -225,6 +225,34 @@ module Homebrew
       end
     end
 
+    describe "#audit_gitlab_repository" do
+      specify "#audit_gitlab_repository for stars, forks and creation date" do
+        fa = formula_auditor "foo", <<~RUBY, strict: true, online: true
+          class Foo < Formula
+            homepage "https://gitlab.com/libtiff/libtiff"
+            url "https://brew.sh/foo-1.0.tgz"
+          end
+        RUBY
+
+        fa.audit_gitlab_repository
+        expect(fa.problems).to eq([])
+      end
+    end
+
+    describe "#audit_bitbucket_repository" do
+      specify "#audit_bitbucket_repository for stars, forks and creation date" do
+        fa = formula_auditor "foo", <<~RUBY, strict: true, online: true
+          class Foo < Formula
+            homepage "https://bitbucket.com/libtiff/libtiff"
+            url "https://brew.sh/foo-1.0.tgz"
+          end
+        RUBY
+
+        fa.audit_bitbucket_repository
+        expect(fa.problems).to eq([])
+      end
+    end
+
     describe "#audit_deps" do
       describe "a dependency on a macOS-provided keg-only formula" do
         describe "which is whitelisted" do
@@ -527,84 +555,6 @@ module Homebrew
 
           it { is_expected.to be_nil }
         end
-      end
-    end
-
-    describe "#audit_url_is_not_binary" do
-      specify "it detects a url containing darwin and x86_64" do
-        fa = formula_auditor "foo", <<~RUBY, core_tap: true
-          class Foo < Formula
-            url "https://brew.sh/example-darwin.x86_64.tar.gz"
-          end
-        RUBY
-
-        fa.audit_url_is_not_binary
-
-        expect(fa.problems.first)
-          .to match("looks like a binary package, not a source archive. The `core` tap is source-only.")
-      end
-
-      specify "it detects a url containing darwin and amd64" do
-        fa = formula_auditor "foo", <<~RUBY, core_tap: true
-          class Foo < Formula
-            url "https://brew.sh/example-darwin.amd64.tar.gz"
-          end
-        RUBY
-
-        fa.audit_url_is_not_binary
-
-        expect(fa.problems.first)
-          .to match("looks like a binary package, not a source archive. The `core` tap is source-only.")
-      end
-
-      specify "it works on the devel spec" do
-        fa = formula_auditor "foo", <<~RUBY, core_tap: true
-          class Foo < Formula
-            url "https://brew.sh/valid-1.0.tar.gz"
-
-            devel do
-              url "https://brew.sh/example-darwin.x86_64.tar.gz"
-            end
-          end
-        RUBY
-
-        fa.audit_url_is_not_binary
-
-        expect(fa.problems.first)
-          .to match("looks like a binary package, not a source archive. The `core` tap is source-only.")
-      end
-
-      specify "it works on the head spec" do
-        fa = formula_auditor "foo", <<~RUBY, core_tap: true
-          class Foo < Formula
-            url "https://brew.sh/valid-1.0.tar.gz"
-
-            head do
-              url "https://brew.sh/example-darwin.x86_64.tar.gz"
-            end
-          end
-        RUBY
-
-        fa.audit_url_is_not_binary
-
-        expect(fa.problems.first)
-          .to match("looks like a binary package, not a source archive. The `core` tap is source-only.")
-      end
-
-      specify "it ignores resource urls" do
-        fa = formula_auditor "foo", <<~RUBY, core_tap: true
-          class Foo < Formula
-            url "https://brew.sh/valid-1.0.tar.gz"
-
-            resource "binary_res" do
-              url "https://brew.sh/example-darwin.x86_64.tar.gz"
-            end
-          end
-        RUBY
-
-        fa.audit_url_is_not_binary
-
-        expect(fa.problems).to eq([])
       end
     end
 

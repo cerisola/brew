@@ -1014,13 +1014,13 @@ class Formula
     @prefix_returns_versioned_prefix = false
   end
 
-  # Tell the user about any Homebrew-specific caveats or locations regarding
-  # this package. These should not contain setup instructions that would apply
-  # to installation through a different package manager on a different OS.
+  # Warn the user about any Homebrew-specific issues or quirks for this package
+  # These should not contain setup instructions that would apply to installation
+  # through a different package manager on a different OS.
   # @return [String]
   # <pre>def caveats
   #   <<~EOS
-  #     Are optional. Something the user should know?
+  #     Are optional. Something the user must be warned about?
   #   EOS
   # end</pre>
   #
@@ -1688,8 +1688,8 @@ class Formula
   end
 
   # @private
-  def fetch
-    active_spec.fetch
+  def fetch(verify_download_integrity: true)
+    active_spec.fetch(verify_download_integrity: verify_download_integrity)
   end
 
   # @private
@@ -2057,10 +2057,7 @@ class Formula
     active_spec.add_legacy_patches(patches) if respond_to?(:patches)
 
     patchlist.grep(DATAPatch) { |p| p.path = path }
-
-    patchlist.each do |patch|
-      patch.verify_download_integrity(patch.fetch) if patch.external?
-    end
+    patchlist.select(&:external?).each(&:fetch)
   end
 
   # The methods below define the formula DSL.

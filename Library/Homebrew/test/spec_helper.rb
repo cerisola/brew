@@ -27,11 +27,6 @@ if ENV["HOMEBREW_TESTS_COVERAGE"]
     ENV["COVERALLS_REPO_TOKEN"] = ENV["HOMEBREW_COVERALLS_REPO_TOKEN"]
   end
 
-  if ENV["HOMEBREW_AZURE_PIPELINES"]
-    require "simplecov-cobertura"
-    formatters << SimpleCov::Formatter::CoberturaFormatter
-  end
-
   SimpleCov.formatters = SimpleCov::Formatter::MultiFormatter.new(formatters)
 end
 
@@ -96,6 +91,10 @@ RSpec.configure do |config|
 
   config.before(:each, :needs_official_cmd_taps) do
     skip "Needs official command Taps." unless ENV["HOMEBREW_TEST_OFFICIAL_CMD_TAPS"]
+  end
+
+  config.before(:each, :needs_linux) do
+    skip "Not on Linux." unless OS.linux?
   end
 
   config.before(:each, :needs_macos) do

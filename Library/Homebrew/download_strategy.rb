@@ -66,13 +66,13 @@ class AbstractDownloadStrategy
 
   def chdir
     entries = Dir["*"]
-    case entries.length
-    when 0 then raise "Empty archive"
-    when 1 then begin
-        Dir.chdir entries.first
-      rescue
-        nil
-      end
+    raise "Empty archive" if entries.length.zero?
+    return if entries.length != 1
+
+    begin
+      Dir.chdir entries.first
+    rescue
+      nil
     end
   end
   private :chdir
@@ -390,7 +390,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
     time =
       lines.map { |line| line[/^Last\-Modified:\s*(.+)/i, 1] }
            .compact
-           .map(&Time.public_method(:parse))
+           .map { |t| t.match?(/^\d+$/) ? Time.at(t.to_i) : Time.parse(t) }
            .last
 
     basename = filenames.last || parse_basename(redirect_url)

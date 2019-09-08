@@ -25,7 +25,7 @@ module Homebrew
       EOS
       switch "--fail-if-changed",
              description: "Return a failing status code if changes are detected in the manpage outputs. This "\
-                          "can be used for CI to be notified when the manpages are out of date. Additionally, "\
+                          "can be used to notify CI when the manpages are out of date. Additionally, "\
                           "the date used in new manpages will match those in the existing manpages (to allow "\
                           "comparison without factoring in the date)."
       switch "--link",
@@ -181,7 +181,7 @@ module Homebrew
   def cmd_parser_manpage_lines(cmd_parser)
     lines = [format_usage_banner(cmd_parser.usage_banner_text)]
     lines += cmd_parser.processed_options.map do |short, long, _, desc|
-      next if !long.nil? && cmd_parser.global_option?(cmd_parser.option_to_name(long))
+      next if !long.nil? && cmd_parser.global_option?(cmd_parser.option_to_name(long), desc)
 
       generate_option_doc(short, long, desc)
     end.reject(&:blank?)
@@ -196,8 +196,11 @@ module Homebrew
     lines = [format_usage_banner(comment_lines.first).chomp]
     comment_lines.slice(1..-1)
                  .each do |line|
-      line = line.slice(4..-1)
-      next unless line
+      line = line.slice(4..-2)
+      unless line
+        lines.last << "\n"
+        next
+      end
 
       # Omit the common global_options documented separately in the man page.
       next if line =~ /--(debug|force|help|quiet|verbose) /
@@ -206,6 +209,7 @@ module Homebrew
       lines << line.gsub(/^ +(-+[a-z-]+), (-+[a-z-]+) +/, "* `\\1`, `\\2`:\n  ")
                    .gsub(/^ +(-+[a-z-]+) +/, "* `\\1`:\n  ")
     end
+    lines.last << "\n"
     lines
   end
 

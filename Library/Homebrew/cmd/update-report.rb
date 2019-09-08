@@ -21,7 +21,7 @@ module Homebrew
   def update_report_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
-        `update_report` [`--preinstall`]
+        `update-report`
 
         The Ruby implementation of `brew update`. Never called manually.
       EOS
@@ -29,8 +29,8 @@ module Homebrew
              description: "Run in 'auto-update' mode (faster, less output)."
       switch :force
       switch :quiet
-      switch :debug
       switch :verbose
+      switch :debug
       hide_from_man_page!
     end
   end
@@ -226,6 +226,9 @@ class Reporter
           new_version = formula.pkg_version
           old_version = FormulaVersions.new(formula).formula_at_revision(@initial_revision, &:pkg_version)
           next if new_version == old_version
+        rescue FormulaUnavailableError
+          # Don't care if the formula isn't available right now.
+          nil
         rescue Exception => e # rubocop:disable Lint/RescueException
           onoe "#{e.message}\n#{e.backtrace.join "\n"}" if ARGV.homebrew_developer?
         end

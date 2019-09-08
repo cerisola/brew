@@ -11,7 +11,7 @@ module Homebrew
       usage_banner <<~EOS
         `bump-formula-pr` [<options>] [<formula>]
 
-        Create a pull request to update a formula with a new URL or a new tag.
+        Create a pull request to update <formula> with a new URL or a new tag.
 
         If a <URL> is specified, the <SHA-256> checksum of the new download should also
         be specified. A best effort to determine the <SHA-256> and <formula> name will
@@ -22,8 +22,7 @@ module Homebrew
 
         *Note:* this command cannot be used to transition a formula from a
         URL-and-SHA-256 style specification into a tag-and-revision style specification,
-        nor vice versa. It must use whichever style specification the preexisting
-        formula already uses.
+        nor vice versa. It must use whichever style specification the formula already uses.
       EOS
       switch "--devel",
              description: "Bump the development rather than stable version. The development spec must already exist."
@@ -40,13 +39,13 @@ module Homebrew
       switch "--no-browse",
              description: "Print the pull request URL instead of opening in a browser."
       flag   "--mirror=",
-             description: "Use the provided <URL> as a mirror URL."
+             description: "Use the specified <URL> as a mirror URL."
       flag   "--version=",
-             description: "Use the provided <version> to override the value parsed from the URL or tag. Note "\
+             description: "Use the specified <version> to override the value parsed from the URL or tag. Note "\
                           "that `--version=0` can be used to delete an existing version override from a "\
                           "formula if it has become redundant."
       flag   "--message=",
-             description: "Append the provided <message> to the default PR message."
+             description: "Append <message> to the default pull request message."
       flag   "--url=",
              description: "Specify the <URL> for the new download. If a <URL> is specified, the <SHA-256> "\
                           "checksum of the new download should also be specified."
@@ -57,8 +56,7 @@ module Homebrew
              description: "Specify the new git commit <tag> for the formula."
       flag   "--revision=",
              required_for: "--tag=",
-             description:  "Specify the new git commit <revision> corresponding to a specified <tag>."
-
+             description:  "Specify the new git commit <revision> corresponding to the specified <tag>."
       switch :force
       switch :quiet
       switch :verbose
@@ -273,42 +271,28 @@ module Homebrew
       EOS
     end
 
-    if args.dry_run?
-      if args.no_audit?
-        ohai "Skipping `brew audit`"
-      elsif args.strict?
-        ohai "brew audit --strict #{formula.path.basename}"
-      else
-        ohai "brew audit #{formula.path.basename}"
-      end
-    else
-      failed_audit = false
-      if args.no_audit?
-        ohai "Skipping `brew audit`"
-      elsif args.strict?
-        system HOMEBREW_BREW_FILE, "audit", "--strict", formula.path
-        failed_audit = !$CHILD_STATUS.success?
-      else
-        system HOMEBREW_BREW_FILE, "audit", formula.path
-        failed_audit = !$CHILD_STATUS.success?
-      end
-      if failed_audit
-        formula.path.atomic_write(backup_file)
-        odie "brew audit failed!"
-      end
+    alias_rename = alias_update_pair(formula, new_formula_version)
+    if alias_rename.present?
+      ohai "renaming alias #{alias_rename.first} to #{alias_rename.last}"
+      alias_rename.map! { |a| formula.tap.alias_dir/a }
     end
+
+    run_audit(formula, alias_rename, backup_file)
 
     formula.path.parent.cd do
       branch = "#{formula.name}-#{new_formula_version}"
       git_dir = Utils.popen_read("git rev-parse --git-dir").chomp
       shallow = !git_dir.empty? && File.exist?("#{git_dir}/shallow")
+      changed_files = [formula.path]
+      changed_files += alias_rename if alias_rename.present?
 
       if args.dry_run?
         ohai "try to fork repository with GitHub API"
         ohai "git fetch --unshallow origin" if shallow
+        ohai "git add #{alias_rename.first} #{alias_rename.last}" if alias_rename.present?
         ohai "git checkout --no-track -b #{branch} origin/master"
         ohai "git commit --no-edit --verbose --message='#{formula.name} " \
-             "#{new_formula_version}#{devel_message}' -- #{formula.path}"
+             "#{new_formula_version}#{devel_message}' -- #{changed_files.join(" ")}"
         ohai "git push --set-upstream $HUB_REMOTE #{branch}:#{branch}"
         ohai "git checkout --quiet -"
         ohai "create pull request with GitHub API"
@@ -338,10 +322,11 @@ module Homebrew
         end
 
         safe_system "git", "fetch", "--unshallow", "origin" if shallow
+        safe_system "git", "add", *alias_rename if alias_rename.present?
         safe_system "git", "checkout", "--no-track", "-b", branch, "origin/master"
         safe_system "git", "commit", "--no-edit", "--verbose",
                     "--message=#{formula.name} #{new_formula_version}#{devel_message}",
-                    "--", formula.path
+                    "--", *changed_files
         safe_system "git", "push", "--set-upstream", remote_url, "#{branch}:#{branch}"
         safe_system "git", "checkout", "--quiet", "-"
         pr_message = <<~EOS
@@ -439,5 +424,46 @@ module Homebrew
         #{error_message}
       EOS
     end
+  end
+
+  def alias_update_pair(formula, new_formula_version)
+    versioned_alias = formula.aliases.grep(/^.*@\d+(\.\d+)?$/).first
+    return if versioned_alias.nil?
+
+    name, old_alias_version = versioned_alias.split("@")
+    new_alias_regex = (old_alias_version.split(".").length == 1) ? /^\d+/ : /^\d+\.\d+/
+    new_alias_version, = *new_formula_version.to_s.match(new_alias_regex)
+    return if Version.create(new_alias_version) <= Version.create(old_alias_version)
+
+    [versioned_alias, "#{name}@#{new_alias_version}"]
+  end
+
+  def run_audit(formula, alias_rename, backup_file)
+    if args.dry_run?
+      if args.no_audit?
+        ohai "Skipping `brew audit`"
+      elsif args.strict?
+        ohai "brew audit --strict #{formula.path.basename}"
+      else
+        ohai "brew audit #{formula.path.basename}"
+      end
+      return
+    end
+    FileUtils.mv alias_rename.first, alias_rename.last if alias_rename.present?
+    failed_audit = false
+    if args.no_audit?
+      ohai "Skipping `brew audit`"
+    elsif args.strict?
+      system HOMEBREW_BREW_FILE, "audit", "--strict", formula.path
+      failed_audit = !$CHILD_STATUS.success?
+    else
+      system HOMEBREW_BREW_FILE, "audit", formula.path
+      failed_audit = !$CHILD_STATUS.success?
+    end
+    return unless failed_audit
+
+    formula.path.atomic_write(backup_file)
+    FileUtils.mv alias_rename.last, alias_rename.first if alias_rename.present?
+    odie "brew audit failed!"
   end
 end

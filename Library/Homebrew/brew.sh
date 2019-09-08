@@ -4,6 +4,9 @@ then
   export LC_ALL="en_US.UTF-8"
 fi
 
+# USER isn't always set so provide a fall back for `brew` and subprocesses.
+export USER=${USER:-`id -un`}
+
 # Where we store built products; a Cellar in HOMEBREW_PREFIX (often /usr/local
 # for bottles) unless there's already a Cellar in HOMEBREW_REPOSITORY.
 if [[ -d "$HOMEBREW_REPOSITORY/Cellar" ]]
@@ -58,7 +61,7 @@ git() {
 numeric() {
   # Condense the exploded argument into a single return value.
   # shellcheck disable=SC2086,SC2183
-  printf "%01d%02d%02d%02d" ${1//[.rc]/ }
+  printf "%01d%02d%02d%03d" ${1//[.rc]/ }
 }
 
 HOMEBREW_VERSION="$(git -C "$HOMEBREW_REPOSITORY" describe --tags --dirty --abbrev=7 2>/dev/null)"
@@ -159,7 +162,10 @@ else
   # Git 2.7.4 is the version of git on Ubuntu 16.04 LTS (Xenial Xerus).
   HOMEBREW_MINIMUM_GIT_VERSION="2.7.0"
   system_git_version_output="$($(command -v git) --version 2>/dev/null)"
-  if [[ $(numeric "${system_git_version_output##* }") -lt $(numeric "$HOMEBREW_MINIMUM_GIT_VERSION") ]]
+  # $extra is intentionally discarded.
+  # shellcheck disable=SC2034
+  IFS=. read -r major minor micro build extra <<< "${system_git_version_output##* }"
+  if [[ $(numeric "$major.$minor.$micro.$build") -lt $(numeric "$HOMEBREW_MINIMUM_GIT_VERSION") ]]
   then
     HOMEBREW_FORCE_BREWED_GIT="1"
   fi
