@@ -242,7 +242,7 @@ class AbstractFileDownloadStrategy < AbstractDownloadStrategy
   end
 
   def parse_basename(url)
-    uri_path = if URI::DEFAULT_PARSER.make_regexp =~ url
+    uri_path = if url.match?(URI::DEFAULT_PARSER.make_regexp)
       uri = URI(url)
 
       if uri.query
@@ -421,6 +421,8 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
 
     args += ["--user", meta.fetch(:user)] if meta.key?(:user)
 
+    args += ["--header", meta.fetch(:header)] if meta.key?(:header)
+
     args
   end
 
@@ -550,6 +552,7 @@ class SubversionDownloadStrategy < VCSDownloadStrategy
     # This saves on bandwidth and will have a similar effect to verifying the
     # cache as it will make any changes to get the right revision.
     args = []
+    args << "--quiet" unless ARGV.verbose?
 
     if revision
       ohai "Checking out #{@ref}"
@@ -857,7 +860,7 @@ class CVSDownloadStrategy < VCSDownloadStrategy
 
     if meta.key?(:module)
       @module = meta.fetch(:module)
-    elsif @url !~ %r{:[^/]+$}
+    elsif !@url.match?(%r{:[^/]+$})
       @module = name
     else
       @module, @url = split_url(@url)

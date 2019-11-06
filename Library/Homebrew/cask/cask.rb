@@ -19,11 +19,9 @@ module Cask
       return to_enum unless block_given?
 
       Tap.flat_map(&:cask_files).each do |f|
-        begin
-          yield CaskLoader::FromTapPathLoader.new(f).load
-        rescue CaskUnreadableError => e
-          opoo e.message
-        end
+        yield CaskLoader::FromTapPathLoader.new(f).load
+      rescue CaskUnreadableError => e
+        opoo e.message
       end
     end
 
@@ -147,7 +145,7 @@ module Cask
         "version"        => version,
         "sha256"         => sha256,
         "artifacts"      => artifacts.map(&method(:to_h_gsubs)),
-        "caveats"        => to_h_string_gsubs(caveats),
+        "caveats"        => (to_h_string_gsubs(caveats) unless caveats.empty?),
         "depends_on"     => depends_on,
         "conflicts_with" => conflicts_with,
         "container"      => container,

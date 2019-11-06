@@ -76,7 +76,7 @@ module Homebrew
         end
       end
 
-      path.write ERB.new(template, nil, ">").result(binding)
+      path.write ERB.new(template, trim_mode: ">").result(binding)
     end
 
     def template
@@ -85,6 +85,10 @@ module Homebrew
         #                https://rubydoc.brew.sh/Formula
         # PLEASE REMOVE ALL GENERATED COMMENTS BEFORE SUBMITTING YOUR PULL REQUEST!
         class #{Formulary.class_s(name)} < Formula
+        <% if mode == :python %>
+          include Language::Python::Virtualenv
+
+        <% end %>
           desc "#{desc}"
           homepage "#{homepage}"
         <% if head? %>
@@ -99,13 +103,29 @@ module Homebrew
 
         <% if mode == :cmake %>
           depends_on "cmake" => :build
+        <% elsif mode == :go %>
+          depends_on "go" => :build
         <% elsif mode == :meson %>
           depends_on "meson" => :build
           depends_on "ninja" => :build
+        <% elsif mode == :perl %>
+          uses_from_macos "perl"
+        <% elsif mode == :python %>
+          depends_on "python"
+        <% elsif mode == :rust %>
+          depends_on "rust" => :build
         <% elsif mode.nil? %>
           # depends_on "cmake" => :build
         <% end %>
 
+        <% if mode == :perl || mode == :python %>
+          # Additional dependency
+          # resource "" do
+          #   url ""
+          #   sha256 ""
+          # end
+
+        <% end %>
           def install
             # ENV.deparallelize  # if your formula fails when building in parallel
         <% if mode == :cmake %>
@@ -116,12 +136,38 @@ module Homebrew
                                   "--disable-dependency-tracking",
                                   "--disable-silent-rules",
                                   "--prefix=\#{prefix}"
+        <% elsif mode == :go %>
+            system "go", "build", "-o", "\#{bin}/\#{name}"
         <% elsif mode == :meson %>
             mkdir "build" do
               system "meson", "--prefix=\#{prefix}", ".."
               system "ninja", "-v"
               system "ninja", "install", "-v"
             end
+        <% elsif mode == :perl %>
+            ENV.prepend_create_path "PERL5LIB", libexec/"lib/perl5"
+            ENV.prepend_path "PERL5LIB", libexec/"lib"
+
+            # Stage additional dependency (Makefile.PL style)
+            # resource("").stage do
+            #   system "perl", "Makefile.PL", "INSTALL_BASE=\#{libexec}"
+            #   system "make"
+            #   system "make", "install"
+            # end
+
+            # Stage additional dependency (Build.PL style)
+            # resource("").stage do
+            #   system "perl", "Build.PL", "--install_base", libexec
+            #   system "./Build"
+            #   system "./Build", "install"
+            # end
+
+            bin.install name
+            bin.env_script_all_files(libexec/"bin", :PERL5LIB => ENV["PERL5LIB"])
+        <% elsif mode == :python %>
+            virtualenv_install_with_resources
+        <% elsif mode == :rust %>
+            system "cargo", "install", "--locked", "--root", prefix, "--path", "."
         <% else %>
             # Remove unrecognized options if warned by configure
             system "./configure", "--disable-debug",
@@ -130,7 +176,7 @@ module Homebrew
                                   "--prefix=\#{prefix}"
             # system "cmake", ".", *std_cmake_args
         <% end %>
-        <% if mode != :meson %>
+        <% if mode == :autotools || mode == :cmake %>
             system "make", "install" # if this fails, try separate make/make install steps
         <% end %>
           end

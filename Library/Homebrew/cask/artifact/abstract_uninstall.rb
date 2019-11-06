@@ -24,8 +24,6 @@ module Cask
         :rmdir,
       ].freeze
 
-      TRASH_SCRIPT = (HOMEBREW_LIBRARY_PATH/"cask/utils/trash.swift").freeze
-
       def self.from_args(cask, **directives)
         new(cask, directives)
       end
@@ -91,7 +89,7 @@ module Cask
               args: ["list", service],
               sudo: with_sudo, print_stderr: false
             ).stdout
-            if plist_status =~ /^\{/
+            if plist_status.match?(/^\{/)
               command.run!("/bin/launchctl", args: ["remove", service], sudo: with_sudo)
               sleep 1
             end
@@ -124,13 +122,18 @@ module Cask
           end
       end
 
+      def automation_access_instructions
+        "Enable Automation Access for “Terminal > System Events” in " \
+        "“System Preferences > Security > Privacy > Automation” if you haven't already."
+      end
+
       # :quit/:signal must come before :kext so the kext will not be in use by a running process
       def uninstall_quit(*bundle_ids, command: nil, **_)
         bundle_ids.each do |bundle_id|
-          next if running_processes(bundle_id).empty?
+          next unless running?(bundle_id)
 
           unless User.current.gui?
-            ohai "Not logged into a GUI; skipping quitting application ID '#{bundle_id}'."
+            opoo "Not logged into a GUI; skipping quitting application ID '#{bundle_id}'."
             next
           end
 
@@ -141,17 +144,38 @@ module Cask
               Kernel.loop do
                 next unless quit(bundle_id).success?
 
-                if running_processes(bundle_id).empty?
-                  puts "Application '#{bundle_id}' quit successfully."
-                  break
-                end
+                next if running?(bundle_id)
+
+                puts "Application '#{bundle_id}' quit successfully."
+                break
               end
             end
           rescue Timeout::Error
-            opoo "Application '#{bundle_id}' did not quit."
-            next
+            opoo "Application '#{bundle_id}' did not quit. #{automation_access_instructions}"
           end
         end
+      end
+
+      def running?(bundle_id)
+        script = <<~JAVASCRIPT
+          'use strict';
+
+          ObjC.import('stdlib')
+
+          function run(argv) {
+            try {
+              var app = Application(argv[0])
+              if (app.running()) {
+                $.exit(0)
+              }
+            } catch (err) { }
+
+            $.exit(1)
+          }
+        JAVASCRIPT
+
+        system_command("osascript", args:         ["-l", "JavaScript", "-e", script, bundle_id],
+                                    print_stderr: true).status.success?
       end
 
       def quit(bundle_id)
@@ -176,8 +200,7 @@ module Cask
         JAVASCRIPT
 
         system_command "osascript", args:         ["-l", "JavaScript", "-e", script, bundle_id],
-                                    print_stderr: false,
-                                    sudo:         true
+                                    print_stderr: false
       end
       private :quit
 
@@ -217,13 +240,17 @@ module Cask
           end
 
           ohai "Removing login item #{id}"
-          system_command!(
+
+          result = system_command(
             "osascript",
             args: [
               "-e",
               %Q(tell application "System Events" to delete every login item whose #{type} is #{id.to_s.inspect}),
             ],
           )
+
+          opoo "Removal of login item #{id} failed. #{automation_access_instructions}" unless result.success?
+
           sleep 1
         end
       end
@@ -331,10 +358,31 @@ module Cask
       def trash_paths(*paths, command: nil, **_)
         return if paths.empty?
 
-        result = command.run!("/usr/bin/swift", args: [TRASH_SCRIPT, *paths])
+        stdout, stderr, = system_command HOMEBREW_LIBRARY_PATH/"cask/utils/trash.swift",
+                                         args:         paths,
+                                         print_stderr: false
 
-        # Remove AppleScript's automatic newline.
-        result.tap { |r| r.stdout.sub!(/\n$/, "") }
+        trashed = stdout.split(":").sort
+        untrashable = stderr.split(":").sort
+
+        return trashed, untrashable if untrashable.empty?
+
+        untrashable.delete_if do |path|
+          Utils.gain_permissions(path, ["-R"], SystemCommand) do
+            system_command! HOMEBREW_LIBRARY_PATH/"cask/utils/trash.swift",
+                            args:         [path],
+                            print_stderr: false
+          end
+
+          true
+        rescue
+          false
+        end
+
+        opoo "The following files could not trashed, please do so manually:"
+        $stderr.puts untrashable
+
+        [trashed, untrashable]
       end
 
       def uninstall_rmdir(*directories, command: nil, **_)

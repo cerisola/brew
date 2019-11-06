@@ -29,7 +29,7 @@ module UnpackStrategy
 
         # symlinks to system directories (commonly to /Applications)
         def system_dir_symlink?
-          symlink? && MacOS.system_dir?(readlink)
+          symlink? && MacOS.system_dir?(dirname.join(readlink))
         end
 
         def bom
@@ -106,11 +106,8 @@ module UnpackStrategy
     end
 
     def self.can_extract?(path)
-      imageinfo = system_command("hdiutil",
-                                 args:         ["imageinfo", path],
-                                 print_stderr: false).stdout
-
-      !imageinfo.empty?
+      stdout, _, status = system_command("hdiutil", args: ["imageinfo", "-format", path], print_stderr: false)
+      status.success? && !stdout.empty?
     end
 
     private

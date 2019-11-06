@@ -14,7 +14,7 @@ module Homebrew
 
         List all installed formulae.
 
-        If <formula> is provided, summarize the paths within its current keg.
+        If <formula> is provided, summarise the paths within its current keg.
       EOS
       switch "--full-name",
              description: "Print formulae with fully-qualified names. If `--full-name` is not "\
@@ -70,7 +70,7 @@ module Homebrew
         puts Formatter.columns(full_names)
       else
         ENV["CLICOLOR"] = nil
-        safe_system "ls", *ARGV.options_only << HOMEBREW_CELLAR
+        safe_system "ls", *Homebrew.args.passthrough << HOMEBREW_CELLAR
       end
     elsif args.verbose? || !$stdout.tty?
       system_command! "find", args: ARGV.kegs.map(&:to_s) + %w[-not -type d -print], print_stdout: true

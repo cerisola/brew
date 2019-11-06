@@ -23,7 +23,7 @@ describe SystemCommand do
         it "includes the given variables explicitly" do
           expect(Open3)
             .to receive(:popen3)
-            .with(an_instance_of(Hash), ["env", "env"], "A=1", "B=2", "C=3", "env", *env_args, {})
+            .with(an_instance_of(Hash), ["/usr/bin/env", "/usr/bin/env"], "A=1", "B=2", "C=3", "env", *env_args, {})
             .and_call_original
 
           command.run!
@@ -49,7 +49,7 @@ describe SystemCommand do
           expect(Open3)
             .to receive(:popen3)
             .with(an_instance_of(Hash), ["/usr/bin/sudo", "/usr/bin/sudo"], "-E", "--",
-                  "env", "A=1", "B=2", "C=3", "env", *env_args, {})
+                  "/usr/bin/env", "A=1", "B=2", "C=3", "env", *env_args, {})
             .and_wrap_original do |original_popen3, *_, &block|
               original_popen3.call("true", &block)
             end
@@ -267,14 +267,12 @@ describe SystemCommand do
       it "does not leak the secrets set by environment" do
         redacted_msg = /#{Regexp.escape("username:******")}/
         expect do
-          begin
-            ENV["PASSWORD"] = "hunter2"
-            described_class.run! "curl",
-                                 args:    %w[--user username:hunter2],
-                                 verbose: true
-          ensure
-            ENV.delete "PASSWORD"
-          end
+          ENV["PASSWORD"] = "hunter2"
+          described_class.run! "curl",
+                               args:    %w[--user username:hunter2],
+                               verbose: true
+        ensure
+          ENV.delete "PASSWORD"
         end.to raise_error.with_message(redacted_msg).and output(redacted_msg).to_stdout
       end
     end

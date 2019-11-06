@@ -1,6 +1,4 @@
-# Uses ERB so can't use Frozen String Literals until >=Ruby 2.4:
-# https://bugs.ruby-lang.org/issues/12031
-# frozen_string_literal: false
+# frozen_string_literal: true
 
 require "formula"
 require "utils/bottles"
@@ -11,12 +9,12 @@ require "cli/parser"
 require "utils/inreplace"
 require "erb"
 
-BOTTLE_ERB = <<-EOS.freeze
+BOTTLE_ERB = <<-EOS
   bottle do
     <% if !root_url.start_with?(HOMEBREW_BOTTLE_DEFAULT_DOMAIN) %>
     root_url "<%= root_url %>"
     <% end %>
-    <% if ![Homebrew::DEFAULT_PREFIX, "/usr/local"].include?(prefix) %>
+    <% if ![HOMEBREW_DEFAULT_PREFIX, LINUXBREW_DEFAULT_PREFIX].include?(prefix) %>
     prefix "<%= prefix %>"
     <% end %>
     <% if cellar.is_a? Symbol %>
@@ -43,7 +41,7 @@ module Homebrew
 
   def bottle_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS.freeze
+      usage_banner <<~EOS
         `bottle` [<options>] <formula>
 
         Generate a bottle (binary package) from a formula that was installed with
@@ -91,7 +89,7 @@ module Homebrew
 
     return merge if args.merge?
 
-    ensure_relocation_formulae_installed!
+    ensure_relocation_formulae_installed! unless args.skip_relocation?
     ARGV.resolved_formulae.each do |f|
       bottle_formula f
     end
@@ -265,6 +263,8 @@ module Homebrew
 
         changed_files = keg.replace_locations_with_placeholders unless args.skip_relocation?
 
+        Formula.clear_cache
+        Keg.clear_cache
         Tab.clear_cache
         tab = Tab.for_keg(keg)
         original_tab = tab.dup
@@ -367,9 +367,11 @@ module Homebrew
       mismatches = [:root_url, :prefix, :cellar, :rebuild].reject do |key|
         old_spec.send(key) == bottle.send(key)
       end
-      if old_spec.cellar == :any && bottle.cellar == :any_skip_relocation
+      if (old_spec.cellar == :any && bottle.cellar == :any_skip_relocation) ||
+         (old_spec.cellar == cellar &&
+          [:any, :any_skip_relocation].include?(bottle.cellar))
         mismatches.delete(:cellar)
-        bottle.cellar :any
+        bottle.cellar old_spec.cellar
       end
       unless mismatches.empty?
         bottle_path.unlink if bottle_path.exist?
@@ -380,7 +382,7 @@ module Homebrew
           "#{key}: old: #{old_value}, new: #{value}"
         end
 
-        odie <<~EOS.freeze
+        odie <<~EOS
           --keep-old was passed but there are changes in:
           #{mismatches.join("\n")}
         EOS
@@ -491,7 +493,7 @@ module Homebrew
               end
 
               unless mismatches.empty?
-                odie <<~EOS.freeze
+                odie <<~EOS
                   --keep-old was passed but there are changes in:
                   #{mismatches.join("\n")}
                 EOS
@@ -530,14 +532,13 @@ module Homebrew
 
         unless args.no_commit?
           if ENV["HOMEBREW_GIT_NAME"]
-            ENV["GIT_AUTHOR_NAME"] =
-              ENV["GIT_COMMITTER_NAME"] =
-                ENV["HOMEBREW_GIT_NAME"]
+            ENV["GIT_AUTHOR_NAME"] = ENV["GIT_COMMITTER_NAME"] =
+              ENV["HOMEBREW_GIT_NAME"]
           end
+
           if ENV["HOMEBREW_GIT_EMAIL"]
-            ENV["GIT_AUTHOR_EMAIL"] =
-              ENV["GIT_COMMITTER_EMAIL"] =
-                ENV["HOMEBREW_GIT_EMAIL"]
+            ENV["GIT_AUTHOR_EMAIL"] = ENV["GIT_COMMITTER_EMAIL"] =
+              ENV["HOMEBREW_GIT_EMAIL"]
           end
 
           short_name = formula_name.split("/", -1).last

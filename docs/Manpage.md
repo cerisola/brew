@@ -292,7 +292,7 @@ automatically when you install formulae but can be useful for DIY installations.
 
 List all installed formulae.
 
-If *`formula`* is provided, summarize the paths within its current keg.
+If *`formula`* is provided, summarise the paths within its current keg.
 
 * `--full-name`:
   Print formulae with fully-qualified names. If `--full-name` is not passed, other options (i.e. `-1`, `-l`, `-r` and `-t`) are passed to `ls`(1) which produces the actual output.
@@ -646,7 +646,7 @@ would be installed, without any sort of versioned directory as the last path.
 
 ### `--env` [*`options`*]
 
-Summarize Homebrew's build environment as a plain list.
+Summarise Homebrew's build environment as a plain list.
 
 If the command's output is sent through a pipe and no shell is specified, the
 list is formatted for export to `bash`(1) unless `--plain` is passed.
@@ -801,8 +801,16 @@ a simple example. For the complete API, see:
   Create a basic template for an Autotools-style build.
 * `--cmake`:
   Create a basic template for a CMake-style build.
+* `--go`:
+  Create a basic template for a Go build.
 * `--meson`:
   Create a basic template for a Meson-style build.
+* `--perl`:
+  Create a basic template for a Perl build.
+* `--python`:
+  Create a basic template for a Python build.
+* `--rust`:
+  Create a basic template for a Rust build.
 * `--no-fetch`:
   Homebrew will not download *`URL`* to the cache and will thus not add its SHA-256 to the formula for you, nor will it check the GitHub API for GitHub projects (to fill out its description and homepage).
 * `--HEAD`:
@@ -914,6 +922,8 @@ provided it defaults to `origin/master`.
 Run a Ruby instance with Homebrew's libraries loaded, e.g. `brew ruby -e "puts
 :gcc.f.deps"` or `brew ruby script.rb`.
 
+* `-r`:
+  Load a library using `require`.
 * `-e`:
   Execute the given text string as a script.
 
@@ -1058,7 +1068,7 @@ Note that environment variables must have a value set to be detected. For exampl
   * `HOMEBREW_AUTO_UPDATE_SECS`:
     If set, Homebrew will only check for autoupdates once per this seconds interval.
 
-    *Default:* `60`.
+    *Default:* `300`.
 
   * `HOMEBREW_AWS_ACCESS_KEY_ID`, `HOMEBREW_AWS_SECRET_ACCESS_KEY`:
     When using the `S3` download strategy, Homebrew will look in
@@ -1066,6 +1076,9 @@ Note that environment variables must have a value set to be detected. For exampl
     <https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html#cli-environment>
     to retrieve these access credentials from AWS). If they are not set,
     the `S3` download strategy will download with a public (unsigned) URL.
+
+  * `HOMEBREW_BAT`:
+    If set, Homebrew will use `bat` for the `brew cat` command.
 
   * `HOMEBREW_BOTTLE_DOMAIN`:
     By default, Homebrew uses `https://homebrew.bintray.com/` as its download
@@ -1262,11 +1275,11 @@ Homebrew's Project Leadership Committee is Misty De Meo, Shaun Jackman, Jonathan
 
 Homebrew's Technical Steering Committee is Michka Popoff, FX Coudert, Markus Reiter, Misty De Meo and Mike McQuaid.
 
-Homebrew/brew's Linux maintainers are Michka Popoff, Shaun Jackman and Issy Long.
+Homebrew/brew's Linux maintainers are Michka Popoff, Shaun Jackman, Dawid Dziurla and Issy Long.
 
-Homebrew's other current maintainers are Claudia Pellegrino, Chongyu Zhu, Rui Chen, Vitor Galvao, Gautham Goli, Steven Peters, William Woodruff, Igor Kapkov, Izaak Beekman, Sean Molenaar, Jan Viljanen, Jason Tedor, Eric Knibbe, Viktor Szakats, Thierry Moisan, Steven Peters, Tom Schoonjans and Issy Long.
+Homebrew's other current maintainers are Claudia Pellegrino, Rui Chen, Vitor Galvao, Caleb Xu, Gautham Goli, Steven Peters, William Woodruff, Igor Kapkov, Izaak Beekman, Sean Molenaar, Jan Viljanen, Eric Knibbe, Viktor Szakats, Thierry Moisan, Steven Peters, Tom Schoonjans and Issy Long.
 
-Former maintainers with significant contributions include JCount, commitay, Dominyk Tiller, Tim Smith, Baptiste Fontaine, Xu Cheng, Martin Afanasjew, Brett Koonce, Charlie Sharpsteen, Jack Nagel, Adam Vandenberg, Andrew Janke, Alex Dunn, neutric, Tomasz Pajor, Uladzislau Shablinski, Alyssa Ross, ilovezfs and Homebrew's creator: Max Howell.
+Former maintainers with significant contributions include JCount, commitay, Dominyk Tiller, Tim Smith, Baptiste Fontaine, Xu Cheng, Martin Afanasjew, Brett Koonce, Charlie Sharpsteen, Jack Nagel, Adam Vandenberg, Andrew Janke, Alex Dunn, neutric, Tomasz Pajor, Uladzislau Shablinski, Alyssa Ross, ilovezfs, Chongyu Zhu and Homebrew's creator: Max Howell.
 
 ## BUGS
 

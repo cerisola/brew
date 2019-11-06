@@ -52,6 +52,7 @@ class Formula
   include Utils::Shell
   extend Enumerable
   extend Forwardable
+  extend Cachable
 
   # @!method inreplace(paths, before = nil, after = nil)
   # Actually implemented in {Utils::Inreplace.inreplace}.
@@ -266,7 +267,7 @@ class Formula
   # and is specified to this instance.
   def installed_alias_path
     path = build.source["path"] if build.is_a?(Tab)
-    return unless path =~ %r{#{HOMEBREW_TAP_DIR_REGEX}/Aliases}
+    return unless path&.match?(%r{#{HOMEBREW_TAP_DIR_REGEX}/Aliases})
     return unless File.symlink?(path)
 
     path
@@ -387,11 +388,9 @@ class Formula
     return [] if versioned_formula?
 
     Pathname.glob(path.to_s.gsub(/\.rb$/, "@*.rb")).map do |path|
-      begin
-        Formula[path.basename(".rb").to_s]
-      rescue FormulaUnavailableError
-        nil
-      end
+      Formula[path.basename(".rb").to_s]
+    rescue FormulaUnavailableError
+      nil
     end.compact.sort
   end
 
@@ -427,6 +426,9 @@ class Formula
 
   # The {Dependency}s for the currently active {SoftwareSpec}.
   delegate deps: :active_spec
+
+  # Dependencies provided by macOS for the currently active {SoftwareSpec}.
+  delegate uses_from_macos_elements: :active_spec
 
   # The {Requirement}s for the currently active {SoftwareSpec}.
   delegate requirements: :active_spec
@@ -493,22 +495,18 @@ class Formula
     prefix(head_version) if head_version
   end
 
-  def head_version_outdated?(version, options = {})
+  def head_version_outdated?(version, fetch_head: false)
     tab = Tab.for_keg(prefix(version))
 
     return true if tab.version_scheme < version_scheme
     return true if stable && tab.stable_version && tab.stable_version < stable.version
     return true if devel && tab.devel_version && tab.devel_version < devel.version
+    return false unless fetch_head
+    return false unless head&.downloader.is_a?(VCSDownloadStrategy)
 
-    if options[:fetch_head]
-      return false unless head&.downloader.is_a?(VCSDownloadStrategy)
-
-      downloader = head.downloader
-      downloader.shutup! unless ARGV.verbose?
-      downloader.commit_outdated?(version.version.commit)
-    else
-      false
-    end
+    downloader = head.downloader
+    downloader.shutup! unless ARGV.verbose?
+    downloader.commit_outdated?(version.version.commit)
   end
 
   # The latest prefix for this formula. Checks for {#head}, then {#devel}
@@ -1171,43 +1169,41 @@ class Formula
   end
 
   # @private
-  def outdated_kegs(options = {})
-    @outdated_kegs ||= Hash.new do |cache, key|
-      raise Migrator::MigrationNeededError, self if migration_needed?
+  def outdated_kegs(fetch_head: false)
+    raise Migrator::MigrationNeededError, self if migration_needed?
 
-      cache[key] = _outdated_kegs(key)
-    end
-    @outdated_kegs[options]
-  end
+    cache_key = "#{name}-#{fetch_head}"
+    Formula.cache[:outdated_kegs] ||= {}
+    Formula.cache[:outdated_kegs][cache_key] ||= begin
+      all_kegs = []
+      current_version = false
 
-  def _outdated_kegs(options = {})
-    all_kegs = []
+      installed_kegs.each do |keg|
+        all_kegs << keg
+        version = keg.version
+        next if version.head?
 
-    installed_kegs.each do |keg|
-      all_kegs << keg
-      version = keg.version
-      next if version.head?
+        tab = Tab.for_keg(keg)
+        next if version_scheme > tab.version_scheme
+        next if version_scheme == tab.version_scheme && pkg_version > version
 
-      tab = Tab.for_keg(keg)
-      next if version_scheme > tab.version_scheme
-      next if version_scheme == tab.version_scheme && pkg_version > version
+        # don't consider this keg current if there's a newer formula available
+        next if follow_installed_alias? && new_formula_available?
 
-      # don't consider this keg current if there's a newer formula available
-      next if follow_installed_alias? && new_formula_available?
+        # this keg is the current version of the formula, so it's not outdated
+        current_version = true
+        break
+      end
 
-      return [] # this keg is the current version of the formula, so it's not outdated
-    end
-
-    # Even if this formula hasn't been installed, there may be installations
-    # of other formulae which used to be targets of the alias currently
-    # targetting this formula. These should be counted as outdated versions.
-    all_kegs.concat old_installed_formulae.flat_map(&:installed_kegs)
-
-    head_version = latest_head_version
-    if head_version && !head_version_outdated?(head_version, options)
-      []
-    else
-      all_kegs.sort_by(&:version)
+      if current_version
+        []
+      elsif (head_version = latest_head_version) &&
+            !head_version_outdated?(head_version, fetch_head: fetch_head)
+        []
+      else
+        all_kegs += old_installed_formulae.flat_map(&:installed_kegs)
+        all_kegs.sort_by(&:version)
+      end
     end
   end
 
@@ -1255,8 +1251,8 @@ class Formula
   end
 
   # @private
-  def outdated?(options = {})
-    !outdated_kegs(options).empty?
+  def outdated?(fetch_head: false)
+    !outdated_kegs(fetch_head: fetch_head).empty?
   rescue Migrator::MigrationNeededError
     true
   end
@@ -1384,14 +1380,12 @@ class Formula
   # @private
   def self.each
     files.each do |file|
-      begin
-        yield Formulary.factory(file)
-      rescue => e
-        # Don't let one broken formula break commands. But do complain.
-        onoe "Failed to import: #{file}"
-        puts e
-        next
-      end
+      yield Formulary.factory(file)
+    rescue => e
+      # Don't let one broken formula break commands. But do complain.
+      onoe "Failed to import: #{file}"
+      puts e
+      next
     end
   end
 
@@ -1422,11 +1416,9 @@ class Formula
   # @private
   def self.installed
     @installed ||= racks.flat_map do |rack|
-      begin
-        Formulary.from_rack(rack)
-      rescue
-        []
-      end
+      Formulary.from_rack(rack)
+    rescue
+      []
     end.uniq(&:name)
   end
 
@@ -1531,7 +1523,8 @@ class Formula
   # If not, return nil.
   # @private
   def opt_or_installed_prefix_keg
-    if optlinked? && opt_prefix.exist?
+    Formula.cache[:opt_or_installed_prefix_keg] ||= {}
+    Formula.cache[:opt_or_installed_prefix_keg][name] ||= if optlinked? && opt_prefix.exist?
       Keg.new(opt_prefix)
     elsif installed_prefix.directory?
       Keg.new(installed_prefix)
@@ -1541,36 +1534,51 @@ class Formula
   # Returns a list of Dependency objects that are required at runtime.
   # @private
   def runtime_dependencies(read_from_tab: true, undeclared: true)
-    if read_from_tab &&
-       undeclared &&
-       (keg = opt_or_installed_prefix_keg) &&
-       (tab_deps = keg.runtime_dependencies)
-      return tab_deps.map do |d|
+    deps = if read_from_tab && undeclared &&
+              (tab_deps = opt_or_installed_prefix_keg&.runtime_dependencies)
+      tab_deps.map do |d|
         full_name = d["full_name"]
         next unless full_name
 
         Dependency.new full_name
       end.compact
     end
-
-    return declared_runtime_dependencies unless undeclared
-
-    declared_runtime_dependencies | undeclared_runtime_dependencies
+    deps ||= declared_runtime_dependencies unless undeclared
+    deps ||= (declared_runtime_dependencies | undeclared_runtime_dependencies)
+    deps
   end
 
   # Returns a list of Formula objects that are required at runtime.
   # @private
   def runtime_formula_dependencies(read_from_tab: true, undeclared: true)
-    runtime_dependencies(
+    cache_key = "#{name}-#{read_from_tab}-#{undeclared}"
+
+    Formula.cache[:runtime_formula_dependencies] ||= {}
+    Formula.cache[:runtime_formula_dependencies][cache_key] ||= runtime_dependencies(
       read_from_tab: read_from_tab,
       undeclared:    undeclared,
     ).map do |d|
-      begin
-        d.to_formula
-      rescue FormulaUnavailableError
-        nil
-      end
+      d.to_formula
+    rescue FormulaUnavailableError
+      nil
     end.compact
+  end
+
+  def runtime_installed_formula_dependents
+    # `opt_or_installed_prefix_keg` and `runtime_dependencies` `select`s ensure
+    # that we don't end up with something `Formula#runtime_dependencies` can't
+    # read from a `Tab`.
+    Formula.cache[:runtime_installed_formula_dependents] = {}
+    Formula.cache[:runtime_installed_formula_dependents][name] ||= Formula.installed
+                                                                          .select(&:opt_or_installed_prefix_keg)
+                                                                          .select(&:runtime_dependencies)
+                                                                          .select do |f|
+      f.runtime_formula_dependencies.any? do |dep|
+        full_name == dep.full_name
+      rescue
+        name == dep.name
+      end
+    end
   end
 
   # Returns a list of formulae depended on by this formula that aren't
@@ -1589,6 +1597,7 @@ class Formula
   # @private
   def to_hash
     dependencies = deps
+    uses_from_macos = uses_from_macos_elements || []
 
     hsh = {
       "name"                     => name,
@@ -1624,6 +1633,7 @@ class Formula
       "optional_dependencies"    => dependencies.select(&:optional?)
                                                 .map(&:name)
                                                 .uniq,
+      "uses_from_macos"          => uses_from_macos.uniq,
       "requirements"             => [],
       "conflicts_with"           => conflicts.map(&:name),
       "caveats"                  => caveats&.gsub(HOMEBREW_PREFIX, "$(brew --prefix)"),
@@ -1709,7 +1719,7 @@ class Formula
       TERM:          "dumb",
       PATH:          PATH.new(ENV["PATH"], HOMEBREW_PREFIX/"bin"),
       HOMEBREW_PATH: nil,
-      _JAVA_OPTIONS: "#{ENV["_JAVA_OPTIONS"]} -Duser.home=#{HOMEBREW_CACHE}/java_cache",
+      _JAVA_OPTIONS: "#{ENV["_JAVA_OPTIONS"]&.+(" ")}-Duser.home=#{HOMEBREW_CACHE}/java_cache",
       GOCACHE:       "#{HOMEBREW_CACHE}/go_cache",
       CARGO_HOME:    "#{HOMEBREW_CACHE}/cargo_cache",
     }
@@ -1843,7 +1853,7 @@ class Formula
 
     @exec_count ||= 0
     @exec_count += 1
-    logfn = format("#{logs}/#{active_log_prefix}%02<exec_count>d.%{cmd_base}",
+    logfn = format("#{logs}/#{active_log_prefix}%02<exec_count>d.%<cmd_base>s",
                    exec_count: @exec_count,
                    cmd_base:   File.basename(cmd).split(" ").first)
     logs.mkpath
@@ -2033,7 +2043,7 @@ class Formula
       unless ARGV.interactive?
         stage_env[:HOME] = env_home
         stage_env[:_JAVA_OPTIONS] =
-          "#{ENV["_JAVA_OPTIONS"]} -Duser.home=#{HOMEBREW_CACHE}/java_cache"
+          "#{ENV["_JAVA_OPTIONS"]&.+(" ")}-Duser.home=#{HOMEBREW_CACHE}/java_cache"
         stage_env[:GOCACHE] = "#{HOMEBREW_CACHE}/go_cache"
         stage_env[:CARGO_HOME] = "#{HOMEBREW_CACHE}/cargo_cache"
         stage_env[:CURL_HOME] = ENV["CURL_HOME"] || ENV["HOME"]

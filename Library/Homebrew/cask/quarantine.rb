@@ -136,7 +136,7 @@ module Cask
 
       quarantine_status = toggle_no_translocation_bit(status(from))
 
-      resolved_paths = Pathname.glob(to/"**/*", File::FNM_DOTMATCH)
+      resolved_paths = Pathname.glob(to/"**/*", File::FNM_DOTMATCH).reject(&:symlink?)
 
       system_command!("/usr/bin/xargs",
                       args:  [
@@ -154,7 +154,6 @@ module Cask
                                      "--",
                                      xattr,
                                      "-w",
-                                     "-s",
                                      QUARANTINE_ATTRIBUTE,
                                      quarantine_status,
                                    ],

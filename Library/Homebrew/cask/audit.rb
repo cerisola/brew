@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "cask/blacklist"
 require "cask/checkable"
 require "cask/download"
 require "digest"
@@ -30,6 +31,7 @@ module Cask
     end
 
     def run!
+      check_blacklist
       check_required_stanzas
       check_version
       check_sha256
@@ -244,7 +246,7 @@ module Cask
     end
 
     def bad_url_format?(regex, valid_formats_array)
-      return false unless cask.url.to_s =~ regex
+      return false unless cask.url.to_s.match?(regex)
 
       valid_formats_array.none? { |format| cask.url.to_s =~ format }
     end
@@ -318,6 +320,13 @@ module Cask
                   " the version number: '#{adjusted_version_stanza}'"
     rescue
       add_error "appcast at URL '#{appcast_stanza}' offline or looping"
+    end
+
+    def check_blacklist
+      return if cask.tap&.user != "Homebrew"
+      return unless reason = Blacklist.blacklisted_reason(cask.token)
+
+      add_error "#{cask.token} is blacklisted: #{reason}"
     end
 
     def check_https_availability

@@ -1,6 +1,4 @@
-# Uses ERB so can't use Frozen String Literals until >=Ruby 2.4:
-# https://bugs.ruby-lang.org/issues/12031
-# frozen_string_literal: false
+# frozen_string_literal: true
 
 require "formula"
 require "erb"
@@ -18,7 +16,7 @@ module Homebrew
 
   def man_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS.freeze
+      usage_banner <<~EOS
         `man` [<options>]
 
         Generate Homebrew's manpages.
@@ -88,7 +86,7 @@ module Homebrew
       readme.read[/(Former maintainers .*\.)/, 1]
             .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1')
 
-    ERB.new(template, nil, ">").result(variables.instance_eval { binding })
+    ERB.new(template, trim_mode: ">").result(variables.instance_eval { binding })
   end
 
   def sort_key_for_path(path)
@@ -125,7 +123,7 @@ module Homebrew
       ronn.write markup
       ronn.close_write
       ronn_output = ronn.read
-      odie "Got no output from ronn!" unless ronn_output
+      odie "Got no output from ronn!" if ronn_output.blank?
       if format_flag == "--markdown"
         ronn_output = ronn_output.gsub(%r{<var>(.*?)</var>}, "*`\\1`*")
                                  .gsub(/\n\n\n+/, "\n\n")
@@ -203,7 +201,7 @@ module Homebrew
       end
 
       # Omit the common global_options documented separately in the man page.
-      next if line =~ /--(debug|force|help|quiet|verbose) /
+      next if line.match?(/--(debug|force|help|quiet|verbose) /)
 
       # Format one option or a comma-separated pair of short and long options.
       lines << line.gsub(/^ +(-+[a-z-]+), (-+[a-z-]+) +/, "* `\\1`, `\\2`:\n  ")

@@ -200,11 +200,9 @@ module Cask
       end
 
       remaining = all_args.select do |arg|
-        begin
-          !process_arguments([arg]).empty?
-        rescue OptionParser::InvalidOption, OptionParser::MissingArgument, OptionParser::AmbiguousOption
-          true
-        end
+        !process_arguments([arg]).empty?
+      rescue OptionParser::InvalidOption, OptionParser::MissingArgument, OptionParser::AmbiguousOption
+        true
       end
 
       remaining + non_options
@@ -216,14 +214,19 @@ module Cask
         @args = args
       end
 
-      def run(*_args)
+      def run(*)
         purpose
         usage
 
         return if @command.nil?
-        return if @command == "help" && @args.empty?
 
-        raise ArgumentError, "help does not take arguments."
+        if @command == "help"
+          return if @args.empty?
+
+          raise ArgumentError, "help does not take arguments." if @args.length
+        end
+
+        raise ArgumentError, "Unknown Cask command: #{@command}"
       end
 
       def purpose

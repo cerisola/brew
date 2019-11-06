@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-# Contains backports from newer versions of Ruby
-require "backports/2.4.0/string/match"
-require "backports/2.5.0/string/delete_prefix"
 require "active_support/core_ext/object/blank"
 
 class String
@@ -44,7 +41,7 @@ module StringInreplaceExtension
   # Looks for Makefile style variable definitions and replaces the
   # value with "new_value", or removes the definition entirely.
   def change_make_var!(flag, new_value)
-    return if gsub!(/^#{Regexp.escape(flag)}[ \t]*=[ \t]*(.*)$/, "#{flag}=#{new_value}", false)
+    return if gsub!(/^#{Regexp.escape(flag)}[ \t]*[\\?\+\:\!]?=[ \t]*(.*)$/, "#{flag}=#{new_value}", false)
 
     errors << "expected to change #{flag.inspect} to #{new_value.inspect}"
   end
@@ -53,12 +50,14 @@ module StringInreplaceExtension
   def remove_make_var!(flags)
     Array(flags).each do |flag|
       # Also remove trailing \n, if present.
-      errors << "expected to remove #{flag.inspect}" unless gsub!(/^#{Regexp.escape(flag)}[ \t]*=.*$\n?/, "", false)
+      unless gsub!(/^#{Regexp.escape(flag)}[ \t]*[\\?\+\:\!]?=.*$\n?/, "", false)
+        errors << "expected to remove #{flag.inspect}"
+      end
     end
   end
 
   # Finds the specified variable
   def get_make_var(flag)
-    self[/^#{Regexp.escape(flag)}[ \t]*=[ \t]*(.*)$/, 1]
+    self[/^#{Regexp.escape(flag)}[ \t]*[\\?\+\:\!]?=[ \t]*(.*)$/, 1]
   end
 end

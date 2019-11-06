@@ -35,7 +35,10 @@ module Homebrew
   end
 
   def system(cmd, *args, **options)
-    puts "#{cmd} #{args * " "}" if ARGV.verbose?
+    if ARGV.verbose?
+      puts "#{cmd} #{args * " "}".gsub(RUBY_PATH, "ruby")
+                                 .gsub($LOAD_PATH.join(File::PATH_SEPARATOR).to_s, "$LOAD_PATH")
+    end
     _system(cmd, *args, **options)
   end
 
@@ -50,13 +53,11 @@ module Homebrew
 
         method = instance_method(name)
         define_method(name) do |*args, &block|
-          begin
-            time = Time.now
-            method.bind(self).call(*args, &block)
-          ensure
-            $times[name] ||= 0
-            $times[name] += Time.now - time
-          end
+          time = Time.now
+          method.bind(self).call(*args, &block)
+        ensure
+          $times[name] ||= 0
+          $times[name] += Time.now - time
         end
       end
     end
@@ -67,7 +68,7 @@ module Homebrew
     at_exit do
       col_width = [$times.keys.map(&:size).max.to_i + 2, 15].max
       $times.sort_by { |_k, v| v }.each do |method, time|
-        puts format("%-*s %0.4f sec", col_width, "#{method}:", time)
+        puts format("%<method>-#{col_width}s %<time>0.4f sec", method: "#{method}:", time: time)
       end
     end
   end
@@ -388,11 +389,9 @@ module Kernel
 
   def paths
     @paths ||= PATH.new(ENV["HOMEBREW_PATH"]).map do |p|
-      begin
-        File.expand_path(p).chomp("/")
-      rescue ArgumentError
-        onoe "The following PATH component is invalid: #{p}"
-      end
+      File.expand_path(p).chomp("/")
+    rescue ArgumentError
+      onoe "The following PATH component is invalid: #{p}"
     end.uniq.compact
   end
 
@@ -415,7 +414,7 @@ module Kernel
     if ((size * 10).to_i % 10).zero?
       "#{size.to_i}#{unit}"
     else
-      "#{format("%.1f", size)}#{unit}"
+      "#{format("%<size>.1f", size: size)}#{unit}"
     end
   end
 

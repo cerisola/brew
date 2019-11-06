@@ -14,10 +14,8 @@ describe Cask::DSL, :cask do
 
   describe "when a Cask includes an unknown method" do
     let(:attempt_unknown_method) {
-      lambda do
-        Cask::Cask.new("unexpected-method-cask") do
-          future_feature :not_yet_on_your_machine
-        end
+      Cask::Cask.new("unexpected-method-cask") do
+        future_feature :not_yet_on_your_machine
       end
     }
 
@@ -32,13 +30,13 @@ describe Cask::DSL, :cask do
       EOS
 
       expect {
-        expect(attempt_unknown_method).not_to output.to_stdout
+        expect { attempt_unknown_method }.not_to output.to_stdout
       }.to output(expected).to_stderr
     end
 
     it "will simply warn, not throw an exception" do
       expect {
-        attempt_unknown_method.call
+        attempt_unknown_method
       }.not_to raise_error
     end
   end
@@ -337,14 +335,6 @@ describe Cask::DSL, :cask do
   end
 
   describe "depends_on macos" do
-    context "valid", :needs_compat do
-      let(:token) { "compat/with-depends-on-macos-string" }
-
-      it "allows depends_on macos to be specified" do
-        expect(cask.depends_on.macos).not_to be nil
-      end
-    end
-
     context "invalid depends_on macos value" do
       let(:token) { "invalid/invalid-depends-on-macos-bad-release" }
 
@@ -475,18 +465,16 @@ describe Cask::DSL, :cask do
     end
 
     it "does not include a trailing slash" do
-      begin
-        original_appdir = Cask::Config.global.appdir
-        Cask::Config.global.appdir = "#{original_appdir}/"
+      original_appdir = Cask::Config.global.appdir
+      Cask::Config.global.appdir = "#{original_appdir}/"
 
-        cask = Cask::Cask.new("appdir-trailing-slash") do
-          binary "#{appdir}/some/path"
-        end
-
-        expect(cask.artifacts.first.source).to eq(original_appdir/"some/path")
-      ensure
-        Cask::Config.global.appdir = original_appdir
+      cask = Cask::Cask.new("appdir-trailing-slash") do
+        binary "#{appdir}/some/path"
       end
+
+      expect(cask.artifacts.first.source).to eq(original_appdir/"some/path")
+    ensure
+      Cask::Config.global.appdir = original_appdir
     end
   end
 

@@ -26,6 +26,7 @@ class SoftwareSpec
   attr_reader :dependency_collector
   attr_reader :bottle_specification
   attr_reader :compiler_failures
+  attr_reader :uses_from_macos_elements
 
   def_delegators :@resource, :stage, :fetch, :verify_download_integrity, :source_modified_time
   def_delegators :@resource, :download_name, :cached_download, :clear_cache
@@ -183,13 +184,11 @@ class SoftwareSpec
   def recursive_dependencies
     deps_f = []
     recursive_dependencies = deps.map do |dep|
-      begin
-        deps_f << dep.to_formula
-        dep
-      rescue TapFormulaUnavailableError
-        # Don't complain about missing cross-tap dependencies
-        next
-      end
+      deps_f << dep.to_formula
+      dep
+    rescue TapFormulaUnavailableError
+      # Don't complain about missing cross-tap dependencies
+      next
     end.compact.uniq
     deps_f.compact.each do |f|
       f.recursive_dependencies.each do |dep|
@@ -385,11 +384,10 @@ class BottleSpecification
   def checksums
     tags = collector.keys.sort_by do |tag|
       # Sort non-MacOS tags below MacOS tags.
-      begin
-        OS::Mac::Version.from_symbol tag
-      rescue ArgumentError
-        "0.#{tag}"
-      end
+
+      OS::Mac::Version.from_symbol tag
+    rescue ArgumentError
+      "0.#{tag}"
     end
     checksums = {}
     tags.reverse_each do |tag|

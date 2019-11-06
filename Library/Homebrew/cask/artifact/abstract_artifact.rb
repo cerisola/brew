@@ -50,6 +50,11 @@ module Cask
           # depend on other artifacts still being installed.
           Uninstall,
           Installer,
+          # `pkg` should be run before `binary`, so
+          # targets are created prior to linking.
+          # `pkg` should be run before `app`, since an `app` could
+          # contain a nested installer (e.g. `wireshark`).
+          Pkg,
           [
             App,
             Suite,
@@ -67,10 +72,8 @@ module Cask
             Vst3Plugin,
             ScreenSaver,
           ],
-          # `pkg` should be run before `binary`, so
-          # targets are created prior to linking.
-          Pkg,
           Binary,
+          Manpage,
           PostflightBlock,
           Zap,
         ].each_with_index.flat_map { |classes, i| [*classes].map { |c| [c, i] } }.to_h

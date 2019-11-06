@@ -122,7 +122,7 @@ module Homebrew
             properly. You can solve this by adding the remote:
               git -C "#{repository_path}" remote add origin #{Formatter.url("https://github.com/#{desired_origin}.git")}
           EOS
-        elsif current_origin !~ %r{#{desired_origin}(\.git|/)?$}i
+        elsif !current_origin.match?(%r{#{desired_origin}(\.git|/)?$}i)
           <<~EOS
             Suspicious #{desired_origin} git origin remote found.
             The current git origin is:
@@ -424,7 +424,9 @@ module Homebrew
 
         # Don't complain about sbin not being in the path if it doesn't exist
         sbin = HOMEBREW_PREFIX/"sbin"
-        return unless sbin.directory? && !sbin.children.empty?
+        return unless sbin.directory?
+        return if sbin.children.empty?
+        return if sbin.children.one? && sbin.children.first.basename.to_s == ".keepme"
 
         <<~EOS
           Homebrew's sbin was not found in your PATH but you have installed
@@ -661,17 +663,30 @@ module Homebrew
       def check_git_status
         return unless Utils.git_available?
 
+        modified = []
         HOMEBREW_REPOSITORY.cd do
-          return if `git status --untracked-files=all --porcelain -- Library/Homebrew/ 2>/dev/null`.chomp.empty?
+          status = `git status --untracked-files=all --porcelain -- Library/Homebrew/ 2>/dev/null`
+          return if status.blank?
+
+          modified = status.split("\n")
         end
 
-        <<~EOS
+        message = <<~EOS
           You have uncommitted modifications to Homebrew.
           If this is a surprise to you, then you should stash these modifications.
           Stashing returns Homebrew to a pristine state but can be undone
           should you later need to do so for some reason.
             cd #{HOMEBREW_LIBRARY} && git stash && git clean -d -f
         EOS
+
+        if ENV["CI"]
+          message += inject_file_list modified, <<~EOS
+
+            Modified files:
+          EOS
+        end
+
+        message
       end
 
       def check_for_bad_python_symlink
@@ -716,15 +731,13 @@ module Homebrew
       def check_for_unreadable_installed_formula
         formula_unavailable_exceptions = []
         Formula.racks.each do |rack|
-          begin
-            Formulary.from_rack(rack)
-          rescue FormulaUnreadableError, FormulaClassUnavailableError,
-                 TapFormulaUnreadableError, TapFormulaClassUnavailableError => e
-            formula_unavailable_exceptions << e
-          rescue FormulaUnavailableError,
-                 TapFormulaAmbiguityError, TapFormulaWithOldnameAmbiguityError
-            nil
-          end
+          Formulary.from_rack(rack)
+        rescue FormulaUnreadableError, FormulaClassUnavailableError,
+               TapFormulaUnreadableError, TapFormulaClassUnavailableError => e
+          formula_unavailable_exceptions << e
+        rescue FormulaUnavailableError,
+               TapFormulaAmbiguityError, TapFormulaWithOldnameAmbiguityError
+          nil
         end
         return if formula_unavailable_exceptions.empty?
 

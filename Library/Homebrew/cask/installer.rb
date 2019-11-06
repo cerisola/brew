@@ -1,11 +1,9 @@
 # frozen_string_literal: true
 
-require "rubygems"
-
 require "formula_installer"
 require "unpack_strategy"
 
-require "cask/cask_dependencies"
+require "cask/topological_hash"
 require "cask/config"
 require "cask/download"
 require "cask/staged"
@@ -60,19 +58,17 @@ module Cask
     def fetch
       odebug "Cask::Installer#fetch"
 
-      satisfy_dependencies
-
       verify_has_sha if require_sha? && !force?
       download
       verify
+
+      satisfy_dependencies
     end
 
     def stage
       odebug "Cask::Installer#stage"
 
       Caskroom.ensure_caskroom_exists
-
-      unpack_dependencies
 
       extract_primary_container
       save_caskfile
@@ -94,6 +90,8 @@ module Cask
       fetch
       uninstall_existing_cask if reinstall?
 
+      backup if force? && @cask.staged_path.exist? && @cask.metadata_versioned_path.exist?
+
       oh1 "Installing Cask #{Formatter.identifier(@cask)}"
       opoo "macOS's Gatekeeper has been disabled for this Cask" unless quarantine?
       stage
@@ -104,19 +102,22 @@ module Cask
 
       ::Utils::Analytics.report_event("cask_install", @cask.token) unless @cask.tap&.private?
 
+      purge_backed_up_versioned_files
+
       puts summary
+    rescue
+      restore_backup
+      raise
     end
 
     def check_conflicts
       return unless @cask.conflicts_with
 
       @cask.conflicts_with[:cask].each do |conflicting_cask|
-        begin
-          conflicting_cask = CaskLoader.load(conflicting_cask)
-          raise CaskConflictError.new(@cask, conflicting_cask) if conflicting_cask.installed?
-        rescue CaskUnavailableError
-          next # Ignore conflicting Casks that do not exist.
-        end
+        conflicting_cask = CaskLoader.load(conflicting_cask)
+        raise CaskConflictError.new(@cask, conflicting_cask) if conflicting_cask.installed?
+      rescue CaskUnavailableError
+        next # Ignore conflicting Casks that do not exist.
       end
     end
 
@@ -145,6 +146,8 @@ module Cask
     end
 
     def download
+      return @downloaded_path if @downloaded_path
+
       odebug "Downloading"
       @downloaded_path = Download.new(@cask, force: false, quarantine: quarantine?).perform
       odebug "Downloaded to -> #{@downloaded_path}"
@@ -164,6 +167,7 @@ module Cask
 
     def primary_container
       @primary_container ||= begin
+        download
         UnpackStrategy.detect(@downloaded_path, type: @cask.container&.type, merge_xattrs: true)
       end
     end
@@ -243,12 +247,10 @@ module Cask
     def satisfy_dependencies
       return unless @cask.depends_on
 
-      ohai "Satisfying dependencies"
       macos_dependencies
       arch_dependencies
       x11_dependencies
-      formula_dependencies
-      cask_dependencies unless skip_cask_deps? || installed_as_dependency?
+      cask_and_formula_dependencies
     end
 
     def macos_dependencies
@@ -278,80 +280,99 @@ module Cask
       raise CaskX11DependencyError, @cask.token unless MacOS::X11.installed?
     end
 
-    def formula_dependencies
-      formulae = @cask.depends_on.formula.map { |f| Formula[f] }
-      return if formulae.empty?
+    def graph_dependencies(cask_or_formula, acc = TopologicalHash.new)
+      return acc if acc.key?(cask_or_formula)
 
-      if formulae.all?(&:any_version_installed?)
+      if cask_or_formula.is_a?(Cask)
+        formula_deps = cask_or_formula.depends_on.formula.map { |f| Formula[f] }
+        cask_deps = cask_or_formula.depends_on.cask.map(&CaskLoader.public_method(:load))
+      else
+        formula_deps = cask_or_formula.deps.reject(&:build?).map(&:to_formula)
+        cask_deps = cask_or_formula.requirements.map(&:cask).compact.map(&CaskLoader.public_method(:load))
+      end
+
+      acc[cask_or_formula] ||= []
+      acc[cask_or_formula] += formula_deps
+      acc[cask_or_formula] += cask_deps
+
+      formula_deps.each do |f|
+        graph_dependencies(f, acc)
+      end
+
+      cask_deps.each do |c|
+        graph_dependencies(c, acc)
+      end
+
+      acc
+    end
+
+    def collect_cask_and_formula_dependencies
+      return @cask_and_formula_dependencies if @cask_and_formula_dependencies
+
+      graph = graph_dependencies(@cask)
+
+      raise CaskSelfReferencingDependencyError, cask.token if graph[@cask].include?(@cask)
+
+      primary_container.dependencies.each do |dep|
+        graph_dependencies(dep, graph)
+      end
+
+      begin
+        @cask_and_formula_dependencies = graph.tsort - [@cask]
+      rescue TSort::Cyclic
+        strongly_connected_components = graph.strongly_connected_components.sort_by(&:count)
+        cyclic_dependencies = strongly_connected_components.last - [@cask]
+        raise CaskCyclicDependencyError.new(@cask.token, cyclic_dependencies.to_sentence)
+      end
+    end
+
+    def missing_cask_and_formula_dependencies
+      collect_cask_and_formula_dependencies.reject do |cask_or_formula|
+        (cask_or_formula.respond_to?(:installed?) && cask_or_formula.installed?) ||
+          (cask_or_formula.respond_to?(:any_version_installed?) && cask_or_formula.any_version_installed?)
+      end
+    end
+
+    def cask_and_formula_dependencies
+      return if installed_as_dependency?
+
+      formulae_and_casks = collect_cask_and_formula_dependencies
+
+      return if formulae_and_casks.empty?
+
+      missing_formulae_and_casks = missing_cask_and_formula_dependencies
+
+      if missing_formulae_and_casks.empty?
         puts "All Formula dependencies satisfied."
         return
       end
 
-      not_installed = formulae.reject(&:any_version_installed?)
+      ohai "Installing dependencies: #{missing_formulae_and_casks.map(&:to_s).join(", ")}"
+      missing_formulae_and_casks.each do |cask_or_formula|
+        if cask_or_formula.is_a?(Cask)
+          if skip_cask_deps?
+            opoo "`--skip-cask-deps` is set; skipping installation of #{@cask}."
+            next
+          end
 
-      ohai "Installing Formula dependencies: #{not_installed.map(&:to_s).join(", ")}"
-      not_installed.each do |formula|
-        FormulaInstaller.new(formula).tap do |fi|
-          fi.installed_as_dependency = true
-          fi.installed_on_request = false
-          fi.show_header = true
-          fi.verbose = verbose?
-          fi.prelude
-          fi.install
-          fi.finish
+          Installer.new(
+            cask_or_formula,
+            binaries:                binaries?,
+            verbose:                 verbose?,
+            installed_as_dependency: true,
+            force:                   false,
+          ).install
+        else
+          FormulaInstaller.new(cask_or_formula).yield_self do |fi|
+            fi.installed_as_dependency = true
+            fi.installed_on_request = false
+            fi.show_header = true
+            fi.verbose = verbose?
+            fi.prelude
+            fi.install
+            fi.finish
+          end
         end
-      end
-    end
-
-    def cask_dependencies
-      casks = CaskDependencies.new(@cask)
-      return if casks.empty?
-
-      if casks.all?(&:installed?)
-        puts "All Cask dependencies satisfied."
-        return
-      end
-
-      not_installed = casks.reject(&:installed?)
-
-      ohai "Installing Cask dependencies: #{not_installed.map(&:to_s).join(", ")}"
-      not_installed.each do |cask|
-        Installer.new(
-          cask,
-          binaries:                binaries?,
-          verbose:                 verbose?,
-          installed_as_dependency: true,
-          force:                   false,
-        ).install
-      end
-    end
-
-    def unpack_dependencies
-      formulae = primary_container.dependencies.select { |dep| dep.is_a?(Formula) }
-      casks = primary_container.dependencies.select { |dep| dep.is_a?(Cask) }
-                               .flat_map { |cask| [*CaskDependencies.new(cask), cask] }
-
-      not_installed_formulae = formulae.reject(&:any_version_installed?)
-      not_installed_casks = casks.reject(&:installed?)
-
-      return if (not_installed_formulae + not_installed_casks).empty?
-
-      ohai "Satisfying unpack dependencies"
-
-      not_installed_formulae.each do |formula|
-        FormulaInstaller.new(formula).tap do |fi|
-          fi.installed_as_dependency = true
-          fi.installed_on_request = false
-          fi.show_header = true
-          fi.verbose = verbose?
-          fi.prelude
-          fi.install
-          fi.finish
-        end
-      end
-
-      not_installed_casks.each do |cask|
-        Installer.new(cask, verbose: verbose?, installed_as_dependency: true).install
       end
     end
 
@@ -413,6 +434,8 @@ module Cask
     end
 
     def finalize_upgrade
+      ohai "Purging files for version #{@cask.version} of Cask #{@cask}"
+
       purge_backed_up_versioned_files
 
       puts summary
@@ -473,8 +496,6 @@ module Cask
     end
 
     def purge_backed_up_versioned_files
-      ohai "Purging files for version #{@cask.version} of Cask #{@cask}"
-
       # versioned staged distribution
       gain_permissions_remove(backup_path) if backup_path&.exist?
 

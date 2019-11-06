@@ -11,13 +11,19 @@ module RuboCop
       class HomepageUrlTrailingSlash < Cop
         include OnHomepageStanza
 
-        MSG_NO_SLASH = "'%{url}' must have a slash after the domain."
+        MSG_NO_SLASH = "'%<url>s' must have a slash after the domain."
 
         def on_homepage_stanza(stanza)
           url_node = stanza.stanza_node.first_argument
-          url = url_node.str_content
 
-          return if url !~ %r{^.+://[^/]+$}
+          url = if url_node.dstr_type?
+            # Remove quotes from interpolated string.
+            url_node.source[1..-2]
+          else
+            url_node.str_content
+          end
+
+          return unless url&.match?(%r{^.+://[^/]+$})
 
           add_offense(url_node, location: :expression,
                                 message:  format(MSG_NO_SLASH, url: url))

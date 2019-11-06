@@ -3,7 +3,7 @@
 require: ./Homebrew/rubocops.rb
 
 AllCops:
-  TargetRubyVersion: 2.3
+  TargetRubyVersion: 2.6
   DisplayCopNames: false
 
 # Use `<<~` for heredocs.
@@ -45,9 +45,10 @@ Style/BarePercentLiterals:
 Style/CollectionMethods:
   Enabled: true
 
-# Prefer simple tokens without type annotations.
+# Prefer tokens with type annotations for consistency
+# between formatting numbers and strings.
 Style/FormatStringToken:
-  EnforcedStyle: template
+  EnforcedStyle: annotated
 
 # This shouldn't be enabled until LineLength is lower.
 Style/IfUnlessModifier:
