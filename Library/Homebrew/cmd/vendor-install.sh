@@ -18,7 +18,7 @@ then
   if [[ "$HOMEBREW_PROCESSOR" = "Intel" ]]
   then
     ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.6.3.mavericks.bottle.tar.gz"
-    ruby_URL2="https://github.com/cerisola/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.mavericks.bottle.tar.gz"
+    ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.mavericks.bottle.tar.gz"
     ruby_SHA="ab81211a2052ccaa6d050741c433b728d0641523d8742eef23a5b450811e5104"
   fi
 elif [[ -n "$HOMEBREW_LINUX" ]]
@@ -26,17 +26,17 @@ then
   case "$HOMEBREW_PROCESSOR" in
     x86_64)
       ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.6.3.x86_64_linux.bottle.tar.gz"
-      ruby_URL2="https://github.com/cerisola/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.x86_64_linux.bottle.tar.gz"
+      ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.x86_64_linux.bottle.tar.gz"
       ruby_SHA="e8c9b6d3dc5f40844e07b4b694897b8b7cb5a7dab1013b3b8712a22868f98c98"
       ;;
     aarch64)
       ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.6.3.aarch64_linux.bottle.tar.gz"
-      ruby_URL2="https://github.com/cerisola/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.aarch64_linux.bottle.tar.gz"
+      ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.aarch64_linux.bottle.tar.gz"
       ruby_SHA="c0b08e2835897af74948508a004d30380b8bcf14264e0dcce194e2c199fb1e35"
       ;;
     armv[67]*)
       ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.6.3.armv6_linux.bottle.tar.gz"
-      ruby_URL2="https://github.com/cerisola/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.armv6_linux.bottle.tar.gz"
+      ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.armv6_linux.bottle.tar.gz"
       ruby_SHA="78e36e4671fd08790bfbfda4408d559341c9872bf48a4f6eab78157a3bf3efa6"
       ;;
   esac
