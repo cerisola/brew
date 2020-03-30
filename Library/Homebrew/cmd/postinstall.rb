@@ -17,13 +17,14 @@ module Homebrew
       switch :force
       switch :verbose
       switch :debug
+      min_named :keg
     end
   end
 
   def postinstall
     postinstall_args.parse
 
-    ARGV.resolved_formulae.each do |f|
+    args.resolved_formulae.each do |f|
       ohai "Postinstalling #{f}"
       fi = FormulaInstaller.new(f)
       fi.post_install

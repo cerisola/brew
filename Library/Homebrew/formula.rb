@@ -6,6 +6,7 @@ require "lock_file"
 require "formula_pin"
 require "hardware"
 require "utils/bottles"
+require "utils/shebang"
 require "utils/shell"
 require "build_environment"
 require "build_options"
@@ -20,6 +21,7 @@ require "extend/ENV"
 require "language/python"
 require "tab"
 require "mktemp"
+require "find"
 
 # A formula provides instructions and metadata for Homebrew to install a piece
 # of software. Every Homebrew formula is a {Formula}.
@@ -49,6 +51,7 @@ require "mktemp"
 class Formula
   include FileUtils
   include Utils::Inreplace
+  include Utils::Shebang
   include Utils::Shell
   extend Enumerable
   extend Forwardable
@@ -324,7 +327,7 @@ class Formula
     active_spec == head
   end
 
-  delegate [ # rubocop:disable Layout/AlignHash
+  delegate [ # rubocop:disable Layout/HashAlignment
     :bottle_unneeded?,
     :bottle_disabled?,
     :bottle_disable_reason,
@@ -391,7 +394,7 @@ class Formula
       Formula[path.basename(".rb").to_s]
     rescue FormulaUnavailableError
       nil
-    end.compact.sort
+    end.compact.sort_by(&:version).reverse
   end
 
   # A named Resource for the currently active {SoftwareSpec}.
@@ -462,7 +465,7 @@ class Formula
   # This is actually just a check for if the {#installed_prefix} directory
   # exists and is not empty.
   # @private
-  def installed?
+  def latest_version_installed?
     (dir = installed_prefix).directory? && !dir.children.empty?
   end
 
@@ -505,7 +508,7 @@ class Formula
     return false unless head&.downloader.is_a?(VCSDownloadStrategy)
 
     downloader = head.downloader
-    downloader.shutup! unless ARGV.verbose?
+    downloader.shutup! unless Homebrew.args.verbose?
     downloader.commit_outdated?(version.version.commit)
   end
 
@@ -998,7 +1001,9 @@ class Formula
     with_env(new_env) do
       ENV.clear_sensitive_environment!
 
-      Pathname.glob("#{bottle_prefix}/{etc,var}/**/*") do |path|
+      etc_var_dirs = [bottle_prefix/"etc", bottle_prefix/"var"]
+      Find.find(*etc_var_dirs.select(&:directory?)) do |path|
+        path = Pathname.new(path)
         path.extend(InstallRenamed)
         path.cp_path_sub(bottle_prefix, HOMEBREW_PREFIX)
       end
@@ -1075,7 +1080,7 @@ class Formula
     # keg's formula is deleted.
     begin
       keg = Keg.for(path)
-    rescue NotAKegError, Errno::ENOENT # rubocop:disable Lint/HandleExceptions
+    rescue NotAKegError, Errno::ENOENT # rubocop:disable Lint/SuppressedException
       # file doesn't belong to any keg.
     else
       tab_tap = Tab.for_keg(keg).tap
@@ -1084,7 +1089,7 @@ class Formula
 
       begin
         Formulary.factory(keg.name)
-      rescue FormulaUnavailableError # rubocop:disable Lint/HandleExceptions
+      rescue FormulaUnavailableError # rubocop:disable Lint/SuppressedException
         # formula for this keg is deleted, so defer to whitelist
       rescue TapFormulaAmbiguityError, TapFormulaWithOldnameAmbiguityError
         return false # this keg belongs to another formula
@@ -1123,13 +1128,13 @@ class Formula
   def brew
     @prefix_returns_versioned_prefix = true
     stage do |staging|
-      staging.retain! if ARGV.keep_tmp?
+      staging.retain! if Homebrew.args.keep_tmp?
       prepare_patches
 
       begin
         yield self, staging
       rescue
-        staging.retain! if ARGV.interactive? || ARGV.debug?
+        staging.retain! if Homebrew.args.interactive? || ARGV.debug?
         raise
       ensure
         cp Dir["config.log", "CMakeCache.txt"], logs
@@ -1208,7 +1213,7 @@ class Formula
   end
 
   def new_formula_available?
-    installed_alias_target_changed? && !latest_formula.installed?
+    installed_alias_target_changed? && !latest_formula.latest_version_installed?
   end
 
   def current_installed_alias_target
@@ -1332,7 +1337,27 @@ class Formula
     # CMake cache entries for other weak symbols may be added here as needed.
     args << "-DHAVE_CLOCK_GETTIME:INTERNAL=0" if MacOS.version == "10.11" && MacOS::Xcode.version >= "8.0"
 
+    # Ensure CMake is using the same SDK we are using.
+    sdk = MacOS.sdk_path_if_needed
+    args << "-DCMAKE_OSX_SYSROOT=#{sdk}" if sdk
+
     args
+  end
+
+  # Standard parameters for Go builds.
+  def std_go_args
+    ["-trimpath", "-o", bin/name]
+  end
+
+  # Standard parameters for cabal-v2 builds.
+  def std_cabal_v2_args
+    # cabal-install's dependency-resolution backtracking strategy can
+    # easily need more than the default 2,000 maximum number of
+    # "backjumps," since Hackage is a fast-moving, rolling-release
+    # target. The highest known needed value by a formula was 43,478
+    # for git-annex, so 100,000 should be enough to avoid most
+    # gratuitous backjumps build failures.
+    ["--jobs=#{ENV.make_jobs}", "--max-backjumps=100000", "--install-method=copy", "--installdir=#{bin}"]
   end
 
   # an array of all core {Formula} names
@@ -1543,8 +1568,13 @@ class Formula
         Dependency.new full_name
       end.compact
     end
-    deps ||= declared_runtime_dependencies unless undeclared
-    deps ||= (declared_runtime_dependencies | undeclared_runtime_dependencies)
+    begin
+      deps ||= declared_runtime_dependencies unless undeclared
+      deps ||= (declared_runtime_dependencies | undeclared_runtime_dependencies)
+    rescue FormulaUnavailableError
+      onoe "could not get runtime dependencies from #{path}!"
+      deps ||= []
+    end
     deps
   end
 
@@ -1613,6 +1643,7 @@ class Formula
         "head"   => head&.version&.to_s,
         "bottle" => !bottle_specification.checksums.empty?,
       },
+      "urls"                     => {},
       "revision"                 => revision,
       "version_scheme"           => version_scheme,
       "bottle"                   => {},
@@ -1655,7 +1686,7 @@ class Formula
         "root_url" => bottle_spec.root_url,
       }
       bottle_info["files"] = {}
-      bottle_spec.collector.keys.each do |os|
+      bottle_spec.collector.each_key do |os|
         bottle_url = "#{bottle_spec.root_url}/#{Bottle::Filename.create(self, os, bottle_spec.rebuild).bintray}"
         checksum = bottle_spec.collector[os]
         bottle_info["files"][os] = {
@@ -1664,6 +1695,11 @@ class Formula
         }
       end
       hsh["bottle"][spec_sym] = bottle_info
+      hsh["urls"][spec_sym] = {
+        "url"      => spec.url,
+        "tag"      => spec.specs[:tag],
+        "revision" => spec.specs[:revision],
+      }
     end
 
     hsh["options"] = options.map do |opt|
@@ -1671,10 +1707,13 @@ class Formula
     end
 
     hsh["requirements"] = requirements.map do |req|
+      req.name.prepend("maximum_") if req.try(:comparator) == "<="
       {
         "name"     => req.name,
         "cask"     => req.cask,
         "download" => req.download,
+        "version"  => req.try(:version),
+        "contexts" => req.tags,
       }
     end
 
@@ -1725,9 +1764,10 @@ class Formula
     }
 
     ENV.clear_sensitive_environment!
+    Utils.set_git_name_email!
 
     mktemp("#{name}-test") do |staging|
-      staging.retain! if ARGV.keep_tmp?
+      staging.retain! if Homebrew.args.keep_tmp?
       @testpath = staging.tmpdir
       test_env[:HOME] = @testpath
       setup_home @testpath
@@ -1836,15 +1876,21 @@ class Formula
   # # If there is a "make", "install" available, please use it!
   # system "make", "install"</pre>
   def system(cmd, *args)
-    verbose = ARGV.verbose?
+    verbose = Homebrew.args.verbose?
     verbose_using_dots = !ENV["HOMEBREW_VERBOSE_USING_DOTS"].nil?
 
     # remove "boring" arguments so that the important ones are more likely to
     # be shown considering that we trim long ohai lines to the terminal width
     pretty_args = args.dup
-    if cmd == "./configure" && !verbose
-      pretty_args.delete "--disable-dependency-tracking"
-      pretty_args.delete "--disable-debug"
+    unless verbose
+      case cmd
+      when "./configure"
+        pretty_args -= %w[--disable-dependency-tracking --disable-debug --disable-silent-rules]
+      when "cmake"
+        pretty_args -= std_cmake_args
+      when "go"
+        pretty_args -= std_go_args
+      end
     end
     pretty_args.each_index do |i|
       pretty_args[i] = "import setuptools..." if pretty_args[i].to_s.start_with? "import setuptools"
@@ -1929,7 +1975,7 @@ class Formula
   # @private
   def eligible_kegs_for_cleanup(quiet: false)
     eligible_for_cleanup = []
-    if installed?
+    if latest_version_installed?
       eligible_kegs = if head? && (head_prefix = latest_head_prefix)
         installed_kegs - [Keg.new(head_prefix)]
       else
@@ -2040,7 +2086,7 @@ class Formula
         HOMEBREW_PATH: nil,
       }
 
-      unless ARGV.interactive?
+      unless Homebrew.args.interactive?
         stage_env[:HOME] = env_home
         stage_env[:_JAVA_OPTIONS] =
           "#{ENV["_JAVA_OPTIONS"]&.+(" ")}-Duser.home=#{HOMEBREW_CACHE}/java_cache"
@@ -2361,14 +2407,12 @@ class Formula
     # depends_on "postgresql" if build.without? "sqlite"</pre>
     # <pre># Python 3.x if the `--with-python` is given to `brew install example`
     # depends_on "python3" => :optional</pre>
-    # <pre># Python 2.7:
-    # depends_on "python@2"</pre>
     def depends_on(dep)
       specs.each { |spec| spec.depends_on(dep) }
     end
 
-    def uses_from_macos(dep, **args)
-      specs.each { |spec| spec.uses_from_macos(dep, args) }
+    def uses_from_macos(dep)
+      specs.each { |spec| spec.uses_from_macos(dep) }
     end
 
     # @!attribute [w] option

@@ -64,6 +64,15 @@ module RuboCop
 
             problem "Commented-out dependency #{Regexp.last_match(1)}"
           end
+
+          return if formula_tap != "homebrew-core"
+
+          # Citation and tag comments from third-party taps
+          audit_comments do |comment|
+            next if comment !~ /#\s*(cite(?=\s*\w+:)|doi(?=\s*['"])|tag(?=\s*['"]))/
+
+            problem "Formulae in homebrew/core should not use `#{Regexp.last_match(1)}` comments"
+          end
         end
       end
 
@@ -148,6 +157,16 @@ module RuboCop
 
             problem "Reference '#{match[1]}' without dashes"
           end
+
+          return if formula_tap != "homebrew-core"
+
+          # Use of build.with? implies options, which are forbidden in homebrew/core
+          find_instance_method_call(body_node, :build, :without?) do
+            problem "Formulae in homebrew/core should not use `build.without?`."
+          end
+          find_instance_method_call(body_node, :build, :with?) do
+            problem "Formulae in homebrew/core should not use `build.with?`."
+          end
         end
 
         def unless_modifier?(node)
@@ -163,7 +182,8 @@ module RuboCop
           return unless formula_tap == "homebrew-core"
 
           find_method_with_args(body_node, :depends_on, "mpich") do
-            problem "Use 'depends_on \"open-mpi\"' instead of '#{@offensive_node.source}'."
+            problem "Formulae in homebrew/core should use 'depends_on \"open-mpi\"' " \
+            "instead of '#{@offensive_node.source}'."
           end
         end
 
@@ -201,7 +221,7 @@ module RuboCop
             next if formula_tap != "homebrew-core" || file_path&.include?("linuxbrew")
 
             find_instance_method_call(body_node, "OS", method_name) do |check|
-              problem "Don't use #{check.source}; Homebrew/core only supports macOS"
+              problem "Don't use #{check.source}; homebrew/core only supports macOS"
             end
           end
 
@@ -398,6 +418,42 @@ module RuboCop
             next unless match = regex_match_group(param, fileutils_methods)
 
             problem "Use the `#{match}` Ruby method instead of `#{method.source}`"
+          end
+
+          return if formula_tap != "homebrew-core"
+
+          # Avoid build-time checks in homebrew/core
+          find_every_method_call_by_name(body_node, :system).each do |method|
+            next if @formula_name.start_with?("lib")
+            next if %w[
+              beecrypt
+              ccrypt
+              git
+              gmp
+              gnupg
+              gnupg@1.4
+              google-sparsehash
+              jemalloc
+              jpeg-turbo
+              mpfr
+              open-mpi
+              openssl@1.1
+              pcre
+              protobuf
+              wolfssl
+              xz
+            ].include?(@formula_name)
+
+            params = parameters(method)
+            next unless node_equals?(params[0], "make")
+
+            params[1..].each do |arg|
+              next unless regex_match_group(arg, /^(checks?|tests?)$/)
+
+              offending_node(method)
+              problem "Formulae in homebrew/core (except e.g. cryptography, libraries) " \
+                      "should not run build-time checks"
+            end
           end
         end
 

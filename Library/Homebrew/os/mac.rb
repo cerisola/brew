@@ -58,10 +58,6 @@ module OS
       version > latest_stable_version
     end
 
-    def cat
-      version.to_sym
-    end
-
     def languages
       @languages ||= [
         *ARGV.value("language")&.split(","),
@@ -85,23 +81,14 @@ module OS
     #      are available) is returned.
     #   3. If no SDKs are available, nil is returned.
     #
-    # If no specific SDK is requested:
-    #
-    #   1. For Xcode >= 7, the latest SDK is returned even if the latest SDK is
-    #      named after a newer OS version than the running OS. The
-    #      `MACOSX_DEPLOYMENT_TARGET` must be set to the OS for which you're
-    #      actually building (usually the running OS version).
-    #      - https://github.com/Homebrew/legacy-homebrew/pull/50355
-    #      - https://developer.apple.com/library/ios/documentation/DeveloperTools/Conceptual/WhatsNewXcode/Articles/Introduction.html#//apple_ref/doc/uid/TP40004626
-    #      Section "About SDKs and Simulator"
-    #   2. For Xcode < 7, proceed as if the SDK for the running OS version had
-    #      specifically been requested according to the rules above.
+    # If no specific SDK is requested, the SDK matching the OS version is returned,
+    # if available. Otherwise, the latest SDK is returned.
 
     def sdk(v = nil)
-      @locator ||= if Xcode.installed?
-        XcodeSDKLocator.new
-      else
+      @locator ||= if CLT.installed? && CLT.provides_sdk?
         CLTSDKLocator.new
+      else
+        XcodeSDKLocator.new
       end
 
       @locator.sdk_if_applicable(v)
@@ -114,7 +101,7 @@ module OS
     end
 
     def sdk_path_if_needed(v = nil)
-      # Prefer Xcode SDK when both Xcode and the CLT are installed.
+      # Prefer CLT SDK when both Xcode and the CLT are installed.
       # Expected results:
       # 1. On Xcode-only systems, return the Xcode SDK.
       # 2. On Xcode-and-CLT systems where headers are provided by the system, return nil.
@@ -124,7 +111,7 @@ module OS
 
       # If there's no CLT SDK, return early
       return if MacOS::CLT.installed? && !MacOS::CLT.provides_sdk?
-      # If the CLT is installed and provides headers, return early
+      # If the CLT is installed and headers are provided by the system, return early
       return if MacOS::CLT.installed? && !MacOS::CLT.separate_header_package?
 
       sdk_path(v)
@@ -170,62 +157,6 @@ module OS
       else
         Hardware::CPU.arch_32_bit
       end
-    end
-
-    STANDARD_COMPILERS = {
-      "6.0"    => { clang: "6.0", clang_build: 600 },
-      "6.0.1"  => { clang: "6.0", clang_build: 600 },
-      "6.1"    => { clang: "6.0", clang_build: 600 },
-      "6.1.1"  => { clang: "6.0", clang_build: 600 },
-      "6.2"    => { clang: "6.0", clang_build: 600 },
-      "6.3"    => { clang: "6.1", clang_build: 602 },
-      "6.3.1"  => { clang: "6.1", clang_build: 602 },
-      "6.3.2"  => { clang: "6.1", clang_build: 602 },
-      "6.4"    => { clang: "6.1", clang_build: 602 },
-      "7.0"    => { clang: "7.0", clang_build: 700 },
-      "7.0.1"  => { clang: "7.0", clang_build: 700 },
-      "7.1"    => { clang: "7.0", clang_build: 700 },
-      "7.1.1"  => { clang: "7.0", clang_build: 700 },
-      "7.2"    => { clang: "7.0", clang_build: 700 },
-      "7.2.1"  => { clang: "7.0", clang_build: 700 },
-      "7.3"    => { clang: "7.3", clang_build: 703 },
-      "7.3.1"  => { clang: "7.3", clang_build: 703 },
-      "8.0"    => { clang: "8.0", clang_build: 800 },
-      "8.1"    => { clang: "8.0", clang_build: 800 },
-      "8.2"    => { clang: "8.0", clang_build: 800 },
-      "8.2.1"  => { clang: "8.0", clang_build: 800 },
-      "8.3"    => { clang: "8.1", clang_build: 802 },
-      "8.3.1"  => { clang: "8.1", clang_build: 802 },
-      "8.3.2"  => { clang: "8.1", clang_build: 802 },
-      "8.3.3"  => { clang: "8.1", clang_build: 802 },
-      "9.0"    => { clang: "9.0", clang_build: 900 },
-      "9.0.1"  => { clang: "9.0", clang_build: 900 },
-      "9.1"    => { clang: "9.0", clang_build: 900 },
-      "9.2"    => { clang: "9.0", clang_build: 900 },
-      "9.3"    => { clang: "9.1", clang_build: 902 },
-      "9.4"    => { clang: "9.1", clang_build: 902 },
-      "10.0"   => { clang: "10.0", clang_build: 1000 },
-      "10.1"   => { clang: "10.0", clang_build: 1000 },
-      "10.2"   => { clang: "10.0", clang_build: 1001 },
-      "10.2.1" => { clang: "10.0", clang_build: 1001 },
-      "11.0"   => { clang: "11.0", clang_build: 1100 },
-    }.freeze
-
-    def compilers_standard?
-      STANDARD_COMPILERS.fetch(Xcode.version.to_s).all? do |method, build|
-        send(:"#{method}_version") == build
-      end
-    rescue IndexError
-      onoe <<~EOS
-        Homebrew doesn't know what compiler versions ship with your version
-        of Xcode (#{Xcode.version}). Please `brew update` and if that doesn't
-        help, file an issue with the output of `brew --config`:
-          #{Formatter.url("https://github.com/cerisola/brew/issues")}
-
-        Note that we only track stable, released versions of Xcode.
-
-        Thanks!
-      EOS
     end
 
     def app_with_bundle_id(*ids)

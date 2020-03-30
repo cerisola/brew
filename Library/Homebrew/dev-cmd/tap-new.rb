@@ -15,15 +15,14 @@ module Homebrew
       EOS
       switch :verbose
       switch :debug
+      named 1
     end
   end
 
   def tap_new
     tap_new_args.parse
 
-    raise "A tap argument is required" if ARGV.named.empty?
-
-    tap = Tap.fetch(ARGV.named.first)
+    tap = Tap.fetch(args.named.first)
     titleized_user = tap.user.dup
     titleized_repo = tap.repo.dup
     titleized_user[0] = titleized_user[0].upcase
@@ -50,24 +49,31 @@ module Homebrew
     MARKDOWN
     write_path(tap, "README.md", readme)
 
-    azure = <<~YAML
+    actions = <<~YAML
+      name: brew test-bot
+      on:
+        push:
+          branches: master
+        pull_request: []
       jobs:
-      - job: macOS
-        pool:
-          vmImage: macOS-10.14
-        steps:
-          - bash: |
-              set -e
-              sudo xcode-select --switch /Applications/Xcode_10.2.1.app/Contents/Developer
-              brew update
-              HOMEBREW_TAP_DIR="/usr/local/Homebrew/Library/Taps/#{tap.full_name}"
-              mkdir -p "$HOMEBREW_TAP_DIR"
-              rm -rf "$HOMEBREW_TAP_DIR"
-              ln -s "$PWD" "$HOMEBREW_TAP_DIR"
-              brew test-bot
-            displayName: Run brew test-bot
+        test-bot:
+          runs-on: macos-latest
+          steps:
+            - name: Set up Git repository
+              uses: actions/checkout@v2
+            - name: Run brew test-bot
+              run: |
+                set -e
+                brew update
+                HOMEBREW_TAP_DIR="/usr/local/Homebrew/Library/Taps/#{tap.full_name}"
+                mkdir -p "$HOMEBREW_TAP_DIR"
+                rm -rf "$HOMEBREW_TAP_DIR"
+                ln -s "$PWD" "$HOMEBREW_TAP_DIR"
+                brew test-bot
     YAML
-    write_path(tap, "azure-pipelines.yml", azure)
+
+    (tap.path/".github/workflows").mkpath
+    write_path(tap, ".github/workflows/main.yml", actions)
     ohai "Created #{tap}"
     puts tap.path.to_s
   end

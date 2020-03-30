@@ -23,14 +23,6 @@ git() {
 }
 
 git_init_if_necessary() {
-  BREW_OFFICIAL_REMOTE="https://github.com/cerisola/brew"
-  if [[ -n "$HOMEBREW_MACOS" ]] || [[ -n "$HOMEBREW_FORCE_HOMEBREW_ON_LINUX" ]]
-  then
-    CORE_OFFICIAL_REMOTE="https://github.com/cerisola/homebrew-core"
-  else
-    CORE_OFFICIAL_REMOTE="https://github.com/cerisola/linuxbrew-core"
-  fi
-
   safe_cd "$HOMEBREW_REPOSITORY"
   if [[ ! -d ".git" ]]
   then
@@ -38,7 +30,11 @@ git_init_if_necessary() {
     trap '{ rm -rf .git; exit 1; }' EXIT
     git init
     git config --bool core.autocrlf false
-    git config remote.origin.url "$BREW_OFFICIAL_REMOTE"
+    if [[ "$HOMEBREW_DEFAULT_BREW_GIT_REMOTE" != "$HOMEBREW_BREW_GIT_REMOTE" ]]
+    then
+      echo "HOMEBREW_BREW_GIT_REMOTE set: using $HOMEBREW_BREW_GIT_REMOTE for Homebrew/brew Git remote URL."
+    fi
+    git config remote.origin.url "$HOMEBREW_BREW_GIT_REMOTE"
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
     latest_tag="$(git ls-remote --tags --refs -q origin | tail -n1 | cut -f2)"
     git fetch --force origin --shallow-since="$latest_tag"
@@ -56,7 +52,11 @@ git_init_if_necessary() {
     trap '{ rm -rf .git; exit 1; }' EXIT
     git init
     git config --bool core.autocrlf false
-    git config remote.origin.url "$CORE_OFFICIAL_REMOTE"
+    if [[ "$HOMEBREW_DEFAULT_CORE_GIT_REMOTE" != "$HOMEBREW_CORE_GIT_REMOTE" ]]
+    then
+      echo "HOMEBREW_CORE_GIT_REMOTE set: using $HOMEBREW_CORE_GIT_REMOTE for Homebrew/core Git remote URL."
+    fi
+    git config remote.origin.url "$HOMEBREW_CORE_GIT_REMOTE"
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
     git fetch --force --depth=1 origin refs/heads/master:refs/remotes/origin/master
     git reset --hard origin/master
@@ -314,7 +314,7 @@ homebrew-update() {
       *)
         odie <<EOS
 This command updates brew itself, and does not take formula names.
-Use 'brew upgrade $@' instead.
+Use \`brew upgrade $@\` instead.
 EOS
         ;;
     esac
@@ -383,6 +383,18 @@ EOS
   export GIT_TERMINAL_PROMPT="0"
   export GIT_SSH_COMMAND="ssh -oBatchMode=yes"
 
+  if [[ -n "$HOMEBREW_GIT_NAME" ]]
+  then
+    export GIT_AUTHOR_NAME="$HOMEBREW_GIT_NAME"
+    export GIT_COMMITTER_NAME="$HOMEBREW_GIT_NAME"
+  fi
+
+  if [[ -n "$HOMEBREW_GIT_EMAIL" ]]
+  then
+    export GIT_AUTHOR_EMAIL="$HOMEBREW_GIT_EMAIL"
+    export GIT_COMMITTER_EMAIL="$HOMEBREW_GIT_EMAIL"
+  fi
+
   if [[ -z "$HOMEBREW_VERBOSE" ]]
   then
     QUIET_ARGS=(-q)
@@ -402,6 +414,26 @@ EOS
 
   git_init_if_necessary
 
+  if [[ "$HOMEBREW_DEFAULT_BREW_GIT_REMOTE" != "$HOMEBREW_BREW_GIT_REMOTE" ]]
+  then
+    safe_cd "$HOMEBREW_REPOSITORY"
+    echo "HOMEBREW_BREW_GIT_REMOTE set: using $HOMEBREW_BREW_GIT_REMOTE for Homebrew/brew Git remote."
+    git remote set-url origin "$HOMEBREW_BREW_GIT_REMOTE"
+    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+    latest_tag="$(git ls-remote --tags --refs -q origin | tail -n1 | cut -f2)"
+    git fetch --force origin --shallow-since="$latest_tag"
+  fi
+
+  if [[ "$HOMEBREW_DEFAULT_CORE_GIT_REMOTE" != "$HOMEBREW_CORE_GIT_REMOTE" ]] &&
+     [[ -d "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core" ]]
+  then
+    safe_cd "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core"
+    echo "HOMEBREW_CORE_GIT_REMOTE set: using $HOMEBREW_CORE_GIT_REMOTE for Homebrew/brew Git remote."
+    git remote set-url origin "$HOMEBREW_CORE_GIT_REMOTE"
+    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+    git fetch --force --depth=1 origin refs/heads/master:refs/remotes/origin/master
+  fi
+
   safe_cd "$HOMEBREW_REPOSITORY"
 
   # if an older system had a newer curl installed, change each repo's remote URL from GIT to HTTPS
@@ -409,8 +441,8 @@ EOS
         -x "$HOMEBREW_PREFIX/opt/curl/bin/curl" &&
         "$(git config remote.origin.url)" =~ ^git:// ]]
   then
-    git config remote.origin.url "$BREW_OFFICIAL_REMOTE"
-    git config -f "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core/.git/config" remote.origin.url "$CORE_OFFICIAL_REMOTE"
+    git config remote.origin.url "$HOMEBREW_BREW_GIT_REMOTE"
+    git config -f "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core/.git/config" remote.origin.url "$HOMEBREW_CORE_GIT_REMOTE"
   fi
 
   # kill all of subprocess on interrupt
@@ -511,7 +543,7 @@ EOS
           if [[ "$UPSTREAM_SHA_HTTP_CODE" = "404" ]]
           then
             TAP="${DIR#$HOMEBREW_LIBRARY/Taps/}"
-            echo "$TAP does not exist! Run 'brew untap $TAP'" >>"$update_failed_file"
+            echo "$TAP does not exist! Run \`brew untap $TAP\` to remove it." >>"$update_failed_file"
           else
             echo "Fetching $DIR failed!" >>"$update_failed_file"
           fi

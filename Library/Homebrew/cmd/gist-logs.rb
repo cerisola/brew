@@ -28,12 +28,11 @@ module Homebrew
                           "be accessible with its link."
       switch :verbose
       switch :debug
+      max_named 1
     end
   end
 
   def gistify_logs(f)
-    gist_logs_args.parse
-
     files = load_logs(f.logs)
     build_time = f.logs.ctime
     timestamp = build_time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -64,10 +63,10 @@ module Homebrew
     end
 
     # Description formatted to work well as page title when viewing gist
-    if f.core_formula?
-      descr = "#{f.name} on #{OS_VERSION} - Homebrew build logs"
+    descr = if f.core_formula?
+      "#{f.name} on #{OS_VERSION} - Homebrew build logs"
     else
-      descr = "#{f.name} (#{f.full_name}) on #{OS_VERSION} - Homebrew build logs"
+      "#{f.name} (#{f.full_name}) on #{OS_VERSION} - Homebrew build logs"
     end
     url = create_gist(files, descr)
 
@@ -141,10 +140,12 @@ module Homebrew
   end
 
   def gist_logs
-    raise FormulaUnspecifiedError if ARGV.resolved_formulae.length != 1
+    gist_logs_args.parse
+
+    raise FormulaUnspecifiedError if args.resolved_formulae.length != 1
 
     Install.perform_preinstall_checks(all_fatal: true)
     Install.perform_build_from_source_checks(all_fatal: true)
-    gistify_logs(ARGV.resolved_formulae.first)
+    gistify_logs(args.resolved_formulae.first)
   end
 end

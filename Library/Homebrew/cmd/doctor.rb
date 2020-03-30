@@ -18,7 +18,8 @@ module Homebrew
         an issue; just ignore this.
       EOS
       switch "--list-checks",
-             description: "List all audit methods."
+             description: "List all audit methods, which can be run individually "\
+                          "if provided as arguments."
       switch "-D", "--audit-debug",
              description: "Enable debugging and profiling of audit methods."
       switch :verbose
@@ -38,19 +39,19 @@ module Homebrew
       exit
     end
 
-    if ARGV.named.empty?
+    if args.no_named?
       slow_checks = %w[
         check_for_broken_symlinks
         check_missing_deps
       ]
       methods = (checks.all.sort - slow_checks) + slow_checks
     else
-      methods = ARGV.named
+      methods = args.named
     end
 
     first_warning = true
     methods.each do |method|
-      $stderr.puts "Checking #{method}" if args.debug?
+      $stderr.puts Formatter.headline("Checking #{method}", color: :magenta) if args.debug?
       unless checks.respond_to?(method)
         Homebrew.failed = true
         puts "No check available by the name: #{method}"

@@ -26,7 +26,6 @@ module Language
     def self.each_python(build, &block)
       original_pythonpath = ENV["PYTHONPATH"]
       pythons = { "python@3" => "python3",
-                  "python@2" => "python2.7",
                   "pypy"     => "pypy",
                   "pypy3"    => "pypy3" }
       pythons.each do |python_formula, python|
@@ -88,13 +87,41 @@ module Language
       ]
     end
 
+    # Mixin module for {Formula} adding shebang rewrite features.
+    module Shebang
+      module_function
+
+      # @private
+      def python_shebang_rewrite_info(python_path)
+        Utils::Shebang::RewriteInfo.new(
+          %r{^#! ?/usr/bin/(env )?python([23](\.\d{1,2})?)?$},
+          28, # the length of "#! /usr/bin/env pythonx.yyy$"
+          python_path,
+        )
+      end
+
+      def detected_python_shebang(formula = self)
+        python_deps = formula.deps.map(&:name).grep(/^python(@.*)?$/)
+
+        raise "Cannot detect Python shebang: formula does not depend on Python." if python_deps.empty?
+        raise "Cannot detect Python shebang: formula has multiple Python dependencies." if python_deps.length > 1
+
+        python_shebang_rewrite_info(Formula[python_deps.first].opt_bin/"python3")
+      end
+    end
+
     # Mixin module for {Formula} adding virtualenv support features.
     module Virtualenv
       def self.included(base)
         base.class_eval do
           resource "homebrew-virtualenv" do
-            url PYTHON_VIRTUALENV_URL
-            sha256 PYTHON_VIRTUALENV_SHA256
+            if MacOS.version > :mojave
+              url PYTHON_VIRTUALENV_URL
+              sha256 PYTHON_VIRTUALENV_SHA256
+            else
+              url PYTHON_VIRTUALENV_URL_MOJAVE
+              sha256 PYTHON_VIRTUALENV_SHA256_MOJAVE
+            end
           end
         end
       end
@@ -147,16 +174,17 @@ module Language
       # Creates a virtualenv in `libexec`, installs all `resource`s defined
       # on the formula, and then installs the formula. An options hash may be
       # passed (e.g., `:using => "python"`) to override the default, guessed
-      # formula preference for python or python2, or to resolve an ambiguous
-      # case where it's not clear whether python or python2 should be the
+      # formula preference for python or python@x.y, or to resolve an ambiguous
+      # case where it's not clear whether python or python@x.y should be the
       # default guess.
       def virtualenv_install_with_resources(options = {})
         python = options[:using]
         if python.nil?
-          wanted = %w[python python@2 python2 python3 python@3 pypy pypy3].select { |py| needs_python?(py) }
+          pythons = %w[python python3 python@3 python@3.8 pypy pypy3]
+          wanted = pythons.select { |py| needs_python?(py) }
           raise FormulaAmbiguousPythonError, self if wanted.size > 1
 
-          python = wanted.first || "python2.7"
+          python = wanted.first
           python = "python3" if python == "python"
         end
         venv = virtualenv_create(libexec, python.delete("@"))
@@ -204,16 +232,21 @@ module Language
             next unless f.symlink?
             next unless (rp = f.realpath.to_s).start_with? HOMEBREW_CELLAR
 
-            python = rp.include?("python@2") ? "python@2" : "python"
-            new_target = rp.sub %r{#{HOMEBREW_CELLAR}/#{python}/[^/]+}, Formula[python].opt_prefix
+            version = rp.match %r{^#{HOMEBREW_CELLAR}/python@(.*?)/}
+            version = "@#{version.captures.first}" unless version.nil?
+
+            new_target = rp.sub %r{#{HOMEBREW_CELLAR}/python#{version}/[^/]+}, Formula["python#{version}"].opt_prefix
             f.unlink
             f.make_symlink new_target
           end
 
           Pathname.glob(@venv_root/"lib/python*/orig-prefix.txt").each do |prefix_file|
             prefix_path = prefix_file.read
-            python = prefix_path.include?("python@2") ? "python@2" : "python"
-            prefix_path.sub! %r{^#{HOMEBREW_CELLAR}/#{python}/[^/]+}, Formula[python].opt_prefix
+
+            version = prefix_path.match %r{^#{HOMEBREW_CELLAR}/python@(.*?)/}
+            version = "@#{version.captures.first}" unless version.nil?
+
+            prefix_path.sub! %r{^#{HOMEBREW_CELLAR}/python#{version}/[^/]+}, Formula["python#{version}"].opt_prefix
             prefix_file.atomic_write prefix_path
           end
         end

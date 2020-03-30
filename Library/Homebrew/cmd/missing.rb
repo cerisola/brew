@@ -27,12 +27,13 @@ module Homebrew
 
   def missing
     missing_args.parse
+
     return unless HOMEBREW_CELLAR.exist?
 
-    ff = if ARGV.named.empty?
+    ff = if args.no_named?
       Formula.installed.sort
     else
-      ARGV.resolved_formulae.sort
+      args.resolved_formulae.sort
     end
 
     ff.each do |f|

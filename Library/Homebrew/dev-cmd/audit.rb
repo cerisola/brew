@@ -57,7 +57,8 @@ module Homebrew
       switch :verbose
       switch :debug
       conflicts "--only", "--except"
-      conflicts "--only-cops", "--except-cops"
+      conflicts "--only-cops", "--except-cops", "--strict"
+      conflicts "--only-cops", "--except-cops", "--only"
     end
   end
 
@@ -78,23 +79,16 @@ module Homebrew
     ENV.activate_extensions!
     ENV.setup_build_environment
 
-    if ARGV.named.empty?
+    if args.no_named?
       ff = Formula
       files = Tap.map(&:formula_dir)
     else
-      ff = ARGV.resolved_formulae
-      files = ARGV.resolved_formulae.map(&:path)
+      ff = args.resolved_formulae
+      files = args.resolved_formulae.map(&:path)
     end
 
     only_cops = args.only_cops
     except_cops = args.except_cops
-
-    if only_cops && except_cops
-      odie "--only-cops and --except-cops cannot be used simultaneously!"
-    elsif (only_cops || except_cops) && (strict || args.only)
-      odie "--only-cops/--except-cops and --strict/--only cannot be used simultaneously!"
-    end
-
     options = { fix: args.fix? }
 
     if only_cops
@@ -225,7 +219,7 @@ module Homebrew
       @except = options[:except]
       # Accept precomputed style offense results, for efficiency
       @style_offenses = options[:style_offenses]
-      # Allow the formula tap to be set as `core`, for testing purposes
+      # Allow the formula tap to be set as homebrew/core, for testing purposes
       @core_tap = formula.tap&.core_tap? || options[:core_tap]
       @problems = []
       @new_formula_problems = []
@@ -248,15 +242,26 @@ module Homebrew
     end
 
     def audit_file
-      # Under normal circumstances (umask 0022), we expect a file mode of 644. If
-      # the user's umask is more restrictive, respect that by masking out the
-      # corresponding bits. (The also included 0100000 flag means regular file.)
-      wanted_mode = 0100644 & ~File.umask
       actual_mode = formula.path.stat.mode
-      unless actual_mode == wanted_mode
-        problem format("Incorrect file permissions (%03<actual>o): chmod %03<wanted>o %<path>s",
+      # Check that the file is world-readable.
+      if actual_mode & 0444 != 0444
+        problem format("Incorrect file permissions (%03<actual>o): chmod %<wanted>s %<path>s",
                        actual: actual_mode & 0777,
-                       wanted: wanted_mode & 0777,
+                       wanted: "+r",
+                       path:   formula.path)
+      end
+      # Check that the file is user-writeable.
+      if actual_mode & 0200 != 0200
+        problem format("Incorrect file permissions (%03<actual>o): chmod %<wanted>s %<path>s",
+                       actual: actual_mode & 0777,
+                       wanted: "u+w",
+                       path:   formula.path)
+      end
+      # Check that the file is *not* other-writeable.
+      if actual_mode & 0002 == 002
+        problem format("Incorrect file permissions (%03<actual>o): chmod %<wanted>s %<path>s",
+                       actual: actual_mode & 0777,
+                       wanted: "o-w",
                        path:   formula.path)
       end
 
@@ -287,7 +292,7 @@ module Homebrew
           unversioned_name = unversioned_formula.basename(".rb")
           problem "#{formula} is versioned but no #{unversioned_name} formula exists"
         end
-      elsif ARGV.build_stable? && formula.stable? &&
+      elsif Homebrew.args.build_stable? && formula.stable? &&
             !(versioned_formulae = formula.versioned_formulae).empty?
         versioned_aliases = formula.aliases.grep(/.@\d/)
         _, last_alias_version = versioned_formulae.map(&:name).last.split("@")
@@ -341,15 +346,15 @@ module Homebrew
 
       name = formula.name
 
-      problem "'#{name}' is blacklisted." if MissingFormula.blacklisted_reason(name)
+      problem "'#{name}' is blacklisted from homebrew/core." if MissingFormula.blacklisted_reason(name)
 
       if Formula.aliases.include? name
-        problem "Formula name conflicts with existing aliases."
+        problem "Formula name conflicts with existing aliases in homebrew/core."
         return
       end
 
       if oldname = CoreTap.instance.formula_renames[name]
-        problem "'#{name}' is reserved as the old name of #{oldname}"
+        problem "'#{name}' is reserved as the old name of #{oldname} in homebrew/core."
         return
       end
 
@@ -386,7 +391,8 @@ module Homebrew
 
           if self.class.aliases.include?(dep.name) &&
              (dep_f.core_formula? || !dep_f.versioned_formula?)
-            problem "Dependency '#{dep.name}' is an alias; use the canonical name '#{dep.to_formula.full_name}'."
+            problem "Dependency '#{dep.name}' from homebrew/core is an alias; " \
+            "use the canonical name '#{dep.to_formula.full_name}'."
           end
 
           if @new_formula &&
@@ -413,21 +419,21 @@ module Homebrew
             problem "Dependency #{dep} does not define option #{opt.name.inspect}"
           end
 
-          problem "Don't use git as a dependency (it's always available)" if dep.name == "git"
+          problem "Don't use git as a dependency (it's always available)" if @new_formula && dep.name == "git"
 
           problem "Dependency '#{dep.name}' is marked as :run. Remove :run; it is a no-op." if dep.tags.include?(:run)
 
           next unless @core_tap
 
           if dep.tags.include?(:recommended) || dep.tags.include?(:optional)
-            problem "Formulae should not have optional or recommended dependencies"
+            problem "Formulae in homebrew/core should not have optional or recommended dependencies"
           end
         end
 
         next unless @core_tap
 
         if spec.requirements.map(&:recommended?).any? || spec.requirements.map(&:optional?).any?
-          problem "Formulae should not have optional or recommended requirements"
+          problem "Formulae in homebrew/core should not have optional or recommended requirements"
         end
       end
     end
@@ -491,7 +497,7 @@ module Homebrew
       begin
         Formula[previous_formula_name]
       rescue FormulaUnavailableError
-        problem "Versioned #{previous_formula_name} must be created for " \
+        problem "Versioned #{previous_formula_name} in homebrew/core must be created for " \
                 "`brew-postgresql-upgrade-database` and `pg_upgrade` to work."
       end
     end
@@ -513,13 +519,13 @@ module Homebrew
         bash-completion@2
         gnupg@1.4
         lua@5.1
-        python@2
         numpy@1.16
+        libsigc++@2
       ].freeze
 
       return if keg_only_whitelist.include?(formula.name) || formula.name.start_with?("gcc@")
 
-      problem "Versioned formulae should use `keg_only :versioned_formula`"
+      problem "Versioned formulae in homebrew/core should use `keg_only :versioned_formula`"
     end
 
     def audit_homepage
@@ -548,7 +554,7 @@ module Homebrew
 
       return unless formula.bottle_defined?
 
-      new_formula_problem "New formulae should not have a `bottle do` block"
+      new_formula_problem "New formulae in homebrew/core should not have a `bottle do` block"
     end
 
     def audit_bottle_disabled
@@ -559,7 +565,7 @@ module Homebrew
 
       return unless @core_tap
 
-      problem "Formulae should not use `bottle :disabled`"
+      problem "Formulae in homebrew/core should not use `bottle :disabled`"
     end
 
     def audit_github_repository
@@ -667,6 +673,8 @@ module Homebrew
         problems.concat ra.problems.map { |problem| "#{name}: #{problem}" }
 
         spec.resources.each_value do |resource|
+          problem "Resource name should be different from the formula name" if resource.name == formula.name
+
           ra = ResourceAuditor.new(resource, spec_name, online: @online, strict: @strict).audit
           problems.concat ra.problems.map { |problem|
             "#{name} resource #{resource.name.inspect}: #{problem}"
@@ -702,21 +710,20 @@ module Homebrew
 
       return unless @core_tap
 
-      problem "Formulae should not have a `devel` spec" if formula.devel
+      problem "Formulae in homebrew/core should not have a `devel` spec" if formula.devel
 
       if formula.head && @versioned_formula
         head_spec_message = "Formulae should not have a `HEAD` spec"
         versioned_head_spec = %w[
           bash-completion@2
           imagemagick@6
-          python@2
         ]
         problem head_spec_message unless versioned_head_spec.include?(formula.name)
       end
 
       throttled = %w[
         aws-sdk-cpp 10
-        awscli 10
+        awscli@1 10
         quicktype 10
         vim 50
       ]
@@ -756,6 +763,7 @@ module Homebrew
         gtk-mac-integration 2.1.3
         gtk-doc 1.31
         gcab 1.3
+        libepoxy 1.5.4
       ].each_slice(2).to_a.map do |formula, version|
         [formula, version.split(".")[0..1].join(".")]
       end
@@ -948,15 +956,13 @@ module Homebrew
         problem "`Use :optional` or `:recommended` instead of `#{Regexp.last_match(0)}`"
       end
 
-      return unless line =~ %r{share(\s*[/+]\s*)(['"])#{Regexp.escape(formula.name)}(?:\2|/)}
-
-      problem "Use pkgshare instead of (share#{Regexp.last_match(1)}\"#{formula.name}\")"
+      if line =~ %r{share(\s*[/+]\s*)(['"])#{Regexp.escape(formula.name)}(?:\2|/)}
+        problem "Use pkgshare instead of (share#{Regexp.last_match(1)}\"#{formula.name}\")"
+      end
 
       return unless @core_tap
 
-      return unless line.include?("env :std")
-
-      problem "`env :std` in `core` formulae is deprecated"
+      problem "`env :std` in homebrew/core formulae is deprecated" if line.include?("env :std")
     end
 
     def audit_reverse_migration
@@ -994,7 +1000,6 @@ module Homebrew
     def audit
       only_audits = @only
       except_audits = @except
-      odie "--only and --except cannot be used simultaneously!" if only_audits && except_audits
 
       methods.map(&:to_s).grep(/^audit_/).each do |audit_method_name|
         name = audit_method_name.gsub(/^audit_/, "")

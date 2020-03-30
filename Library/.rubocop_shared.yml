@@ -7,7 +7,7 @@ AllCops:
   DisplayCopNames: false
 
 # Use `<<~` for heredocs.
-Layout/IndentHeredoc:
+Layout/HeredocIndentation:
   EnforcedStyle: squiggly
 
 # Not useful in casks and formulae.
@@ -21,7 +21,7 @@ Metrics/ParameterLists:
 
 # Implicitly allow EOS as we use it everywhere.
 Naming/HeredocDelimiterNaming:
-  Blacklist:
+  ForbiddenDelimiters:
     - END, EOD, EOF
 
 # Allow dashes in filenames.
@@ -50,9 +50,17 @@ Style/CollectionMethods:
 Style/FormatStringToken:
   EnforcedStyle: annotated
 
-# This shouldn't be enabled until LineLength is lower.
+# autocorrectable and more readable
+Style/HashEachMethods:
+  Enabled: true
+Style/HashTransformKeys:
+  Enabled: true
+Style/HashTransformValues:
+  Enabled: true
+
+# Enabled now LineLength is lowish.
 Style/IfUnlessModifier:
-  Enabled: false
+  Enabled: true
 
 # Only use this for numbers >= `1_000_000`.
 Style/NumericLiterals:

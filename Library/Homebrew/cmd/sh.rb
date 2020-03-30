@@ -22,11 +22,13 @@ module Homebrew
              description: "Use the standard `PATH` instead of superenv's when `std` is passed."
       switch :verbose
       switch :debug
+      max_named 0
     end
   end
 
   def sh
     sh_args.parse
+
     ENV.activate_extensions!
 
     if superenv?
@@ -38,10 +40,10 @@ module Homebrew
       # superenv stopped adding brew's bin but generally users will want it
       ENV["PATH"] = PATH.new(ENV["PATH"]).insert(1, HOMEBREW_PREFIX/"bin")
     end
-    if ENV["SHELL"].include?("zsh")
-      ENV["PS1"] = "brew %B%F{green}~%f%b$ "
+    ENV["PS1"] = if ENV["SHELL"].include?("zsh")
+      "brew %B%F{green}~%f%b$ "
     else
-      ENV["PS1"] = 'brew \[\033[1;32m\]\w\[\033[0m\]$ '
+      'brew \[\033[1;32m\]\w\[\033[0m\]$ '
     end
     ENV["VERBOSE"] = "1"
     puts <<~EOS

@@ -11,7 +11,7 @@ module Homebrew
   def __env_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
-        `--env` [<options>]
+        `--env` [<options>] [<formula>]
 
         Summarise Homebrew's build environment as a plain list.
 
@@ -30,9 +30,8 @@ module Homebrew
     __env_args.parse
 
     ENV.activate_extensions!
-    ENV.deps = ARGV.formulae if superenv?
+    ENV.deps = args.formulae if superenv?
     ENV.setup_build_environment
-    ENV.universal_binary if ARGV.build_universal?
 
     shell = if args.plain?
       nil

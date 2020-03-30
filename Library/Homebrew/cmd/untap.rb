@@ -13,17 +13,16 @@ module Homebrew
         Remove a tapped formula repository.
       EOS
       switch :debug
+      min_named 1
     end
   end
 
   def untap
     untap_args.parse
 
-    raise "Usage is `brew untap <tap-name>`" if args.remaining.empty?
-
-    ARGV.named.each do |tapname|
+    args.named.each do |tapname|
       tap = Tap.fetch(tapname)
-      raise "untapping #{tap} is not allowed" if tap.core_tap?
+      odie "Untapping #{tap} is not allowed" if tap.core_tap?
 
       tap.uninstall
     end

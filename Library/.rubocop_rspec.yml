@@ -14,6 +14,8 @@ RSpec/AnyInstance:
   Enabled: false
 RSpec/ImplicitBlockExpectation:
   Enabled: false
+RSpec/SubjectStub:
+  Enabled: false
 
 # TODO: try to enable these (also requires fixing Homebrew/bundle)
 RSpec/ContextWording:
@@ -23,6 +25,10 @@ RSpec/DescribeClass:
 RSpec/LeakyConstantDeclaration:
   Enabled: false
 RSpec/MessageSpies:
+  Enabled: false
+RSpec/RepeatedDescription:
+  Enabled: false
+RSpec/RepeatedExampleGroupDescription:
   Enabled: false
 
 # TODO: try to reduce these (also requires fixing Homebrew/bundle)

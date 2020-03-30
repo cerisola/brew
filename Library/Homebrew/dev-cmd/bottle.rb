@@ -11,7 +11,7 @@ require "erb"
 
 BOTTLE_ERB = <<-EOS
   bottle do
-    <% if !root_url.start_with?(HOMEBREW_BOTTLE_DEFAULT_DOMAIN) %>
+    <% if root_url != "#{HOMEBREW_BOTTLE_DEFAULT_DOMAIN}/bottles" %>
     root_url "<%= root_url %>"
     <% end %>
     <% if ![HOMEBREW_DEFAULT_PREFIX, LINUXBREW_DEFAULT_PREFIX].include?(prefix) %>
@@ -28,7 +28,7 @@ BOTTLE_ERB = <<-EOS
     <% checksums.each do |checksum_type, checksum_values| %>
     <% checksum_values.each do |checksum_value| %>
     <% checksum, macos = checksum_value.shift %>
-    <%= checksum_type %> "<%= checksum %>" => :<%= macos %><%= "_or_later" if Homebrew.args.or_later? %>
+    <%= checksum_type %> "<%= checksum %>" => :<%= macos %>
     <% end %>
     <% end %>
   end
@@ -52,8 +52,6 @@ module Homebrew
       EOS
       switch "--skip-relocation",
              description: "Do not check if the bottle can be marked as relocatable."
-      switch "--or-later",
-             description: "Append `_or_later` to the bottle tag."
       switch "--force-core-tap",
              description: "Build a bottle even if <formula> is not in `homebrew/core` or any installed taps."
       switch "--no-rebuild",
@@ -81,6 +79,7 @@ module Homebrew
       switch :verbose
       switch :debug
       conflicts "--no-rebuild", "--keep-old"
+      min_named 1
     end
   end
 
@@ -90,14 +89,14 @@ module Homebrew
     return merge if args.merge?
 
     ensure_relocation_formulae_installed! unless args.skip_relocation?
-    ARGV.resolved_formulae.each do |f|
+    args.resolved_formulae.each do |f|
       bottle_formula f
     end
   end
 
   def ensure_relocation_formulae_installed!
     Keg.relocation_formulae.each do |f|
-      next if Formula[f].installed?
+      next if Formula[f].latest_version_installed?
 
       ohai "Installing #{f}..."
       safe_system HOMEBREW_BREW_FILE, "install", f
@@ -174,7 +173,7 @@ module Homebrew
       end
 
       if text_matches.size > MAXIMUM_STRING_MATCHES
-        puts "Only the first #{MAXIMUM_STRING_MATCHES} matches were output"
+        puts "Only the first #{MAXIMUM_STRING_MATCHES} matches were output."
       end
     end
 
@@ -206,8 +205,14 @@ module Homebrew
     erb.result(bottle.instance_eval { binding }).gsub(/^\s*$\n/, "")
   end
 
+  def sudo_purge
+    return unless ENV["HOMEBREW_BOTTLE_SUDO_PURGE"]
+
+    system "/usr/bin/sudo", "--non-interactive", "/usr/sbin/purge"
+  end
+
   def bottle_formula(f)
-    return ofail "Formula not installed or up-to-date: #{f.full_name}" unless f.installed?
+    return ofail "Formula not installed or up-to-date: #{f.full_name}" unless f.latest_version_installed?
 
     unless tap = f.tap
       return ofail "Formula not from core or any installed taps: #{f.full_name}" unless args.force_core_tap?
@@ -221,7 +226,7 @@ module Homebrew
       return
     end
 
-    return ofail "Formula not installed with '--build-bottle': #{f.full_name}" unless Utils::Bottles.built_as? f
+    return ofail "Formula was not installed with --build-bottle: #{f.full_name}" unless Utils::Bottles.built_as? f
 
     return ofail "Formula has no stable version: #{f.full_name}" unless f.stable
 
@@ -286,22 +291,25 @@ module Homebrew
         end
 
         cd cellar do
+          sudo_purge
           safe_system "tar", "cf", tar_path, "#{f.name}/#{f.pkg_version}"
+          sudo_purge
           tar_path.utime(tab.source_modified_time, tab.source_modified_time)
           relocatable_tar_path = "#{f}-bottle.tar"
           mv tar_path, relocatable_tar_path
           # Use gzip, faster to compress than bzip2, faster to uncompress than bzip2
           # or an uncompressed tarball (and more bandwidth friendly).
           safe_system "gzip", "-f", relocatable_tar_path
+          sudo_purge
           mv "#{relocatable_tar_path}.gz", bottle_path
         end
 
         ohai "Detecting if #{filename} is relocatable..." if bottle_path.size > 1 * 1024 * 1024
 
-        if Homebrew.default_prefix?(prefix)
-          prefix_check = File.join(prefix, "opt")
+        prefix_check = if Homebrew.default_prefix?(prefix)
+          File.join(prefix, "opt")
         else
-          prefix_check = prefix
+          prefix
         end
 
         # Ignore matches to source code, which is not required at run time.
@@ -396,8 +404,6 @@ module Homebrew
 
     return unless args.json?
 
-    tag = Utils::Bottles.tag.to_s
-    tag += "_or_later" if args.or_later?
     json = {
       f.full_name => {
         "formula" => {
@@ -410,7 +416,7 @@ module Homebrew
           "cellar"   => bottle.cellar.to_s,
           "rebuild"  => bottle.rebuild,
           "tags"     => {
-            tag => {
+            Utils::Bottles.tag.to_s => {
               "filename"       => filename.bintray,
               "local_filename" => filename.to_s,
               "sha256"         => sha256,
@@ -429,10 +435,28 @@ module Homebrew
   end
 
   def merge
-    write = args.write?
-
-    bottles_hash = ARGV.named.reduce({}) do |hash, json_file|
-      hash.deep_merge(JSON.parse(IO.read(json_file)))
+    bottles_hash = args.named.reduce({}) do |hash, json_file|
+      hash.deep_merge(JSON.parse(IO.read(json_file))) do |key, first, second|
+        if key == "cellar"
+          # Prioritize HOMEBREW_CELLAR over :any over :any_skip_relocation
+          cellars = [first, second]
+          if cellars.include?(HOMEBREW_CELLAR)
+            HOMEBREW_CELLAR
+          elsif first.start_with?("/")
+            first
+          elsif second.start_with?("/")
+            second
+          elsif cellars.include?(:any)
+            :any
+          elsif cellars.include?(:any_skip_relocation)
+            :any_skip_relocation
+          else
+            second
+          end
+        else
+          second
+        end
+      end
     end
 
     bottles_hash.each do |formula_name, bottle_hash|
@@ -451,7 +475,7 @@ module Homebrew
 
       output = bottle_output bottle
 
-      if write
+      if args.write?
         path = Pathname.new((HOMEBREW_REPOSITORY/bottle_hash["formula"]["path"]).to_s)
         update_or_add = nil
 
@@ -531,15 +555,7 @@ module Homebrew
         end
 
         unless args.no_commit?
-          if ENV["HOMEBREW_GIT_NAME"]
-            ENV["GIT_AUTHOR_NAME"] = ENV["GIT_COMMITTER_NAME"] =
-              ENV["HOMEBREW_GIT_NAME"]
-          end
-
-          if ENV["HOMEBREW_GIT_EMAIL"]
-            ENV["GIT_AUTHOR_EMAIL"] = ENV["GIT_COMMITTER_EMAIL"] =
-              ENV["HOMEBREW_GIT_EMAIL"]
-          end
+          Utils.set_git_name_email!
 
           short_name = formula_name.split("/", -1).last
           pkg_version = bottle_hash["formula"]["pkg_version"]

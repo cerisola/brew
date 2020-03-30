@@ -127,12 +127,12 @@ class Resource
 
   def verify_download_integrity(fn)
     if fn.file?
-      ohai "Verifying #{fn.basename} checksum" if ARGV.verbose?
+      ohai "Verifying #{fn.basename} checksum" if Homebrew.args.verbose?
       fn.verify_checksum(checksum)
     end
   rescue ChecksumMissingError
     opoo "Cannot verify integrity of #{fn.basename}"
-    puts "A checksum was not provided for this resource"
+    puts "A checksum was not provided for this resource."
     puts "For your reference the SHA-256 is: #{fn.sha256}"
   end
 
@@ -198,6 +198,7 @@ class Resource
 
     def initialize(&block)
       @patch_files = []
+      @directory = nil
       super "patch", &block
     end
 
@@ -205,6 +206,12 @@ class Resource
       paths.flatten!
       @patch_files.concat(paths)
       @patch_files.uniq!
+    end
+
+    def directory(val = nil)
+      return @directory if val.nil?
+
+      @directory = val
     end
   end
 end

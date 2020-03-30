@@ -201,7 +201,7 @@ class Version
 
   def self.detect(url, specs)
     if specs.key?(:tag)
-      FromURL.new(specs[:tag][/((?:\d+\.)*\d+)/, 1])
+      FromURL.parse(specs[:tag])
     else
       FromURL.parse(url)
     end
@@ -261,7 +261,7 @@ class Version
     # e.g. foobar-4.5.1-1
     # e.g. unrtf_0.20.4-1
     # e.g. ruby-1.9.1-p243
-    m = /[-_]((?:\d+\.)*\d\.\d+-(?:p|rc|RC)?\d+)(?:[-._](?:bin|dist|stable|src|sources))?$/.match(stem)
+    m = /[-_]((?:\d+\.)*\d+\.\d+-(?:p|rc|RC)?\d+)(?:[-._](?:bin|dist|stable|src|sources))?$/.match(stem)
     return m.captures.first unless m.nil?
 
     # URL with no extension
@@ -271,7 +271,7 @@ class Version
     return m.captures.first unless m.nil?
 
     # e.g. lame-398-1
-    m = /-((?:\d)+-\d+)/.match(stem)
+    m = /-(\d+-\d+)/.match(stem)
     return m.captures.first unless m.nil?
 
     # e.g. foobar-4.5.1
@@ -336,11 +336,11 @@ class Version
     return m.captures.first unless m.nil?
 
     # e.g. https://www.openssl.org/source/openssl-0.9.8s.tar.gz
-    m = /-v?([^-]+)/.match(stem)
+    m = /-v?(\d[^-]+)/.match(stem)
     return m.captures.first unless m.nil?
 
     # e.g. astyle_1.23_macosx.tar.gz
-    m = /_([^_]+)/.match(stem)
+    m = /_v?(\d[^_]+)/.match(stem)
     return m.captures.first unless m.nil?
 
     # e.g. http://mirrors.jenkins-ci.org/war/1.486/jenkins.war
@@ -350,7 +350,7 @@ class Version
     # e.g. https://wwwlehre.dhbw-stuttgart.de/~sschulz/WORK/E_DOWNLOAD/V_1.9/E.tgz
     # e.g. https://github.com/JustArchi/ArchiSteamFarm/releases/download/2.3.2.0/ASF.zip
     # e.g. https://people.gnome.org/~newren/eg/download/1.7.5.2/eg
-    m = %r{/([rvV]_?)?(\d\.\d+(\.\d+){,2})}.match(spec_s)
+    m = %r{/([rvV]_?)?(\d+\.\d+(\.\d+){,2})}.match(spec_s)
     return m.captures.second unless m.nil?
 
     # e.g. https://www.ijg.org/files/jpegsrc.v8d.tar.gz

@@ -38,11 +38,11 @@ module Patch
       {}
     end.each_pair do |strip, urls|
       Array(urls).each do |url|
-        case url
+        patch = case url
         when :DATA
-          patch = DATAPatch.new(strip)
+          DATAPatch.new(strip)
         else
-          patch = LegacyPatch.new(strip, url)
+          LegacyPatch.new(strip, url)
         end
         patches << patch
       end
@@ -135,7 +135,7 @@ class ExternalPatch
   end
 
   def apply
-    dir = Pathname.pwd
+    base_dir = Pathname.pwd
     resource.unpack do
       patch_dir = Pathname.pwd
       if patch_files.empty?
@@ -149,6 +149,8 @@ class ExternalPatch
 
         patch_files << children.first.basename
       end
+      dir = base_dir
+      dir /= resource.directory if resource.directory.present?
       dir.cd do
         patch_files.each do |patch_file|
           ohai "Applying #{patch_file}"

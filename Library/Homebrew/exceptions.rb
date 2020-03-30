@@ -19,13 +19,13 @@ end
 
 class FormulaUnspecifiedError < UsageError
   def initialize
-    super "This command requires a formula argument"
+    super "this command requires a formula argument"
   end
 end
 
 class KegUnspecifiedError < UsageError
   def initialize
-    super "This command requires a keg argument"
+    super "this command requires a keg argument"
   end
 end
 
@@ -258,18 +258,6 @@ class TapAlreadyTappedError < RuntimeError
   end
 end
 
-class TapAlreadyUnshallowError < RuntimeError
-  attr_reader :name
-
-  def initialize(name)
-    @name = name
-
-    super <<~EOS
-      Tap #{name} already a full clone.
-    EOS
-  end
-end
-
 class TapPinStatusError < RuntimeError
   attr_reader :name, :pinned
 
@@ -347,8 +335,8 @@ class FormulaAmbiguousPythonError < RuntimeError
   def initialize(formula)
     super <<~EOS
       The version of python to use with the virtualenv in the `#{formula.full_name}` formula
-      cannot be guessed automatically. If the simultaneous use of python and python@2
-      is intentional, please add `:using => "python"` or `:using => "python@2"` to
+      cannot be guessed automatically. If the simultaneous use of multiple pythons
+      is intentional, please add `:using => "python@x.y"` to
       `virtualenv_install_with_resources` to resolve the ambiguity manually.
     EOS
   end
@@ -381,7 +369,7 @@ class BuildError < RuntimeError
   def dump
     puts
 
-    if ARGV.verbose?
+    if Homebrew.args.verbose?
       require "system_config"
       require "build_environment"
 

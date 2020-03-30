@@ -29,37 +29,10 @@ Alternatively, for something more substantial, check out one of the issues label
 
 Good luck!
 
-## Security
-Please report security issues to our [HackerOne](https://hackerone.com/homebrew/).
-
-## Who Are You?
-Homebrew's [Project Leader](https://github.com/Homebrew/homebrew-governance-private/blob/master/GOVERNANCE.md#6-project-leader) is [Mike McQuaid](https://github.com/MikeMcQuaid).
-
-Homebrew's [Project Leadership Committee](https://docs.brew.sh/Homebrew-Governance#4-project-leadership-committee) is [Misty De Meo](https://github.com/mistydemeo), [Shaun Jackman](https://github.com/sjackman), [Jonathan Chang](https://github.com/jonchang), [Mike McQuaid](https://github.com/MikeMcQuaid) and [Markus Reiter](https://github.com/reitermarkus).
-
-Homebrew's [Technical Steering Committee](https://docs.brew.sh/Homebrew-Governance#7-technical-steering-committee) is [Michka Popoff](https://github.com/imichka), [FX Coudert](https://github.com/fxcoudert), [Markus Reiter](https://github.com/reitermarkus), [Misty De Meo](https://github.com/mistydemeo) and [Mike McQuaid](https://github.com/MikeMcQuaid).
-
-Homebrew/brew's Linux maintainers are [Michka Popoff](https://github.com/imichka), [Shaun Jackman](https://github.com/sjackman), [Dawid Dziurla](https://github.com/dawidd6) and [Issy Long](https://github.com/issyl0).
-
-Homebrew's other current maintainers are [Claudia Pellegrino](https://github.com/claui), [Rui Chen](https://github.com/chenrui333), [Vitor Galvao](https://github.com/vitorgalvao), [Caleb Xu](https://github.com/alebcay), [Gautham Goli](https://github.com/GauthamGoli), [Steven Peters](https://github.com/scpeters), [William Woodruff](https://github.com/woodruffw), [Igor Kapkov](https://github.com/igas), [Izaak Beekman](https://github.com/zbeekman), [Sean Molenaar](https://github.com/SMillerDev), [Jan Viljanen](https://github.com/javian), [Eric Knibbe](https://github.com/EricFromCanada), [Viktor Szakats](https://github.com/vszakats), [Thierry Moisan](https://github.com/moisan), [Steven Peters](https://github.com/scpeters), [Tom Schoonjans](https://github.com/tschoonj) and [Issy Long](https://github.com/issyl0).
-
-Former maintainers with significant contributions include [JCount](https://github.com/jcount), [commitay](https://github.com/commitay), [Dominyk Tiller](https://github.com/DomT4), [Tim Smith](https://github.com/tdsmith), [Baptiste Fontaine](https://github.com/bfontaine), [Xu Cheng](https://github.com/xu-cheng), [Martin Afanasjew](https://github.com/UniqMartin), [Brett Koonce](https://github.com/asparagui), [Charlie Sharpsteen](https://github.com/Sharpie), [Jack Nagel](https://github.com/jacknagel), [Adam Vandenberg](https://github.com/adamv), [Andrew Janke](https://github.com/apjanke), [Alex Dunn](https://github.com/dunn), [neutric](https://github.com/neutric), [Tomasz Pajor](https://github.com/nijikon), [Uladzislau Shablinski](https://github.com/vladshablinsky), [Alyssa Ross](https://github.com/alyssais), [ilovezfs](https://github.com/ilovezfs), [Chongyu Zhu](https://github.com/lembacon) and Homebrew's creator: [Max Howell](https://github.com/mxcl).
-
-## Community
-- [discourse.brew.sh (forum)](https://discourse.brew.sh)
-- [freenode.net\#machomebrew (IRC)](irc://irc.freenode.net/#machomebrew)
-- [@MacHomebrew (Twitter)](https://twitter.com/MacHomebrew)
-
-## License
-Code is under the [BSD 2-clause "Simplified" License](LICENSE.txt).
-Documentation is under the [Creative Commons Attribution license](https://creativecommons.org/licenses/by/4.0/).
-
 ## Donations
 Homebrew is a non-profit project run entirely by unpaid volunteers. We need your funds to pay for software, hardware and hosting around continuous integration and future improvements to the project. Every donation will be spent on making Homebrew better for our users.
 
-Please consider a regular donation through Patreon:
-
-[![Donate with Patreon](https://img.shields.io/badge/patreon-donate-green.svg)](https://www.patreon.com/homebrew)
+Please consider a regular donation through [GitHub Sponsors](https://github.com/sponsors/Homebrew) or [Patreon](https://www.patreon.com/homebrew).
 
 Alternatively, if you'd rather make a one-off payment:
 
@@ -73,6 +46,31 @@ Alternatively, if you'd rather make a one-off payment:
 
 Homebrew is a member of the [Software Freedom Conservancy](https://sfconservancy.org) which provides us with an ability to receive tax-deductible, Homebrew earmarked donations (and [many other services](https://sfconservancy.org/members/services/)). Software Freedom Conservancy, Inc. is a 501(c)(3) organization incorporated in New York, and donations made to it are fully tax-deductible to the extent permitted by law.
 
+## Security
+Please report security issues to our [HackerOne](https://hackerone.com/homebrew/).
+
+## Who Are You?
+Homebrew's [Project Leader](https://docs.brew.sh/Homebrew-Governance#6-project-leader) is [Mike McQuaid](https://github.com/MikeMcQuaid).
+
+Homebrew's [Project Leadership Committee](https://docs.brew.sh/Homebrew-Governance#4-project-leadership-committee) is [Misty De Meo](https://github.com/mistydemeo), [Shaun Jackman](https://github.com/sjackman), [Jonathan Chang](https://github.com/jonchang), [Sean Molenaar](https://github.com/SMillerDev) and [Markus Reiter](https://github.com/reitermarkus).
+
+Homebrew's [Technical Steering Committee](https://docs.brew.sh/Homebrew-Governance#7-technical-steering-committee) is [Michka Popoff](https://github.com/imichka), [FX Coudert](https://github.com/fxcoudert), [Markus Reiter](https://github.com/reitermarkus), [Misty De Meo](https://github.com/mistydemeo) and [Mike McQuaid](https://github.com/MikeMcQuaid).
+
+Homebrew/brew's Linux maintainers are [Michka Popoff](https://github.com/imichka), [Shaun Jackman](https://github.com/sjackman), [Dawid Dziurla](https://github.com/dawidd6) and [Issy Long](https://github.com/issyl0).
+
+Homebrew's other current maintainers are [Claudia Pellegrino](https://github.com/claui), [Zach Auten](https://github.com/zachauten), [Rui Chen](https://github.com/chenrui333), [Vitor Galvao](https://github.com/vitorgalvao), [Caleb Xu](https://github.com/alebcay), [Gautham Goli](https://github.com/GauthamGoli), [Steven Peters](https://github.com/scpeters), [Bo Anderson](https://github.com/Bo98), [William Woodruff](https://github.com/woodruffw), [Igor Kapkov](https://github.com/igas), [Sam Ford](https://github.com/samford), [Alexander Bayandin](https://github.com/bayandin), [Izaak Beekman](https://github.com/zbeekman), [Eric Knibbe](https://github.com/EricFromCanada), [Viktor Szakats](https://github.com/vszakats), [Thierry Moisan](https://github.com/moisan), [Steven Peters](https://github.com/scpeters), [Tom Schoonjans](https://github.com/tschoonj) and [Issy Long](https://github.com/issyl0).
+
+Former maintainers with significant contributions include [Jan Viljanen](https://github.com/javian), [JCount](https://github.com/jcount), [commitay](https://github.com/commitay), [Dominyk Tiller](https://github.com/DomT4), [Tim Smith](https://github.com/tdsmith), [Baptiste Fontaine](https://github.com/bfontaine), [Xu Cheng](https://github.com/xu-cheng), [Martin Afanasjew](https://github.com/UniqMartin), [Brett Koonce](https://github.com/asparagui), [Charlie Sharpsteen](https://github.com/Sharpie), [Jack Nagel](https://github.com/jacknagel), [Adam Vandenberg](https://github.com/adamv), [Andrew Janke](https://github.com/apjanke), [Alex Dunn](https://github.com/dunn), [neutric](https://github.com/neutric), [Tomasz Pajor](https://github.com/nijikon), [Uladzislau Shablinski](https://github.com/vladshablinsky), [Alyssa Ross](https://github.com/alyssais), [ilovezfs](https://github.com/ilovezfs), [Chongyu Zhu](https://github.com/lembacon) and Homebrew's creator: [Max Howell](https://github.com/mxcl).
+
+## Community
+- [discourse.brew.sh (forum)](https://discourse.brew.sh)
+- [freenode.net\#machomebrew (IRC)](irc://irc.freenode.net/#machomebrew)
+- [@MacHomebrew (Twitter)](https://twitter.com/MacHomebrew)
+
+## License
+Code is under the [BSD 2-clause "Simplified" License](LICENSE.txt).
+Documentation is under the [Creative Commons Attribution license](https://creativecommons.org/licenses/by/4.0/).
+
 ## Sponsors
 Our Xserve ESXi boxes for CI are hosted by [MacStadium](https://www.macstadium.com).
 
@@ -81,10 +79,6 @@ Our Xserve ESXi boxes for CI are hosted by [MacStadium](https://www.macstadium.c
 Our Jenkins CI installation is hosted by [DigitalOcean](https://m.do.co/c/7e39c35d5581).
 
 ![DigitalOcean](https://cloud.githubusercontent.com/assets/125011/26827038/4b7b5ade-4ab3-11e7-811b-fed3ab0e934d.png)
-
-Our physical hardware is hosted by [Commsworld](https://www.commsworld.com).
-
-![Commsworld powered by Fluency](https://user-images.githubusercontent.com/125011/30822845-1716bc2c-a222-11e7-843e-ea7c7b6a1503.png)
 
 Our bottles (binary packages) are hosted by [Bintray](https://bintray.com/homebrew).
 

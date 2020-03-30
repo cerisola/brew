@@ -15,14 +15,13 @@ module Homebrew
       EOS
       switch :verbose
       switch :debug
+      min_named :formula
     end
   end
 
   def formula
     formula_args.parse
 
-    raise FormulaUnspecifiedError if ARGV.named.empty?
-
-    ARGV.resolved_formulae.each { |f| puts f.path }
+    args.resolved_formulae.each { |f| puts f.path }
   end
 end

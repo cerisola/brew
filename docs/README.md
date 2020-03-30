@@ -23,9 +23,13 @@
 - [External Commands](External-Commands.md)
 - [Ruby Gems, Python Eggs and Perl Modules](Gems,-Eggs-and-Perl-Modules.md)
 - [Python](Homebrew-and-Python.md)
-- [How To Build Software Outside Homebrew With Homebrew `keg_only` dependencies](How-to-build-software-outside-Homebrew-with-Homebrew-keg-only-dependencies.md)
+- [How To Build Software Outside Homebrew With Homebrew `keg_only` dependencies](How-to-Build-Software-Outside-Homebrew-with-Homebrew-keg-only-Dependencies.md)
 - [Xcode](Xcode.md)
 - [Kickstarter Supporters](Kickstarter-Supporters.md)
+
+- [Creating a Homebrew Issue](Creating-a-Homebrew-Issue.md)
+- [Updating Software in Homebrew](Updating-Software-in-Homebrew.md)
+- [Adding Software to Homebrew](Adding-Software-to-Homebrew.md)
 
 ## Contributors
 

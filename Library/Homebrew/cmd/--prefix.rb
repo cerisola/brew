@@ -22,10 +22,10 @@ module Homebrew
   def __prefix
     __prefix_args.parse
 
-    if ARGV.named.empty?
+    if args.no_named?
       puts HOMEBREW_PREFIX
     else
-      puts ARGV.resolved_formulae.map { |f|
+      puts args.resolved_formulae.map { |f|
         f.opt_prefix.exist? ? f.opt_prefix : f.installed_prefix
       }
     end

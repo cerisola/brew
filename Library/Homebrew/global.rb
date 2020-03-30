@@ -53,6 +53,9 @@ HOMEBREW_USER_AGENT_FAKE_SAFARI =
 HOMEBREW_BOTTLE_DEFAULT_DOMAIN = ENV["HOMEBREW_BOTTLE_DEFAULT_DOMAIN"]
 HOMEBREW_BOTTLE_DOMAIN = ENV["HOMEBREW_BOTTLE_DOMAIN"]
 
+HOMEBREW_BREW_GIT_REMOTE = ENV["HOMEBREW_BREW_GIT_REMOTE"]
+HOMEBREW_CORE_GIT_REMOTE = ENV["HOMEBREW_CORE_GIT_REMOTE"]
+
 HOMEBREW_DEFAULT_PREFIX = "/usr/local"
 LINUXBREW_DEFAULT_PREFIX = "/home/linuxbrew/.linuxbrew"
 
@@ -111,25 +114,6 @@ ORIGINAL_PATHS = PATH.new(ENV["HOMEBREW_PATH"]).map do |p|
 rescue
   nil
 end.compact.freeze
-
-HOMEBREW_INTERNAL_COMMAND_ALIASES = {
-  "ls"          => "list",
-  "homepage"    => "home",
-  "-S"          => "search",
-  "up"          => "update",
-  "ln"          => "link",
-  "instal"      => "install", # gem does the same
-  "uninstal"    => "uninstall",
-  "rm"          => "uninstall",
-  "remove"      => "uninstall",
-  "configure"   => "diy",
-  "abv"         => "info",
-  "dr"          => "doctor",
-  "--repo"      => "--repository",
-  "environment" => "--env",
-  "--config"    => "config",
-  "-v"          => "--version",
-}.freeze
 
 require "set"
 

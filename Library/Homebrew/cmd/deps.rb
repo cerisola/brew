@@ -62,39 +62,39 @@ module Homebrew
     Formulary.enable_factory_cache!
 
     recursive = !args.send("1?")
+    installed = args.installed? || args.formulae.all?(&:opt_or_installed_prefix_keg)
+
+    @use_runtime_dependencies = installed && recursive &&
+                                !args.include_build? &&
+                                !args.include_test? &&
+                                !args.include_optional? &&
+                                !args.skip_recommended?
 
     if args.tree?
       if args.installed?
         puts_deps_tree Formula.installed.sort, recursive
       else
-        raise FormulaUnspecifiedError if args.remaining.empty?
+        raise FormulaUnspecifiedError if args.no_named?
 
-        puts_deps_tree ARGV.formulae, recursive
+        puts_deps_tree args.formulae, recursive
       end
       return
     elsif args.all?
       puts_deps Formula.sort, recursive
       return
-    elsif !args.remaining.empty? && args.for_each?
-      puts_deps ARGV.formulae, recursive
+    elsif !args.no_named? && args.for_each?
+      puts_deps args.formulae, recursive
       return
     end
 
-    @only_installed_arg = args.installed? &&
-                          recursive &&
-                          !args.include_build? &&
-                          !args.include_test? &&
-                          !args.include_optional? &&
-                          !args.skip_recommended?
-
-    if args.remaining.empty?
+    if args.no_named?
       raise FormulaUnspecifiedError unless args.installed?
 
       puts_deps Formula.installed.sort, recursive
       return
     end
 
-    all_deps = deps_for_formulae(ARGV.formulae, recursive, &(args.union? ? :| : :&))
+    all_deps = deps_for_formulae(args.formulae, recursive, &(args.union? ? :| : :&))
     all_deps = condense_requirements(all_deps)
     all_deps.select!(&:installed?) if args.installed?
     all_deps.map!(&method(:dep_display_name))
@@ -137,7 +137,7 @@ module Homebrew
   def deps_for_formula(f, recursive = false)
     includes, ignores = argv_includes_ignores(ARGV)
 
-    deps = f.runtime_dependencies if @only_installed_arg
+    deps = f.runtime_dependencies if @use_runtime_dependencies
 
     if recursive
       deps ||= recursive_includes(Dependency,  f, includes, ignores)
@@ -174,13 +174,12 @@ module Homebrew
   end
 
   def recursive_deps_tree(f, prefix, recursive)
-    reqs = f.requirements
-    deps = f.deps
+    includes, ignores = argv_includes_ignores(ARGV)
+    dependables = @use_runtime_dependencies ? f.runtime_dependencies : f.deps
+    deps = reject_ignores(dependables, ignores, includes)
+    reqs = reject_ignores(f.requirements, ignores, includes)
     dependables = reqs + deps
-    dependables.reject!(&:optional?) unless args.include_optional?
-    dependables.reject!(&:build?) unless args.include_build?
-    dependables.reject!(&:test?) unless args.include_test?
-    dependables.reject!(&:recommended?) if args.skip_recommended?
+
     max = dependables.length - 1
     @dep_stack.push f.name
     dependables.each_with_index do |dep, i|

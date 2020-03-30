@@ -38,14 +38,14 @@ module Homebrew
   def style
     style_args.parse
 
-    target = if ARGV.named.empty?
+    target = if args.no_named?
       nil
-    elsif ARGV.named.any? { |file| File.exist? file }
-      ARGV.named
-    elsif ARGV.named.any? { |tap| tap.count("/") == 1 }
-      ARGV.named.map { |tap| Tap.fetch(tap).path }
+    elsif args.named.any? { |file| File.exist? file }
+      args.named
+    elsif args.named.any? { |tap| tap.count("/") == 1 }
+      args.named.map { |tap| Tap.fetch(tap).path }
     else
-      ARGV.formulae.map(&:path)
+      args.formulae.map(&:path)
     end
 
     only_cops = args.only_cops

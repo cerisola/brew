@@ -106,6 +106,21 @@ describe RuboCop::Cop::FormulaAudit::Comments do
         end
       RUBY
     end
+
+    it "citation tags" do
+      expect_offense(<<~RUBY, "/homebrew-core/")
+        class Foo < Formula
+          desc "foo"
+          url 'https://brew.sh/foo-1.0.tgz'
+          # cite Howell_2009:
+          ^^^^^^^^^^^^^^^^^^^ Formulae in homebrew/core should not use `cite` comments
+          # doi "10.111/222.x"
+          ^^^^^^^^^^^^^^^^^^^^ Formulae in homebrew/core should not use `doi` comments
+          # tag "software"
+          ^^^^^^^^^^^^^^^^ Formulae in homebrew/core should not use `tag` comments
+        end
+      RUBY
+    end
   end
 end
 
@@ -159,6 +174,32 @@ end
 
 describe RuboCop::Cop::FormulaAudit::OptionDeclarations do
   subject(:cop) { described_class.new }
+
+  it "build.without? in homebrew/core" do
+    expect_offense(<<~RUBY, "/homebrew-core/")
+      class Foo < Formula
+        desc "foo"
+        url 'https://brew.sh/foo-1.0.tgz'
+        def install
+          build.without? "bar"
+          ^^^^^^^^^^^^^^^^^^^^ Formulae in homebrew/core should not use `build.without?`.
+        end
+      end
+    RUBY
+  end
+
+  it "build.with? in homebrew/core" do
+    expect_offense(<<~RUBY, "/homebrew-core/")
+      class Foo < Formula
+        desc "foo"
+        url 'https://brew.sh/foo-1.0.tgz'
+        def install
+          build.with? "bar"
+          ^^^^^^^^^^^^^^^^^ Formulae in homebrew/core should not use `build.with?`.
+        end
+      end
+    RUBY
+  end
 
   it "unless build.without? conditional" do
     expect_offense(<<~RUBY)
@@ -289,7 +330,7 @@ describe RuboCop::Cop::FormulaAudit::MpiCheck do
           desc "foo"
           url 'https://brew.sh/foo-1.0.tgz'
           depends_on "mpich"
-          ^^^^^^^^^^^^^^^^^^ Use 'depends_on "open-mpi"' instead of 'depends_on "mpich"'.
+          ^^^^^^^^^^^^^^^^^^ Formulae in homebrew/core should use 'depends_on "open-mpi"' instead of 'depends_on "mpich"'.
         end
       RUBY
 
@@ -308,6 +349,17 @@ describe RuboCop::Cop::FormulaAudit::Miscellaneous do
   subject(:cop) { described_class.new }
 
   context "When auditing formula" do
+    it "build-time checks in homebrew/core" do
+      expect_offense(<<~RUBY, "/homebrew-core/")
+        class Foo < Formula
+          desc "foo"
+          url 'https://brew.sh/foo-1.0.tgz'
+          system "make", "-j1", "test"
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Formulae in homebrew/core (except e.g. cryptography, libraries) should not run build-time checks
+        end
+      RUBY
+    end
+
     it "FileUtils usage" do
       expect_offense(<<~RUBY)
         class Foo < Formula
@@ -353,7 +405,7 @@ describe RuboCop::Cop::FormulaAudit::Miscellaneous do
           url 'https://brew.sh/foo-1.0.tgz'
           bottle do
             if OS.linux?
-               ^^^^^^^^^ Don\'t use OS.linux?; Homebrew/core only supports macOS
+               ^^^^^^^^^ Don\'t use OS.linux?; homebrew/core only supports macOS
               nil
             end
             sha256 "fe0679b932dd43a87fd415b609a7fbac7a069d117642ae8ebaac46ae1fb9f0b3" => :sierra
@@ -552,7 +604,7 @@ describe RuboCop::Cop::FormulaAudit::Miscellaneous do
           desc "foo"
           url 'https://brew.sh/foo-1.0.tgz'
           def install
-            verbose = ARGV.verbose?
+            verbose = Homebrew.args.verbose?
           end
         end
       RUBY

@@ -120,7 +120,7 @@ module Homebrew
 
             Without a correctly configured origin, Homebrew won't update
             properly. You can solve this by adding the remote:
-              git -C "#{repository_path}" remote add origin #{Formatter.url("https://github.com/#{desired_origin}.git")}
+              git -C "#{repository_path}" remote add origin #{Formatter.url(desired_origin)}
           EOS
         elsif !current_origin.match?(%r{#{desired_origin}(\.git|/)?$}i)
           <<~EOS
@@ -130,7 +130,7 @@ module Homebrew
 
             With a non-standard origin, Homebrew won't update properly.
             You can solve this by setting the origin remote:
-              git -C "#{repository_path}" remote set-url origin #{Formatter.url("https://github.com/#{desired_origin}.git")}
+              git -C "#{repository_path}" remote set-url origin #{Formatter.url(desired_origin)}
           EOS
         end
       end
@@ -474,28 +474,6 @@ module Homebrew
         EOS
       end
 
-      def check_ld_vars
-        ld_vars = ENV.keys.grep(/^(|DY)LD_/)
-        return if ld_vars.empty?
-
-        values = ld_vars.map { |var| "#{var}: #{ENV.fetch(var)}" }
-        message = inject_file_list values, <<~EOS
-          Setting DYLD_* or LD_* variables can break dynamic linking.
-          Set variables:
-        EOS
-
-        if ld_vars.include? "DYLD_INSERT_LIBRARIES"
-          message += <<~EOS
-
-            Setting DYLD_INSERT_LIBRARIES can cause Go builds to fail.
-            Having this set is common if you use this software:
-              #{Formatter.url("https://asepsis.binaryage.com/")}
-          EOS
-        end
-
-        message
-      end
-
       def check_for_symlinked_cellar
         return unless HOMEBREW_CELLAR.exist?
         return unless HOMEBREW_CELLAR.symlink?
@@ -560,16 +538,18 @@ module Homebrew
       end
 
       def check_brew_git_origin
-        examine_git_origin(HOMEBREW_REPOSITORY, "Homebrew/brew")
+        examine_git_origin(HOMEBREW_REPOSITORY, HOMEBREW_BREW_GIT_REMOTE)
       end
 
       def check_coretap_git_origin
-        examine_git_origin(CoreTap.instance.path, CoreTap.instance.full_name)
+        examine_git_origin(CoreTap.instance.path, HOMEBREW_CORE_GIT_REMOTE)
       end
 
       def check_casktap_git_origin
-        cask = Tap.default_cask_tap
-        examine_git_origin(cask.path, cask.full_name) if cask.installed?
+        cask_tap = Tap.default_cask_tap
+        return unless cask_tap.installed?
+
+        examine_git_origin(cask_tap.path, cask_tap.remote)
       end
 
       def check_coretap_git_branch
@@ -663,26 +643,31 @@ module Homebrew
       def check_git_status
         return unless Utils.git_available?
 
-        modified = []
-        HOMEBREW_REPOSITORY.cd do
-          status = `git status --untracked-files=all --porcelain -- Library/Homebrew/ 2>/dev/null`
-          return if status.blank?
+        message = nil
+
+        {
+          "Homebrew/brew"          => HOMEBREW_REPOSITORY,
+          "Homebrew/homebrew-core" => CoreTap.instance.path,
+        }.each do |name, path|
+          status = path.cd do
+            `git status --untracked-files=all --porcelain 2>/dev/null`
+          end
+          next if status.blank?
+
+          message ||= ""
+          message += "\n" unless message.empty?
+          message += <<~EOS
+            You have uncommitted modifications to #{name}.
+            If this is a surprise to you, then you should stash these modifications.
+            Stashing returns Homebrew to a pristine state but can be undone
+            should you later need to do so for some reason.
+              cd #{path} && git stash && git clean -d -f
+          EOS
 
           modified = status.split("\n")
-        end
-
-        message = <<~EOS
-          You have uncommitted modifications to Homebrew.
-          If this is a surprise to you, then you should stash these modifications.
-          Stashing returns Homebrew to a pristine state but can be undone
-          should you later need to do so for some reason.
-            cd #{HOMEBREW_LIBRARY} && git stash && git clean -d -f
-        EOS
-
-        if ENV["CI"]
           message += inject_file_list modified, <<~EOS
 
-            Modified files:
+            Uncommitted files:
           EOS
         end
 

@@ -23,6 +23,7 @@ module Homebrew
              description: "Use the commit at the specified <date> as the start commit."
       switch :verbose
       switch :debug
+      max_named 0
     end
   end
 
@@ -88,14 +89,14 @@ module Homebrew
     chdir "update-test" do
       curdir = Pathname.new(Dir.pwd)
 
-      oh1 "Setup test environment..."
+      oh1 "Preparing test environment..."
       # copy Homebrew installation
       safe_system "git", "clone", "#{HOMEBREW_REPOSITORY}/.git", ".",
-                  "--local", "--branch", "master", "--single-branch"
+                  "--branch", "master", "--single-branch"
 
       # set git origin to another copy
       safe_system "git", "clone", "#{HOMEBREW_REPOSITORY}/.git", "remote.git",
-                  "--local", "--bare", "--branch", "master", "--single-branch"
+                  "--bare", "--branch", "master", "--single-branch"
       safe_system "git", "config", "remote.origin.url", "#{curdir}/remote.git"
 
       # force push origin to end_commit
@@ -122,6 +123,6 @@ module Homebrew
       end
     end
   ensure
-    FileUtils.rm_rf "update-test" unless args.keep_tmp?
+    FileUtils.rm_rf "update-test" unless Homebrew.args.keep_tmp?
   end
 end

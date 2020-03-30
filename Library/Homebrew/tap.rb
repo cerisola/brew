@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "commands"
 require "extend/cachable"
 require "readall"
 require "description_cache_store"
@@ -224,20 +225,13 @@ class Tap
 
   # Install this {Tap}.
   #
-  # @param  options [Hash]
-  # @option options [String] :clone_target If passed, it will be used as the clone remote.
-  # @option options [Boolean, nil] :force_auto_update If present, whether to override the
+  # @param clone_target [String] If passed, it will be used as the clone remote.
+  # @param force_auto_update [Boolean, nil] If present, whether to override the
   #   logic that skips non-GitHub repositories during auto-updates.
-  # @option options [Boolean] :full_clone If set as true, full clone will be used.
-  # @option options [Boolean] :quiet If set, suppress all output.
-  def install(options = {})
+  # @param full_clone [Boolean] If set as true, full clone will be used. If unset/nil, means "no change".
+  # @param quiet [Boolean] If set, suppress all output.
+  def install(full_clone: true, quiet: false, clone_target: nil, force_auto_update: nil)
     require "descriptions"
-
-    full_clone = options.fetch(:full_clone, false)
-    quiet = options.fetch(:quiet, false)
-    requested_remote = options[:clone_target] || default_remote
-    # if :force_auto_update is unset, use nil, meaning "no change"
-    force_auto_update = options.fetch(:force_auto_update, nil)
 
     if official? && DEPRECATED_OFFICIAL_TAPS.include?(repo)
       odie "#{name} was deprecated. This tap is now empty as all its formulae were migrated."
@@ -245,9 +239,11 @@ class Tap
       odie "#{name} was moved. Tap homebrew/cask-#{repo} instead."
     end
 
-    if installed? && force_auto_update.nil?
-      raise TapAlreadyTappedError, name unless full_clone
-      raise TapAlreadyUnshallowError, name unless shallow?
+    requested_remote = clone_target || default_remote
+
+    if installed?
+      raise TapRemoteMismatchError.new(name, @remote, requested_remote) if clone_target && requested_remote != remote
+      raise TapAlreadyTappedError, name if force_auto_update.nil?
     end
 
     # ensure git is installed
@@ -257,10 +253,6 @@ class Tap
       unless force_auto_update.nil?
         config["forceautoupdate"] = force_auto_update
         return if !full_clone || !shallow?
-      end
-
-      if options[:clone_target] && requested_remote != remote
-        raise TapRemoteMismatchError.new(name, @remote, requested_remote)
       end
 
       ohai "Unshallowing #{name}" unless quiet
@@ -303,7 +295,7 @@ class Tap
                            .update_from_formula_names!(formula_names)
     end
 
-    return if options[:clone_target]
+    return if clone_target
     return unless private?
     return if quiet
 
@@ -428,7 +420,12 @@ class Tap
 
   # An array of all {Formula} names of this {Tap}.
   def formula_names
-    @formula_names ||= formula_files.map { |f| formula_file_to_name(f) }
+    @formula_names ||= formula_files.map(&method(:formula_file_to_name))
+  end
+
+  # An array of all {Cask} tokens of this {Tap}.
+  def cask_tokens
+    @cask_tokens ||= cask_files.map(&method(:formula_file_to_name))
   end
 
   # path to the directory of all alias files for this {Tap}.
@@ -478,17 +475,10 @@ class Tap
     @command_dir ||= path/"cmd"
   end
 
-  def command_file?(file)
-    file = Pathname.new(file) unless file.is_a? Pathname
-    file = file.expand_path(path)
-    file.parent == command_dir && file.basename.to_s.match?(/^brew(cask)?-/) &&
-      (file.executable? || file.extname == ".rb")
-  end
-
   # An array of all commands files of this {Tap}.
   def command_files
     @command_files ||= if command_dir.directory?
-      command_dir.children.select(&method(:command_file?))
+      Commands.find_commands(command_dir)
     else
       []
     end
@@ -537,6 +527,8 @@ class Tap
       "official"      => official?,
       "formula_names" => formula_names,
       "formula_files" => formula_files.map(&:to_s),
+      "cask_tokens"   => cask_tokens,
+      "cask_files"    => cask_files.map(&:to_s),
       "command_files" => command_files.map(&:to_s),
       "pinned"        => pinned?,
     }
@@ -648,6 +640,15 @@ class CoreTap < Tap
     safe_system HOMEBREW_BREW_FILE, "tap", instance.name
   end
 
+  def install(full_clone: true, quiet: false, clone_target: nil, force_auto_update: nil)
+    if HOMEBREW_CORE_GIT_REMOTE != default_remote
+      puts "HOMEBREW_CORE_GIT_REMOTE set: using #{HOMEBREW_CORE_GIT_REMOTE} " \
+           "for Homebrew/core Git remote URL."
+      clone_target ||= HOMEBREW_CORE_GIT_REMOTE
+    end
+    super(full_clone: full_clone, quiet: quiet, clone_target: clone_target, force_auto_update: force_auto_update)
+  end
+
   # @private
   def uninstall
     raise "Tap#uninstall is not available for CoreTap"
@@ -729,7 +730,7 @@ class TapConfig
     return unless Utils.git_available?
 
     tap.path.cd do
-      Utils.popen_read("git", "config", "--local", "--get", "homebrew.#{key}").chomp.presence
+      Utils.popen_read("git", "config", "--get", "homebrew.#{key}").chomp.presence
     end
   end
 
@@ -738,7 +739,7 @@ class TapConfig
     return unless Utils.git_available?
 
     tap.path.cd do
-      safe_system "git", "config", "--local", "--replace-all", "homebrew.#{key}", value.to_s
+      safe_system "git", "config", "--replace-all", "homebrew.#{key}", value.to_s
     end
   end
 end

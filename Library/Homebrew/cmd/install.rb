@@ -88,20 +88,20 @@ module Homebrew
       conflicts "--devel", "--HEAD"
       conflicts "--build-from-source", "--build-bottle", "--force-bottle"
       formula_options
+      min_named :formula
     end
   end
 
   def install
-    ARGV.named.each do |name|
+    install_args.parse
+
+    args.named.each do |name|
       next if File.exist?(name)
       next if name !~ HOMEBREW_TAP_FORMULA_REGEX && name !~ HOMEBREW_CASK_TAP_CASK_REGEX
 
       tap = Tap.fetch(Regexp.last_match(1), Regexp.last_match(2))
       tap.install unless tap.installed?
     end
-
-    install_args.parse
-    raise FormulaUnspecifiedError if args.remaining.empty?
 
     if args.ignore_dependencies?
       opoo <<~EOS
@@ -130,9 +130,9 @@ module Homebrew
     # developer tools are available, we need to stop them early on
     FormulaInstaller.prevent_build_flags unless DevelopmentTools.installed?
 
-    ARGV.formulae.each do |f|
+    args.formulae.each do |f|
       # head-only without --HEAD is an error
-      if !Homebrew.args.HEAD? && f.stable.nil? && f.devel.nil?
+      if !args.HEAD? && f.stable.nil? && f.devel.nil?
         raise <<~EOS
           #{f.full_name} is a head-only formula
           Install with `brew install --HEAD #{f.full_name}`
@@ -173,7 +173,7 @@ module Homebrew
           optlinked_version = Keg.for(f.opt_prefix).version
           onoe <<~EOS
             #{f.full_name} #{optlinked_version} is already installed
-            To upgrade to #{f.version}, run `brew upgrade #{f.name}`
+            To upgrade to #{f.version}, run `brew upgrade #{f.full_name}`
           EOS
         elsif args.only_dependencies?
           formulae << f

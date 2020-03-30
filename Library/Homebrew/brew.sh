@@ -26,8 +26,17 @@ esac
 # Higher depths mean this command was invoked by another Homebrew command.
 export HOMEBREW_COMMAND_DEPTH=$((HOMEBREW_COMMAND_DEPTH + 1))
 
+ohai() {
+  if [[ -t 1 && -z "$HOMEBREW_NO_COLOR" ]] # check whether stdout is a tty.
+  then
+    echo -e "\\033[34m==>\\033[0m \\033[1m$*\\033[0m" # blue arrow and bold text
+  else
+    echo "==> $*"
+  fi
+}
+
 onoe() {
-  if [[ -t 2 ]] # check whether stderr is a tty.
+  if [[ -t 2 && -z "$HOMEBREW_NO_COLOR" ]] # check whether stderr is a tty.
   then
     echo -ne "\\033[4;31mError\\033[0m: " >&2 # highlight Error with underline and red color
   else
@@ -61,15 +70,15 @@ git() {
 numeric() {
   # Condense the exploded argument into a single return value.
   # shellcheck disable=SC2086,SC2183
-  printf "%01d%02d%02d%03d" ${1//[.rc]/ }
+  printf "%01d%02d%02d%03d" ${1//[.rc]/ } 2>/dev/null
 }
 
 HOMEBREW_VERSION="$(git -C "$HOMEBREW_REPOSITORY" describe --tags --dirty --abbrev=7 2>/dev/null)"
 HOMEBREW_USER_AGENT_VERSION="$HOMEBREW_VERSION"
 if [[ -z "$HOMEBREW_VERSION" ]]
 then
-  HOMEBREW_VERSION=">=1.7.1 (shallow or no git repository)"
-  HOMEBREW_USER_AGENT_VERSION="1.X.Y"
+  HOMEBREW_VERSION=">=2.2.0 (shallow or no git repository)"
+  HOMEBREW_USER_AGENT_VERSION="2.X.Y"
 fi
 
 if [[ "$HOMEBREW_PREFIX" = "/" || "$HOMEBREW_PREFIX" = "/usr" ]]
@@ -365,6 +374,26 @@ then
   export HOMEBREW_BOTTLE_DOMAIN="$HOMEBREW_BOTTLE_DEFAULT_DOMAIN"
 fi
 
+HOMEBREW_DEFAULT_BREW_GIT_REMOTE="https://github.com/cerisola/brew"
+if [[ -z "$HOMEBREW_BREW_GIT_REMOTE" ]]
+then
+  HOMEBREW_BREW_GIT_REMOTE="$HOMEBREW_DEFAULT_BREW_GIT_REMOTE"
+fi
+export HOMEBREW_BREW_GIT_REMOTE
+
+if [[ -n "$HOMEBREW_MACOS" ]] || [[ -n "$HOMEBREW_FORCE_HOMEBREW_ON_LINUX" ]]
+then
+  HOMEBREW_DEFAULT_CORE_GIT_REMOTE="https://github.com/cerisola/homebrew-core"
+else
+  HOMEBREW_DEFAULT_CORE_GIT_REMOTE="https://github.com/cerisola/linuxbrew-core"
+fi
+
+if [[ -z "$HOMEBREW_CORE_GIT_REMOTE" ]]
+then
+  HOMEBREW_CORE_GIT_REMOTE="$HOMEBREW_DEFAULT_CORE_GIT_REMOTE"
+fi
+export HOMEBREW_CORE_GIT_REMOTE
+
 if [[ -f "$HOMEBREW_LIBRARY/Homebrew/cmd/$HOMEBREW_COMMAND.sh" ]]
 then
   HOMEBREW_BASH_COMMAND="$HOMEBREW_LIBRARY/Homebrew/cmd/$HOMEBREW_COMMAND.sh"
@@ -381,8 +410,8 @@ fi
 check-run-command-as-root() {
   [[ "$(id -u)" = 0 ]] || return
 
-  # Allow Azure Pipelines/Docker/Kubernetes to do everything as root (as it's normal there)
-  [[ -f /proc/1/cgroup ]] && grep -E "azpl_job|docker|kubepods" -q /proc/1/cgroup && return
+  # Allow Azure Pipelines/Docker/Concourse/Kubernetes to do everything as root (as it's normal there)
+  [[ -f /proc/1/cgroup ]] && grep -E "azpl_job|docker|garden|kubepods" -q /proc/1/cgroup && return
 
   # Homebrew Services may need `sudo` for system-wide daemons.
   [[ "$HOMEBREW_COMMAND" = "services" ]] && return

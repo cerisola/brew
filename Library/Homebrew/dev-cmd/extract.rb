@@ -91,17 +91,15 @@ module Homebrew
              description: "Extract the specified <version> of <formula> instead of the most recent."
       switch :force
       switch :debug
+      named 2
     end
   end
 
   def extract
     extract_args.parse
 
-    # Expect exactly two named arguments: formula and tap
-    raise UsageError if args.remaining.length != 2
-
-    if args.remaining.first !~ HOMEBREW_TAP_FORMULA_REGEX
-      name = args.remaining.first.downcase
+    if args.named.first !~ HOMEBREW_TAP_FORMULA_REGEX
+      name = args.named.first.downcase
       source_tap = CoreTap.instance
     else
       name = Regexp.last_match(3).downcase
@@ -109,9 +107,11 @@ module Homebrew
       raise TapFormulaUnavailableError.new(source_tap, name) unless source_tap.installed?
     end
 
-    destination_tap = Tap.fetch(args.remaining.second)
-    odie "Cannot extract formula to homebrew/core!" if destination_tap.core_tap?
-    odie "Cannot extract formula to the same tap!" if destination_tap == source_tap
+    destination_tap = Tap.fetch(args.named.second)
+    unless ARGV.homebrew_developer?
+      odie "Cannot extract formula to homebrew/core!" if destination_tap.core_tap?
+      odie "Cannot extract formula to the same tap!" if destination_tap == source_tap
+    end
     destination_tap.install unless destination_tap.installed?
 
     repo = source_tap.path
@@ -125,24 +125,34 @@ module Homebrew
     if args.version
       ohai "Searching repository history"
       version = args.version
-      rev = "HEAD"
+      version_segments = Gem::Version.new(version).segments if Gem::Version.correct?(version)
+      rev = nil
       test_formula = nil
       result = ""
       loop do
-        rev, (path,) = Git.last_revision_commit_of_files(repo, pattern, before_commit: "#{rev}~1")
+        rev = rev.nil? ? "HEAD" : "#{rev}~1"
+        rev, (path,) = Git.last_revision_commit_of_files(repo, pattern, before_commit: rev)
         odie "Could not find #{name}! The formula or version may not have existed." if rev.nil?
 
         file = repo/path
         result = Git.last_revision_of_file(repo, file, before_commit: rev)
         if result.empty?
-          ohai "Skipping revision #{rev} - file is empty at this revision" if ARGV.debug?
+          odebug "Skipping revision #{rev} - file is empty at this revision"
           next
         end
 
         test_formula = formula_at_revision(repo, name, file, rev)
         break if test_formula.nil? || test_formula.version == version
 
-        ohai "Trying #{test_formula.version} from revision #{rev} against desired #{version}" if ARGV.debug?
+        if version_segments && Gem::Version.correct?(test_formula.version)
+          test_formula_version_segments = Gem::Version.new(test_formula.version).segments
+          if version_segments.length < test_formula_version_segments.length
+            odebug "Apply semantic versioning with #{test_formual_version_segments}"
+            break if version_segments == test_formula_version_segments.first(version_segments.length)
+          end
+        end
+
+        odebug "Trying #{test_formula.version} from revision #{rev} against desired #{version}"
       end
       odie "Could not find #{name}! The formula or version may not have existed." if test_formula.nil?
     else
@@ -169,19 +179,22 @@ module Homebrew
     # The class name has to be renamed to match the new filename,
     # e.g. Foo version 1.2.3 becomes FooAT123 and resides in Foo@1.2.3.rb.
     class_name = Formulary.class_s(name)
+
+    # Remove any existing version suffixes, as a new one will be added later
+    name.sub!(/\b@(.*)\z\b/i, "")
     versioned_name = Formulary.class_s("#{name}@#{version}")
     result.gsub!("class #{class_name} < Formula", "class #{versioned_name} < Formula")
 
     path = destination_tap.path/"Formula/#{name}@#{version}.rb"
     if path.exist?
-      unless ARGV.force?
+      unless args.force?
         odie <<~EOS
           Destination formula already exists: #{path}
           To overwrite it and continue anyways, run:
             brew extract --force --version=#{version} #{name} #{destination_tap.name}
         EOS
       end
-      ohai "Overwriting existing formula at #{path}" if ARGV.debug?
+      odebug "Overwriting existing formula at #{path}"
       path.delete
     end
     ohai "Writing formula for #{name} from revision #{rev} to #{path}"

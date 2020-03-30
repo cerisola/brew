@@ -58,7 +58,7 @@ class Cleaner
     # actual files gets removed correctly.
     dirs.reverse_each do |d|
       if d.children.empty?
-        puts "rmdir: #{d} (empty)" if ARGV.verbose?
+        puts "rmdir: #{d} (empty)" if Homebrew.args.verbose?
         d.rmdir
       end
     end
@@ -111,7 +111,7 @@ class Cleaner
         end
         if ARGV.debug?
           old_perms = path.stat.mode & 0777
-          puts "Fixing #{path} permissions from #{old_perms.to_s(8)} to #{perms.to_s(8)}" if perms != old_perms
+          odebug "Fixing #{path} permissions from #{old_perms.to_s(8)} to #{perms.to_s(8)}" if perms != old_perms
         end
         path.chmod perms
       end

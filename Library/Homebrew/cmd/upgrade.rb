@@ -28,6 +28,10 @@ module Homebrew
                           "or a shell inside the temporary build directory."
       switch "-s", "--build-from-source",
              description: "Compile <formula> from source even if a bottle is available."
+      switch "-i", "--interactive",
+             description: "Download and patch <formula>, then open a shell. This allows the user to "\
+                          "run `./configure --help` and otherwise determine how to turn the software "\
+                          "package into a Homebrew package."
       switch "--force-bottle",
              description: "Install from a bottle if it exists for the current or newest version of "\
                           "macOS, even if it would not normally be used for installation."
@@ -61,27 +65,27 @@ module Homebrew
 
     Install.perform_preinstall_checks
 
-    if ARGV.named.empty?
+    if args.no_named?
       outdated = Formula.installed.select do |f|
         f.outdated?(fetch_head: args.fetch_HEAD?)
       end
 
       exit 0 if outdated.empty?
     else
-      outdated = ARGV.resolved_formulae.select do |f|
+      outdated = args.resolved_formulae.select do |f|
         f.outdated?(fetch_head: args.fetch_HEAD?)
       end
 
-      (ARGV.resolved_formulae - outdated).each do |f|
+      (args.resolved_formulae - outdated).each do |f|
         versions = f.installed_kegs.map(&:version)
         if versions.empty?
-          onoe "#{f.full_specified_name} not installed"
+          ofail "#{f.full_specified_name} not installed"
         else
           version = versions.max
-          onoe "#{f.full_specified_name} #{version} already installed"
+          opoo "#{f.full_specified_name} #{version} already installed"
         end
       end
-      exit 1 if outdated.empty?
+      return if outdated.empty?
     end
 
     pinned = outdated.select(&:pinned?)
@@ -107,7 +111,6 @@ module Homebrew
       end
       puts formulae_upgrades.join("\n")
     end
-    return if args.dry_run?
 
     upgrade_formulae(formulae_to_install)
 
@@ -118,6 +121,7 @@ module Homebrew
 
   def upgrade_formulae(formulae_to_install)
     return if formulae_to_install.empty?
+    return if args.dry_run?
 
     # Sort keg-only before non-keg-only formulae to avoid any needless conflicts
     # with outdated, non-keg-only versions of formulae being upgraded.
@@ -144,6 +148,8 @@ module Homebrew
   end
 
   def upgrade_formula(f)
+    return if args.dry_run?
+
     if f.opt_prefix.directory?
       keg = Keg.new(f.opt_prefix.resolved_path)
       keg_had_linked_opt = true
@@ -162,7 +168,7 @@ module Homebrew
       tab = Tab.for_keg(keg)
     end
 
-    build_options = BuildOptions.new(Options.create(Homebrew.args.flags_only), f.options)
+    build_options = BuildOptions.new(Options.create(args.flags_only), f.options)
     options = build_options.used_options
     options |= f.build.used_options
     options &= f.options
@@ -170,7 +176,7 @@ module Homebrew
     fi = FormulaInstaller.new(f)
     fi.options = options
     fi.build_bottle = args.build_bottle?
-    fi.installed_on_request = !ARGV.named.empty?
+    fi.installed_on_request = args.named.present?
     fi.link_keg           ||= keg_was_linked if keg_had_linked_opt
     if tab
       fi.build_bottle          ||= tab.built_bottle?
@@ -179,7 +185,12 @@ module Homebrew
     end
     fi.prelude
 
-    oh1 "Upgrading #{Formatter.identifier(f.full_specified_name)} #{fi.options.to_a.join " "}"
+    upgrade_version = if f.optlinked?
+      "#{Keg.new(f.opt_prefix).version} -> #{f.pkg_version}"
+    else
+      "-> #{f.pkg_version}"
+    end
+    oh1 "Upgrading #{Formatter.identifier(f.full_specified_name)} #{upgrade_version} #{fi.options.to_a.join(" ")}"
 
     # first we unlink the currently active keg for this formula otherwise it is
     # possible for the existing build to interfere with the build we are about to
@@ -223,33 +234,38 @@ module Homebrew
   def check_dependents(formulae_to_install)
     return if formulae_to_install.empty?
 
-    oh1 "Checking for dependents of upgraded formulae..."
-    dependents =
+    oh1 "Checking for dependents of upgraded formulae..." unless args.dry_run?
+    outdated_dependents =
       formulae_to_install.flat_map(&:runtime_installed_formula_dependents)
-    if dependents.blank?
-      ohai "No dependents found!"
+                         .select(&:outdated?)
+    if outdated_dependents.blank?
+      ohai "No dependents found!" unless args.dry_run?
       return
     end
+    outdated_dependents -= formulae_to_install if args.dry_run?
 
-    upgradeable_dependents = dependents.select(&:outdated?)
-                                       .sort { |a, b| depends_on(a, b) }
-    pinned_dependents = dependents.select(&:pinned?)
-                                  .sort { |a, b| depends_on(a, b) }
+    upgradeable_dependents =
+      outdated_dependents.reject(&:pinned?)
+                         .sort { |a, b| depends_on(a, b) }
+    pinned_dependents =
+      outdated_dependents.select(&:pinned?)
+                         .sort { |a, b| depends_on(a, b) }
 
     if pinned_dependents.present?
       plural = "dependent".pluralize(pinned_dependents.count)
       ohai "Not upgrading #{pinned_dependents.count} pinned #{plural}:"
-      puts pinned_dependents.map do |f|
+      puts(pinned_dependents.map do |f|
         "#{f.full_specified_name} #{f.pkg_version}"
-      end.join(", ")
+      end.join(", "))
     end
 
     # Print the upgradable dependents.
     if upgradeable_dependents.blank?
-      ohai "No outdated dependents to upgrade!"
+      ohai "No outdated dependents to upgrade!" unless args.dry_run?
     else
       plural = "dependent".pluralize(upgradeable_dependents.count)
-      ohai "Upgrading #{upgradable.count} #{plural}:"
+      verb = args.dry_run? ? "Would upgrade" : "Upgrading"
+      ohai "#{verb} #{upgradeable_dependents.count} #{plural}:"
       formulae_upgrades = upgradeable_dependents.map do |f|
         name = f.full_specified_name
         if f.optlinked?
@@ -264,36 +280,44 @@ module Homebrew
     upgrade_formulae(upgradeable_dependents)
 
     # Assess the dependents tree again now we've upgraded.
-    oh1 "Checking for dependents' broken linkage from upgraded formulae..."
+    oh1 "Checking for dependents of upgraded formulae..." unless args.dry_run?
     broken_dependents = CacheStoreDatabase.use(:linkage) do |db|
       formulae_to_install.flat_map(&:runtime_installed_formula_dependents)
-                         .map(&:opt_or_installed_prefix_keg)
-                         .compact
-                         .select do |keg|
+                         .select do |f|
+        keg = f.opt_or_installed_prefix_keg
+        next unless keg
+
         LinkageChecker.new(keg, cache_db: db)
                       .broken_library_linkage?
-      end
+      end.compact
     end
     if broken_dependents.blank?
-      ohai "No broken dependents found!"
+      if args.dry_run?
+        ohai "No currently broken dependents found!"
+        opoo "If they are broken by the upgrade they will also be upgraded or reinstalled."
+      else
+        ohai "No broken dependents found!"
+      end
       return
     end
 
     reinstallable_broken_dependents =
-      broken_dependents.select(&:outdated?)
+      broken_dependents.reject(&:outdated?)
+                       .reject(&:pinned?)
                        .sort { |a, b| depends_on(a, b) }
-    pinned_broken_dependents =
-      broken_dependents.select(&:pinned?)
+    outdated_pinned_broken_dependents =
+      broken_dependents.select(&:outdated?)
+                       .select(&:pinned?)
                        .sort { |a, b| depends_on(a, b) }
 
     # Print the pinned dependents.
-    if pinned_broken_dependents.present?
-      count = pinned_broken_dependents.count
-      plural = "dependent".pluralize(pinned_broken_dependents.count)
+    if outdated_pinned_broken_dependents.present?
+      count = outdated_pinned_broken_dependents.count
+      plural = "dependent".pluralize(outdated_pinned_broken_dependents.count)
       onoe "Not reinstalling #{count} broken and outdated, but pinned #{plural}:"
-      $stderr.puts pinned_broken_dependents.map do |f|
+      $stderr.puts(outdated_pinned_broken_dependents.map do |f|
         "#{f.full_specified_name} #{f.pkg_version}"
-      end.join(", ")
+      end.join(", "))
     end
 
     # Print the broken dependents.
@@ -306,6 +330,8 @@ module Homebrew
       puts reinstallable_broken_dependents.map(&:full_specified_name)
                                           .join(", ")
     end
+
+    return if args.dry_run?
 
     reinstallable_broken_dependents.each do |f|
       reinstall_formula(f, build_from_source: true)

@@ -12,8 +12,20 @@ module Homebrew
     class Parser
       attr_reader :processed_options, :hide_from_man_page
 
-      def self.parse(args = ARGV, &block)
-        new(&block).parse(args)
+      def self.parse(args = ARGV, allow_no_named_args: false, &block)
+        new(args, &block).parse(args, allow_no_named_args: allow_no_named_args)
+      end
+
+      def self.from_cmd_path(cmd_path)
+        cmd_args_method_name = Commands.args_method_name(cmd_path)
+
+        begin
+          Homebrew.send(cmd_args_method_name) if require?(cmd_path)
+        rescue NoMethodError => e
+          raise if e.name != cmd_args_method_name
+
+          nil
+        end
       end
 
       def self.global_options
@@ -25,13 +37,18 @@ module Homebrew
         }
       end
 
-      def initialize(&block)
+      def initialize(args = ARGV, &block)
         @parser = OptionParser.new
         @args = Homebrew::CLI::Args.new(argv: ARGV_WITHOUT_MONKEY_PATCHING)
+        @args[:remaining] = []
+        @args[:cmdline_args] = args.dup
         @constraints = []
         @conflicts = []
         @switch_sources = {}
         @processed_options = []
+        @max_named_args = nil
+        @min_named_args = nil
+        @min_named_type = nil
         @hide_from_man_page = false
         instance_eval(&block)
         post_initialize
@@ -61,9 +78,13 @@ module Homebrew
           set_constraints(name, required_for: required_for, depends_on: depends_on)
         end
 
-        enable_switch(*names, from: :env) if !env.nil? && !ENV["HOMEBREW_#{env.to_s.upcase}"].nil?
+        enable_switch(*names, from: :env) if env?(env)
       end
       alias switch_option switch
+
+      def env?(env)
+        env.present? && ENV["HOMEBREW_#{env.to_s.upcase}"].present?
+      end
 
       def usage_banner(text)
         @parser.banner = Formatter.wrap("#{text}\n", COMMAND_DESC_WIDTH)
@@ -74,6 +95,7 @@ module Homebrew
       end
 
       def comma_array(name, description: nil)
+        name = name.chomp "="
         description = option_to_description(name) if description.nil?
         process_option(name, description)
         @parser.on(name, OptionParser::REQUIRED_ARGUMENT, Array, *wrap_option_desc(description)) do |list|
@@ -82,10 +104,10 @@ module Homebrew
       end
 
       def flag(*names, description: nil, required_for: nil, depends_on: nil)
-        if names.any? { |name| name.end_with? "=" }
-          required = OptionParser::REQUIRED_ARGUMENT
+        required = if names.any? { |name| name.end_with? "=" }
+          OptionParser::REQUIRED_ARGUMENT
         else
-          required = OptionParser::OPTIONAL_ARGUMENT
+          OptionParser::OPTIONAL_ARGUMENT
         end
         names.map! { |name| name.chomp "=" }
         description = option_to_description(*names) if description.nil?
@@ -127,21 +149,22 @@ module Homebrew
         @parser.to_s
       end
 
-      def parse(cmdline_args = ARGV)
+      def parse(cmdline_args = ARGV, allow_no_named_args: false)
         raise "Arguments were already parsed!" if @args_parsed
 
         begin
-          remaining_args = @parser.parse(cmdline_args)
+          named_args = @parser.parse(cmdline_args)
         rescue OptionParser::InvalidOption => e
           $stderr.puts generate_help_text
           raise e
         end
         check_constraint_violations
-        @args[:remaining] = remaining_args
-        @args_parsed = true
-        @args.processed_options = @processed_options
+        check_named_args(named_args, allow_no_named_args: allow_no_named_args)
+        @args[:remaining] = named_args
+        @args.freeze_processed_options!(@processed_options)
         Homebrew.args = @args
         cmdline_args.freeze
+        @args_parsed = true
         @parser
       end
 
@@ -151,7 +174,8 @@ module Homebrew
       end
 
       def generate_help_text
-        @parser.to_s.sub(/^/, "#{Tty.bold}Usage: brew#{Tty.reset} ")
+        @parser.to_s
+               .sub(/^/, "#{Tty.bold}Usage: brew#{Tty.reset} ")
                .gsub(/`(.*?)`/m, "#{Tty.bold}\\1#{Tty.reset}")
                .gsub(%r{<([^\s]+?://[^\s]+?)>}) { |url| Formatter.url(url) }
                .gsub(/<(.*?)>/m, "#{Tty.underline}\\1#{Tty.reset}")
@@ -159,7 +183,7 @@ module Homebrew
       end
 
       def formula_options
-        ARGV.formulae.each do |f|
+        @args.formulae.each do |f|
           next if f.options.empty?
 
           f.options.each do |o|
@@ -174,6 +198,36 @@ module Homebrew
         end
       rescue FormulaUnavailableError
         []
+      end
+
+      def max_named(count)
+        raise TypeError, "Unsupported type #{count.class.name} for max_named" unless count.is_a?(Integer)
+
+        @max_named_args = count
+      end
+
+      def min_named(count_or_type)
+        if count_or_type.is_a?(Integer)
+          @min_named_args = count_or_type
+          @min_named_type = nil
+        elsif count_or_type.is_a?(Symbol)
+          @min_named_args = 1
+          @min_named_type = count_or_type
+        else
+          raise TypeError, "Unsupported type #{count_or_type.class.name} for min_named"
+        end
+      end
+
+      def named(count_or_type)
+        if count_or_type.is_a?(Integer)
+          @max_named_args = @min_named_args = count_or_type
+          @min_named_type = nil
+        elsif count_or_type.is_a?(Symbol)
+          @max_named_args = @min_named_args = 1
+          @min_named_type = count_or_type
+        else
+          raise TypeError, "Unsupported type #{count_or_type.class.name} for named"
+        end
       end
 
       def hide_from_man_page!
@@ -267,6 +321,19 @@ module Homebrew
         check_constraints
       end
 
+      def check_named_args(args, allow_no_named_args: false)
+        min_exception = case @min_named_type
+        when :formula
+          FormulaUnspecifiedError.new
+        when :keg
+          KegUnspecifiedError.new
+        else
+          MinNamedArgumentsError.new(@min_named_args)
+        end
+        raise min_exception if !allow_no_named_args && !@min_named_args.nil? && args.size < @min_named_args
+        raise MaxNamedArgumentsError, @max_named_args if !@max_named_args.nil? && args.size > @max_named_args
+      end
+
       def process_option(*args)
         option, = @parser.make_switch(args)
         @processed_options << [option.short.first, option.long.first, option.arg, option.desc.first]
@@ -275,14 +342,10 @@ module Homebrew
 
     class OptionConstraintError < RuntimeError
       def initialize(arg1, arg2, missing: false)
-        if !missing
-          message = <<~EOS
-            `#{arg1}` and `#{arg2}` should be passed together.
-          EOS
+        message = if !missing
+          "`#{arg1}` and `#{arg2}` should be passed together."
         else
-          message = <<~EOS
-            `#{arg2}` cannot be passed without `#{arg1}`.
-          EOS
+          "`#{arg2}` cannot be passed without `#{arg1}`."
         end
         super message
       end
@@ -292,17 +355,41 @@ module Homebrew
       def initialize(args)
         args_list = args.map(&Formatter.public_method(:option))
                         .join(" and ")
-        super <<~EOS
-          Options #{args_list} are mutually exclusive.
-        EOS
+        super "Options #{args_list} are mutually exclusive."
       end
     end
 
     class InvalidConstraintError < RuntimeError
       def initialize(arg1, arg2)
-        super <<~EOS
-          `#{arg1}` and `#{arg2}` cannot be mutually exclusive and mutually dependent simultaneously.
-        EOS
+        super "`#{arg1}` and `#{arg2}` cannot be mutually exclusive and mutually dependent simultaneously."
+      end
+    end
+
+    class MaxNamedArgumentsError < UsageError
+      def initialize(maximum)
+        message = case maximum
+        when 0
+          "this command does not take named arguments"
+        when 1
+          "this command does not take multiple named arguments"
+        else
+          "this command does not take more than #{maximum} named arguments"
+        end
+        super message
+      end
+    end
+
+    class MinNamedArgumentsError < UsageError
+      def initialize(minimum)
+        message = case minimum
+        when 1
+          "this command requires a named argument"
+        when 2
+          "this command requires multiple named arguments"
+        else
+          "this command requires at least #{minimum} named arguments"
+        end
+        super message
       end
     end
   end

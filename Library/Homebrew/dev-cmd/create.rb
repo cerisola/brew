@@ -31,6 +31,8 @@ module Homebrew
              description: "Create a basic template for a Perl build."
       switch "--python",
              description: "Create a basic template for a Python build."
+      switch "--ruby",
+             description: "Create a basic template for a Ruby build."
       switch "--rust",
              description: "Create a basic template for a Rust build."
       switch "--no-fetch",
@@ -49,6 +51,7 @@ module Homebrew
       switch :verbose
       switch :debug
       conflicts "--autotools", "--cmake", "--go", "--meson", "--perl", "--python", "--rust"
+      named 1
     end
   end
 
@@ -56,12 +59,10 @@ module Homebrew
   def create
     create_args.parse
 
-    raise UsageError if ARGV.named.empty?
-
     # Ensure that the cache exists so we can fetch the tarball
     HOMEBREW_CACHE.mkpath
 
-    url = ARGV.named.first # Pull the first (and only) url from ARGV
+    url = args.named.first # Pull the first (and only) url from ARGV
 
     version = args.set_version
     name = args.set_name
@@ -87,6 +88,8 @@ module Homebrew
       :perl
     elsif args.python?
       :python
+    elsif args.ruby?
+      :ruby
     elsif args.rust?
       :rust
     end
@@ -121,7 +124,7 @@ module Homebrew
 
     fc.generate!
 
-    puts "Please `brew audit --new-formula #{fc.name}` before submitting, thanks."
+    puts "Please run `brew audit --new-formula #{fc.name}` before submitting, thanks."
     exec_editor fc.path
   end
 

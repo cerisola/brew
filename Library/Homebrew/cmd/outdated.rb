@@ -10,7 +10,7 @@ module Homebrew
   def outdated_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
-        `outdated` [<options>]
+        `outdated` [<options>] [<formula>]
 
         List installed formulae that have an updated version available. By default, version
         information is displayed in interactive shells, and suppressed otherwise.
@@ -35,10 +35,10 @@ module Homebrew
   def outdated
     outdated_args.parse
 
-    formulae = if ARGV.resolved_formulae.empty?
+    formulae = if args.resolved_formulae.blank?
       Formula.installed
     else
-      ARGV.resolved_formulae
+      args.resolved_formulae
     end
     if args.json
       raise UsageError, "invalid JSON version: #{args.json}" unless ["v1", true].include? args.json
@@ -47,7 +47,7 @@ module Homebrew
     else
       outdated = print_outdated(formulae)
     end
-    Homebrew.failed = !ARGV.resolved_formulae.empty? && !outdated.empty?
+    Homebrew.failed = args.resolved_formulae.present? && !outdated.empty?
   end
 
   def print_outdated(formulae)

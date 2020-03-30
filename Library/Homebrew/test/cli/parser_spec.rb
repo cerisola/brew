@@ -235,5 +235,47 @@ describe Homebrew::CLI::Parser do
       parser.parse(["--foo", "--bar=value", "-v", "-s", "a", "b", "cdefg"])
       expect(Homebrew.args.passthrough).to eq %w[--foo --bar=value -s]
     end
+
+    it "#formulae raises an error when a Formula is unavailable" do
+      parser.parse(["mxcl"])
+      expect { Homebrew.args.formulae }.to raise_error FormulaUnavailableError
+    end
+
+    it "#formulae returns an empty array when there are no Formulae" do
+      parser.parse([])
+      expect(Homebrew.args.formulae).to be_empty
+    end
+
+    it "#casks returns an empty array when there are no matching casks" do
+      parser.parse([])
+      expect(Homebrew.args.casks).to eq []
+    end
+
+    context "kegs" do
+      before do
+        keg = HOMEBREW_CELLAR + "mxcl/10.0"
+        keg.mkpath
+      end
+
+      it "when there are matching kegs returns an array of Kegs" do
+        parser.parse(["mxcl"])
+        expect(Homebrew.args.kegs.length).to eq 1
+      end
+
+      it "when there are no matching kegs returns an array of Kegs" do
+        parser.parse([])
+        expect(Homebrew.args.kegs).to be_empty
+      end
+    end
+
+    it "#named returns an array of non-option arguments" do
+      parser.parse(["foo", "-v", "-s"])
+      expect(Homebrew.args.named).to eq ["foo"]
+    end
+
+    it "#named returns an empty array when there are no named arguments" do
+      parser.parse([])
+      expect(Homebrew.args.named).to be_empty
+    end
   end
 end

@@ -171,10 +171,8 @@ class SoftwareSpec
     add_dep_option(dep) if dep
   end
 
-  def uses_from_macos(deps, **_args)
-    deps = Hash[*deps.shift] if deps.is_a?(Hash)
-
-    depends_on(deps)
+  def uses_from_macos(spec)
+    depends_on(spec)
   end
 
   def deps
@@ -261,7 +259,7 @@ class Bottle
     def initialize(name, version, tag, rebuild)
       @name = File.basename name
       @version = version
-      @tag = tag.to_s.gsub(/_or_later$/, "")
+      @tag = tag.to_s
       @rebuild = rebuild
     end
 

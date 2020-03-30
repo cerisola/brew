@@ -35,7 +35,7 @@ module Homebrew
   end
 
   def system(cmd, *args, **options)
-    if ARGV.verbose?
+    if Homebrew.args.verbose?
       puts "#{cmd} #{args * " "}".gsub(RUBY_PATH, "ruby")
                                  .gsub($LOAD_PATH.join(File::PATH_SEPARATOR).to_s, "$LOAD_PATH")
     end
@@ -87,7 +87,7 @@ module Kernel
   end
 
   def ohai_title(title)
-    title = Tty.truncate(title) if $stdout.tty? && !ARGV.verbose?
+    title = Tty.truncate(title) if $stdout.tty? && !Homebrew.args.verbose?
     Formatter.headline(title, color: :blue)
   end
 
@@ -104,7 +104,7 @@ module Kernel
   end
 
   def oh1(title, options = {})
-    title = Tty.truncate(title) if $stdout.tty? && !ARGV.verbose? && options.fetch(:truncate, :auto) == :auto
+    title = Tty.truncate(title) if $stdout.tty? && !Homebrew.args.verbose? && options.fetch(:truncate, :auto) == :auto
     puts Formatter.headline(title, color: :green)
   end
 
@@ -167,7 +167,7 @@ module Kernel
       next unless match = line.match(HOMEBREW_TAP_PATH_REGEX)
 
       tap = Tap.fetch(match[:user], match[:repo])
-      tap_message = +"\nPlease report this to the #{tap} tap"
+      tap_message = +"\nPlease report this issue to the #{tap} tap (not Homebrew/brew or Homebrew/core)"
       tap_message += ", or even better, submit a PR to fix it" if replacement
       tap_message << ":\n  #{line.sub(/^(.*\:\d+)\:.*$/, '\1')}\n\n"
       break
@@ -373,7 +373,7 @@ module Kernel
   end
 
   def nostdout
-    if ARGV.verbose?
+    if Homebrew.args.verbose?
       yield
     else
       begin
@@ -498,7 +498,10 @@ module Kernel
   end
 
   def command_help_lines(path)
-    path.read.lines.grep(/^#:/).map { |line| line.slice(2..-1) }
+    path.read
+        .lines
+        .grep(/^#:/)
+        .map { |line| line.slice(2..-1) }
   end
 
   def redact_secrets(input, secrets)

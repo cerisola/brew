@@ -24,13 +24,13 @@ module Homebrew
       args = %w[
         --force-exclusion
       ]
-      if fix
-        args << "--auto-correct"
+      args << if fix
+        "--auto-correct"
       else
-        args << "--parallel"
+        "--parallel"
       end
 
-      args += ["--extra-details", "--display-cop-names"] if ARGV.verbose?
+      args += ["--extra-details", "--display-cop-names"] if Homebrew.args.verbose?
 
       if except_cops
         except_cops.map! { |cop| RuboCop::Cop::Cop.registry.qualified_cop_name(cop.to_s, "") }

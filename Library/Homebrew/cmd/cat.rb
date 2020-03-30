@@ -12,17 +12,12 @@ module Homebrew
 
         Display the source of <formula>.
       EOS
+      named :formula
     end
   end
 
   def cat
     cat_args.parse
-    # do not "fix" this to support multiple arguments, the output would be
-    # unparsable, if the user wants to cat multiple formula they can call
-    # brew cat multiple times.
-    formulae = ARGV.formulae
-    raise FormulaUnspecifiedError if formulae.empty?
-    raise "`brew cat` doesn't support multiple arguments" if args.remaining.size > 1
 
     cd HOMEBREW_REPOSITORY
     pager = if ENV["HOMEBREW_BAT"].nil?
@@ -30,6 +25,6 @@ module Homebrew
     else
       "#{HOMEBREW_PREFIX}/bin/bat"
     end
-    safe_system pager, formulae.first.path, *Homebrew.args.passthrough
+    safe_system pager, args.formulae.first.path, *args.passthrough
   end
 end

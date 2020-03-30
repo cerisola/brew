@@ -36,9 +36,12 @@ module Homebrew
         If no <text> is provided, list all locally available formulae (including tapped ones).
         No online search is performed.
       EOS
+      switch "--formulae",
+             description: "Without <text>, list all locally available formulae (no online search is performed). " \
+                          "With <text>, search online and locally for formulae."
       switch "--casks",
-             description: "List all locally available casks (including tapped ones). "\
-                          "No online search is performed."
+             description: "Without <text>, list all locally available casks (including tapped ones, no online " \
+                          "search is performed). With <text>, search online and locally for casks."
       switch "--desc",
              description: "Search for formulae with a description matching <text> and casks with "\
                           "a name matching <text>."
@@ -59,12 +62,14 @@ module Homebrew
 
     if package_manager = PACKAGE_MANAGERS.find { |name,| args[:"#{name}?"] }
       _, url = package_manager
-      exec_browser url.call(URI.encode_www_form_component(args.remaining.join(" ")))
+      exec_browser url.call(URI.encode_www_form_component(args.named.join(" ")))
       return
     end
 
-    if args.remaining.empty?
+    if args.no_named?
       if args.casks?
+        raise UsageError, "specifying both --formulae and --casks requires <text>" if args.formulae?
+
         puts Formatter.columns(Cask::Cask.to_a.map(&:full_name).sort)
       else
         puts Formatter.columns(Formula.full_names.sort)
@@ -73,7 +78,7 @@ module Homebrew
       return
     end
 
-    query = args.remaining.join(" ")
+    query = args.named.join(" ")
     string_or_regex = query_regexp(query)
 
     if args.desc?
@@ -88,14 +93,17 @@ module Homebrew
       local_casks = search_casks(string_or_regex)
       remote_casks = remote_results[:casks]
       all_casks = local_casks + remote_casks
+      print_formulae = args.formulae?
+      print_casks = args.casks?
+      print_formulae = print_casks = true if !print_formulae && !print_casks
 
-      if all_formulae.any?
+      if print_formulae && all_formulae.any?
         ohai "Formulae"
         puts Formatter.columns(all_formulae)
       end
 
-      if all_casks.any?
-        puts if all_formulae.any?
+      if print_casks && all_casks.any?
+        puts if args.formulae? && all_formulae.any?
         ohai "Casks"
         puts Formatter.columns(all_casks)
       end
@@ -103,7 +111,7 @@ module Homebrew
       if $stdout.tty?
         count = all_formulae.count + all_casks.count
 
-        if reason = MissingFormula.reason(query, silent: true) && !local_casks.include?(query)
+        if (reason = MissingFormula.reason(query, silent: true)) && !local_casks.include?(query)
           if count.positive?
             puts
             puts "If you meant #{query.inspect} specifically:"
@@ -117,11 +125,11 @@ module Homebrew
     end
 
     return unless $stdout.tty?
-    return if args.remaining.empty?
+    return if args.no_named?
 
     metacharacters = %w[\\ | ( ) [ ] { } ^ $ * + ?].freeze
     return unless metacharacters.any? do |char|
-      args.remaining.any? do |arg|
+      args.named.any? do |arg|
         arg.include?(char) && !arg.start_with?("/")
       end
     end

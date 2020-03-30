@@ -26,6 +26,10 @@ module Homebrew
                           "or a shell inside the temporary build directory."
       switch "-s", "--build-from-source",
              description: "Compile <formula> from source even if a bottle is available."
+      switch "-i", "--interactive",
+             description: "Download and patch <formula>, then open a shell. This allows the user to "\
+                          "run `./configure --help` and otherwise determine how to turn the software "\
+                          "package into a Homebrew package."
       switch "--force-bottle",
              description: "Install from a bottle if it exists for the current or newest version of "\
                           "macOS, even if it would not normally be used for installation."
@@ -41,6 +45,7 @@ module Homebrew
              description: "Print install times for each formula at the end of the run."
       conflicts "--build-from-source", "--force-bottle"
       formula_options
+      min_named :formula
     end
   end
 
@@ -51,7 +56,7 @@ module Homebrew
 
     Install.perform_preinstall_checks
 
-    ARGV.resolved_formulae.each do |f|
+    args.resolved_formulae.each do |f|
       if f.pinned?
         onoe "#{f.full_name} is pinned. You must unpin it to reinstall."
         next

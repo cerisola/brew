@@ -8,6 +8,8 @@ module Homebrew
   module_function
 
   def reinstall_formula(f, build_from_source: true)
+    return if args.dry_run?
+
     if f.opt_prefix.directory?
       keg = Keg.new(f.opt_prefix.resolved_path)
       tab = Tab.for_keg(keg)
@@ -24,8 +26,8 @@ module Homebrew
     fi = FormulaInstaller.new(f)
     fi.options              = options
     fi.build_bottle         = ARGV.build_bottle?
-    fi.interactive          = ARGV.interactive?
-    fi.git                  = ARGV.git?
+    fi.interactive          = Homebrew.args.interactive?
+    fi.git                  = Homebrew.args.git?
     fi.link_keg           ||= keg_was_linked if keg_had_linked_opt
     fi.build_from_source    = true if build_from_source
     if tab

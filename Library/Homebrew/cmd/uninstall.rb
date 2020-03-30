@@ -22,23 +22,22 @@ module Homebrew
              description: "Don't fail uninstall, even if <formula> is a dependency of any installed "\
                           "formulae."
       switch :debug
+      min_named :formula
     end
   end
 
   def uninstall
     uninstall_args.parse
 
-    raise KegUnspecifiedError if args.remaining.empty?
-
     kegs_by_rack = if args.force?
-      Hash[ARGV.named.map do |name|
+      Hash[args.named.map do |name|
         rack = Formulary.to_rack(name)
         next unless rack.directory?
 
         [rack, rack.subdirs.map { |d| Keg.new(d) }]
       end]
     else
-      ARGV.kegs.group_by(&:rack)
+      args.kegs.group_by(&:rack)
     end
 
     handle_unsatisfied_dependents(kegs_by_rack)
@@ -79,7 +78,7 @@ module Homebrew
             if rack.directory?
               versions = rack.subdirs.map(&:basename)
               puts "#{keg.name} #{versions.to_sentence} #{"is".pluralize(versions.count)} still installed."
-              puts "Remove all versions with `brew uninstall --force #{keg.name}`."
+              puts "Run `brew uninstall --force #{keg.name}` to remove all versions."
             end
           end
         end
@@ -87,7 +86,7 @@ module Homebrew
     end
   rescue MultipleVersionsInstalledError => e
     ofail e
-    puts "Use `brew uninstall --force #{e.name}` to remove all versions."
+    puts "Run `brew uninstall --force #{e.name}` to remove all versions."
   ensure
     # If we delete Cellar/newname, then Cellar/oldname symlink
     # can become broken and we have to remove it.
@@ -131,7 +130,7 @@ module Homebrew
     protected
 
     def sample_command
-      "brew uninstall --ignore-dependencies #{ARGV.named.join(" ")}"
+      "brew uninstall --ignore-dependencies #{Array(Homebrew.args.named).join(" ")}"
     end
 
     def are_required_by_deps

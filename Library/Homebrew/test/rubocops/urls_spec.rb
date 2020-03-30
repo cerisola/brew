@@ -19,6 +19,11 @@ describe RuboCop::Cop::FormulaAudit::Urls do
       "msg" => "Please use https:// for http://tools.ietf.org/tools/rfcmarkup/rfcmarkup-1.119.tgz",
       "col" => 2,
     }, {
+      "url" => "https://apache.org/dyn/closer.cgi?path=/apr/apr-1.7.0.tar.bz2",
+      "msg" => "https://apache.org/dyn/closer.cgi?path=/apr/apr-1.7.0.tar.bz2 should be " \
+               "`https://www.apache.org/dyn/closer.lua?path=apr/apr-1.7.0.tar.bz2`",
+      "col" => 2,
+    }, {
       "url" => "http://search.mcpan.org/CPAN/authors/id/Z/ZE/ZEFRAM/Perl4-CoreLibs-0.003.tar.gz",
       "msg" => "http://search.mcpan.org/CPAN/authors/id/Z/ZE/ZEFRAM/Perl4-CoreLibs-0.003.tar.gz should be " \
                "`https://cpan.metacpan.org/authors/id/Z/ZE/ZEFRAM/Perl4-CoreLibs-0.003.tar.gz`",
@@ -145,13 +150,13 @@ describe RuboCop::Cop::FormulaAudit::Urls do
     }, {
       "url"         => "https://brew.sh/example-darwin.x86_64.tar.gz",
       "msg"         => "https://brew.sh/example-darwin.x86_64.tar.gz looks like a binary package, " \
-                       "not a source archive. Homebrew/homebrew-core is source-only.",
+                       "not a source archive; homebrew/core is source-only.",
       "col"         => 2,
       "formula_tap" => "homebrew-core",
     }, {
       "url"         => "https://brew.sh/example-darwin.amd64.tar.gz",
       "msg"         => "https://brew.sh/example-darwin.amd64.tar.gz looks like a binary package, " \
-                       "not a source archive. Homebrew/homebrew-core is source-only.",
+                       "not a source archive; homebrew/core is source-only.",
       "col"         => 2,
       "formula_tap" => "homebrew-core",
     }]

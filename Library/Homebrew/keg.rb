@@ -135,7 +135,7 @@ class Keg
       f = keg.to_formula
       keg_formulae << f
       [f.name, f.tap]
-    rescue FormulaUnavailableError
+    rescue
       # If the formula for the keg can't be found,
       # fall back to the information in the tab.
       [keg.name, keg.tab.tap]
@@ -257,8 +257,7 @@ class Keg
 
     tap = begin
       to_formula.tap
-    rescue FormulaUnavailableError, TapFormulaAmbiguityError,
-           TapFormulaWithOldnameAmbiguityError
+    rescue
       # If the formula can't be found, just ignore aliases for now.
       nil
     end
@@ -573,7 +572,9 @@ class Keg
     begin
       keg = Keg.for(src)
     rescue NotAKegError
-      puts "Won't resolve conflicts for symlink #{dst} as it doesn't resolve into the Cellar" if ARGV.verbose?
+      if Homebrew.args.verbose?
+        puts "Won't resolve conflicts for symlink #{dst} as it doesn't resolve into the Cellar"
+      end
       return
     end
 
@@ -584,7 +585,7 @@ class Keg
 
   def make_relative_symlink(dst, src, mode)
     if dst.symlink? && src == dst.resolved_path
-      puts "Skipping; link already exists: #{dst}" if ARGV.verbose?
+      puts "Skipping; link already exists: #{dst}" if Homebrew.args.verbose?
       return
     end
 

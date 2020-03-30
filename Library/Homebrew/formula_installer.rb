@@ -18,6 +18,7 @@ require "linkage_checker"
 require "install"
 require "messages"
 require "cask/cask_loader"
+require "find"
 
 class FormulaInstaller
   include FormulaCellarChecks
@@ -41,7 +42,7 @@ class FormulaInstaller
   mode_attr_accessor :show_summary_heading, :show_header
   mode_attr_accessor :build_from_source, :force_bottle, :include_test
   mode_attr_accessor :ignore_deps, :only_deps, :interactive, :git
-  mode_attr_accessor :verbose, :debug, :quieter
+  mode_attr_accessor :verbose, :debug, :quiet
 
   def initialize(formula)
     @formula = formula
@@ -55,8 +56,8 @@ class FormulaInstaller
     @include_test = ARGV.include?("--include-test")
     @interactive = false
     @git = false
-    @verbose = ARGV.verbose?
-    @quieter = ARGV.quieter?
+    @verbose = Homebrew.args.verbose?
+    @quiet = Homebrew.args.quiet?
     @debug = ARGV.debug?
     @installed_as_dependency = false
     @installed_on_request = true
@@ -79,7 +80,7 @@ class FormulaInstaller
   # it's necessary to interrupt the user before any sort of installation
   # can proceed. Only invoked when the user has no developer tools.
   def self.prevent_build_flags
-    build_flags = ARGV.collect_build_flags
+    build_flags = Homebrew.args.collect_build_args
     return if build_flags.empty?
 
     all_bottled = ARGV.formulae.all?(&:bottled?)
@@ -202,12 +203,12 @@ class FormulaInstaller
   end
 
   def build_bottle_preinstall
-    @etc_var_glob ||= "#{HOMEBREW_PREFIX}/{etc,var}/**/*"
-    @etc_var_preinstall = Dir[@etc_var_glob]
+    @etc_var_dirs ||= [HOMEBREW_PREFIX/"etc", HOMEBREW_PREFIX/"var"]
+    @etc_var_preinstall = Find.find(*@etc_var_dirs.select(&:directory?)).to_a
   end
 
   def build_bottle_postinstall
-    @etc_var_postinstall = Dir[@etc_var_glob]
+    @etc_var_postinstall = Find.find(*@etc_var_dirs.select(&:directory?)).to_a
     (@etc_var_postinstall - @etc_var_preinstall).each do |file|
       Pathname.new(file).cp_path_sub(HOMEBREW_PREFIX, formula.bottle_prefix)
     end
@@ -228,7 +229,7 @@ class FormulaInstaller
       EOS
       if formula.outdated? && !formula.head?
         message += <<~EOS
-          To upgrade to #{formula.pkg_version}, run `brew upgrade #{formula.name}`.
+          To upgrade to #{formula.pkg_version}, run `brew upgrade #{formula.full_name}`.
         EOS
       elsif only_deps?
         message = nil
@@ -343,13 +344,13 @@ class FormulaInstaller
 
     build_bottle_postinstall if build_bottle?
 
-    opoo "Nothing was installed to #{formula.prefix}" unless formula.installed?
+    opoo "Nothing was installed to #{formula.prefix}" unless formula.latest_version_installed?
     end_time = Time.now
     Homebrew.messages.formula_installed(formula, end_time - start_time)
   end
 
   def check_conflicts
-    return if ARGV.force?
+    return if Homebrew.args.force?
 
     conflicts = formula.conflicts.select do |c|
       f = Formulary.factory(c.name)
@@ -368,7 +369,7 @@ class FormulaInstaller
 
       raise if ARGV.homebrew_developer?
 
-      $stderr.puts "Please report this to the #{formula.tap} tap!"
+      $stderr.puts "Please report this issue to the #{formula.tap} tap (not Homebrew/brew or Homebrew/core)!"
       false
     else # rubocop:disable Layout/ElseAlignment
       f.linked_keg.exist? && f.opt_prefix.exist?
@@ -589,7 +590,7 @@ class FormulaInstaller
     fi.build_from_source       = ARGV.build_formula_from_source?(df)
     fi.force_bottle            = false
     fi.verbose                 = verbose?
-    fi.quieter                 = quieter?
+    fi.quiet                   = quiet?
     fi.debug                   = debug?
     fi.link_keg              ||= keg_was_linked if keg_had_linked_keg
     fi.installed_as_dependency = true
@@ -598,12 +599,16 @@ class FormulaInstaller
     oh1 "Installing #{formula.full_name} dependency: #{Formatter.identifier(dep.name)}"
     fi.install
     fi.finish
-  rescue Exception # rubocop:disable Lint/RescueException
+  rescue Exception => e # rubocop:disable Lint/RescueException
     ignore_interrupts do
       tmp_keg.rename(installed_keg) if tmp_keg && !installed_keg.directory?
       linked_keg.link if keg_was_linked
     end
-    raise
+    raise unless e.is_a? FormulaInstallationAlreadyAttemptedError
+
+    # We already attempted to install f as part of another formula's
+    # dependency tree. In that case, don't generate an error, just move on.
+    nil
   else
     ignore_interrupts { tmp_keg.rmtree if tmp_keg&.directory? }
   end
@@ -699,7 +704,7 @@ class FormulaInstaller
     args << "--debug" if debug?
     args << "--cc=#{ARGV.cc}" if ARGV.cc
     args << "--default-fortran-flags" if ARGV.include? "--default-fortran-flags"
-    args << "--keep-tmp" if ARGV.keep_tmp?
+    args << "--keep-tmp" if Homebrew.args.keep_tmp?
 
     if ARGV.env
       args << "--env=#{ARGV.env}"
@@ -748,7 +753,7 @@ class FormulaInstaller
         sandbox = Sandbox.new
         formula.logs.mkpath
         sandbox.record_log(formula.logs/"build.sandbox.log")
-        sandbox.allow_write_path(ENV["HOME"]) if ARGV.interactive?
+        sandbox.allow_write_path(ENV["HOME"]) if Homebrew.args.interactive?
         sandbox.allow_write_temp_and_cache
         sandbox.allow_write_log(formula)
         sandbox.allow_cvs
@@ -910,13 +915,7 @@ class FormulaInstaller
       --
       #{HOMEBREW_LIBRARY_PATH}/postinstall.rb
       #{formula.path}
-    ].concat(ARGV.options_only) - ["--HEAD", "--devel"]
-
-    if formula.head?
-      args << "--HEAD"
-    elsif formula.devel?
-      args << "--devel"
-    end
+    ]
 
     Utils.safe_fork do
       if Sandbox.formula?(formula)
