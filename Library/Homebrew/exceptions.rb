@@ -29,14 +29,7 @@ class KegUnspecifiedError < UsageError
   end
 end
 
-class MultipleVersionsInstalledError < RuntimeError
-  attr_reader :name
-
-  def initialize(name)
-    @name = name
-    super "#{name} has multiple installed versions"
-  end
-end
+class MultipleVersionsInstalledError < RuntimeError; end
 
 class NotAKegError < RuntimeError; end
 
@@ -83,9 +76,7 @@ class FormulaUnavailableError < RuntimeError
 end
 
 module FormulaClassUnavailableErrorModule
-  attr_reader :path
-  attr_reader :class_name
-  attr_reader :class_list
+  attr_reader :path, :class_name, :class_list
 
   def to_s
     s = super
@@ -230,9 +221,7 @@ class TapUnavailableError < RuntimeError
 end
 
 class TapRemoteMismatchError < RuntimeError
-  attr_reader :name
-  attr_reader :expected_remote
-  attr_reader :actual_remote
+  attr_reader :name, :expected_remote, :actual_remote
 
   def initialize(name, expected_remote, actual_remote)
     @name = name
@@ -255,17 +244,6 @@ class TapAlreadyTappedError < RuntimeError
     super <<~EOS
       Tap #{name} already tapped.
     EOS
-  end
-end
-
-class TapPinStatusError < RuntimeError
-  attr_reader :name, :pinned
-
-  def initialize(name, pinned)
-    @name = name
-    @pinned = pinned
-
-    super pinned ? "#{name} is already pinned." : "#{name} is already unpinned."
   end
 end
 
@@ -331,6 +309,18 @@ class FormulaConflictError < RuntimeError
   end
 end
 
+class FormulaUnknownPythonError < RuntimeError
+  def initialize(formula)
+    super <<~EOS
+      The version of Python to use with the virtualenv in the `#{formula.full_name}` formula
+      cannot be guessed automatically because a recognised Python dependency could not be found.
+
+      If you are using a non-standard Python depedency, please add `:using => "python@x.y"` to
+      `virtualenv_install_with_resources` to resolve the issue manually.
+    EOS
+  end
+end
+
 class FormulaAmbiguousPythonError < RuntimeError
   def initialize(formula)
     super <<~EOS
@@ -360,16 +350,16 @@ class BuildError < RuntimeError
   end
 
   def fetch_issues
-    GitHub.issues_for_formula(formula.name, tap: formula.tap)
+    GitHub.issues_for_formula(formula.name, tap: formula.tap, state: "open")
   rescue GitHub::RateLimitExceededError => e
     opoo e.message
     []
   end
 
-  def dump
+  def dump(verbose: false)
     puts
 
-    if Homebrew.args.verbose?
+    if verbose
       require "system_config"
       require "build_environment"
 
@@ -505,11 +495,9 @@ class CurlDownloadStrategyError < RuntimeError
   end
 end
 
-# Raised by {#safe_system} in `utils.rb`.
+# Raised by {Kernel#safe_system} in `utils.rb`.
 class ErrorDuringExecution < RuntimeError
-  attr_reader :cmd
-  attr_reader :status
-  attr_reader :output
+  attr_reader :cmd, :status, :output
 
   def initialize(cmd, status:, output: nil, secrets: [])
     @cmd = cmd
@@ -525,7 +513,7 @@ class ErrorDuringExecution < RuntimeError
     redacted_cmd = redact_secrets(cmd.shelljoin.gsub('\=', "="), secrets)
     s = +"Failure while executing; `#{redacted_cmd}` exited with #{exitstatus}."
 
-    unless [*output].empty?
+    if Array(output).present?
       format_output_line = lambda do |type_line|
         type, line = *type_line
         if type == :stderr
@@ -544,7 +532,7 @@ class ErrorDuringExecution < RuntimeError
   end
 
   def stderr
-    [*output].select { |type,| type == :stderr }.map(&:last).join
+    Array(output).select { |type,| type == :stderr }.map(&:last).join
   end
 end
 
@@ -596,8 +584,7 @@ end
 
 # Raised when a child process sends us an exception over its error pipe.
 class ChildProcessError < RuntimeError
-  attr_reader :inner
-  attr_reader :inner_class
+  attr_reader :inner, :inner_class
 
   def initialize(inner)
     @inner = inner
@@ -610,5 +597,14 @@ class ChildProcessError < RuntimeError
 
     # Clobber our real (but irrelevant) backtrace with that of the inner exception.
     set_backtrace inner["b"]
+  end
+end
+
+class MacOSVersionError < RuntimeError
+  attr_reader :version
+
+  def initialize(version)
+    @version = version
+    super "unknown or unsupported macOS version: #{version.inspect}"
   end
 end

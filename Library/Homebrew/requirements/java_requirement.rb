@@ -86,7 +86,7 @@ class JavaRequirement < Requirement
   end
 
   def exact_version?
-    @version && @version.to_s.chars.last != "+"
+    @version && @version.to_s[-1] != "+"
   end
 
   def fits_latest?
@@ -111,7 +111,7 @@ class JavaRequirement < Requirement
     rescue FormulaUnavailableError
       nil
     end
-    javas << jdk.bin/"java" if jdk&.installed?
+    javas << jdk.bin/"java" if jdk&.latest_version_installed?
     javas << which("java")
     javas
   end

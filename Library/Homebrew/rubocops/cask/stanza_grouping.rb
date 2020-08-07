@@ -6,7 +6,7 @@ module RuboCop
   module Cop
     module Cask
       # This cop checks that a cask's stanzas are grouped correctly.
-      # See https://github.com/cerisola/homebrew-cask/blob/master/CONTRIBUTING.md#stanza-order
+      # See https://github.com/cerisola/homebrew-cask/blob/HEAD/CONTRIBUTING.md#stanza-order
       # for more info.
       class StanzaGrouping < Cop
         extend Forwardable
@@ -39,6 +39,7 @@ module RuboCop
         private
 
         attr_reader :cask_block, :line_ops
+
         def_delegators :cask_block, :cask_node, :toplevel_stanzas
 
         def add_offenses

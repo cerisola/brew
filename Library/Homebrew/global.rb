@@ -25,14 +25,18 @@ ActiveSupport::Inflector.inflections(:en) do |inflect|
   inflect.irregular "it", "they"
 end
 
+HOMEBREW_BOTTLE_DEFAULT_DOMAIN = ENV["HOMEBREW_BOTTLE_DEFAULT_DOMAIN"]
+HOMEBREW_BREW_DEFAULT_GIT_REMOTE = ENV["HOMEBREW_BREW_DEFAULT_GIT_REMOTE"]
+HOMEBREW_CORE_DEFAULT_GIT_REMOTE = ENV["HOMEBREW_CORE_DEFAULT_GIT_REMOTE"]
+HOMEBREW_DEFAULT_CACHE = ENV["HOMEBREW_DEFAULT_CACHE"]
+HOMEBREW_DEFAULT_LOGS = ENV["HOMEBREW_DEFAULT_LOGS"]
+HOMEBREW_DEFAULT_TEMP = ENV["HOMEBREW_DEFAULT_TEMP"]
+require "env_config"
+
 require "config"
 require "os"
-require "extend/ARGV"
+require "cli/args"
 require "messages"
-require "system_command"
-
-ARGV_WITHOUT_MONKEY_PATCHING = ARGV.dup.freeze
-ARGV.extend(HomebrewArgvExtension)
 
 HOMEBREW_PRODUCT = ENV["HOMEBREW_PRODUCT"]
 HOMEBREW_VERSION = ENV["HOMEBREW_VERSION"]
@@ -49,12 +53,6 @@ HOMEBREW_USER_AGENT_RUBY =
 HOMEBREW_USER_AGENT_FAKE_SAFARI =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_3) AppleWebKit/602.4.8 " \
   "(KHTML, like Gecko) Version/10.0.3 Safari/602.4.8"
-
-HOMEBREW_BOTTLE_DEFAULT_DOMAIN = ENV["HOMEBREW_BOTTLE_DEFAULT_DOMAIN"]
-HOMEBREW_BOTTLE_DOMAIN = ENV["HOMEBREW_BOTTLE_DOMAIN"]
-
-HOMEBREW_BREW_GIT_REMOTE = ENV["HOMEBREW_BREW_GIT_REMOTE"]
-HOMEBREW_CORE_GIT_REMOTE = ENV["HOMEBREW_CORE_GIT_REMOTE"]
 
 HOMEBREW_DEFAULT_PREFIX = "/usr/local"
 LINUXBREW_DEFAULT_PREFIX = "/home/linuxbrew/.linuxbrew"
@@ -83,7 +81,7 @@ module Homebrew
     end
 
     def args
-      @args ||= OpenStruct.new
+      @args ||= CLI::Args.new
     end
 
     def messages
@@ -117,6 +115,7 @@ end.compact.freeze
 
 require "set"
 
+require "context"
 require "extend/pathname"
 
 require "extend/module"
@@ -126,6 +125,7 @@ require "active_support/core_ext/object/blank"
 require "active_support/core_ext/hash/deep_merge"
 require "active_support/core_ext/file/atomic"
 
+require "system_command"
 require "exceptions"
 require "utils"
 
@@ -133,4 +133,4 @@ require "official_taps"
 require "tap"
 require "tap_constants"
 
-require "compat" if !ARGV.include?("--no-compat") && !ENV["HOMEBREW_NO_COMPAT"]
+require "compat" unless Homebrew::EnvConfig.no_compat?

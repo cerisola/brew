@@ -7,12 +7,28 @@ module RuboCop
     module FormulaAudit
       # This cop audits URLs and mirrors in Formulae.
       class Urls < FormulaCop
+        # These are parts of URLs that look like binaries but actually aren't.
+        NOT_A_BINARY_URL_PREFIX_ALLOWLIST = %w[
+          https://downloads.sourceforge.net/project/astyle/astyle/
+          https://downloads.sourceforge.net/project/bittwist/
+          https://downloads.sourceforge.net/project/launch4j/
+          https://github.com/ChrisJohnsen/tmux-MacOSX-pasteboard/archive/
+          https://github.com/obihann/archey-osx
+          https://github.com/sindresorhus/macos-wallpaper/archive/
+          https://raw.githubusercontent.com/liyanage/macosx-shell-scripts/
+          https://osxbook.com/book/bonus/chapter8/core/download/gcore
+          https://naif.jpl.nasa.gov/pub/naif/toolkit/C/MacIntel_OSX_AppleC_64bit/packages/
+          https://artifacts.videolan.org/x264/release-macos/
+        ].freeze
+
         # These are formulae that, sadly, require an upstream binary to bootstrap.
-        BINARY_FORMULA_URLS_WHITELIST = %w[
+        BINARY_BOOTSTRAP_FORMULA_URLS_ALLOWLIST = %w[
+          clozure-cl
           crystal
           fpc
           ghc
           ghc@8.6
+          ghc@8.8
           go
           go@1.9
           go@1.10
@@ -22,12 +38,22 @@ module RuboCop
           haskell-stack
           ldc
           mlton
+          openjdk
+          openjdk@11
+          pypy
+          sbcl
           rust
         ].freeze
 
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           urls = find_every_func_call_by_name(body_node, :url)
           mirrors = find_every_func_call_by_name(body_node, :mirror)
+
+          # Identify livecheck urls, to skip some checks for them
+          livecheck_url = if (livecheck = find_every_func_call_by_name(body_node, :livecheck).first) &&
+                             (livecheck_url = find_every_func_call_by_name(livecheck.parent, :url).first)
+            string_content(parameters(livecheck_url).first)
+          end
 
           # GNU urls; doesn't apply to mirrors
           gnu_pattern = %r{^(?:https?|ftp)://ftpmirror.gnu.org/(.*)}
@@ -44,7 +70,19 @@ module RuboCop
 
           apache_pattern = %r{^https?://(?:[^/]*\.)?apache\.org/(?:dyn/closer\.cgi\?path=/?|dist/)(.*)}i
           audit_urls(urls, apache_pattern) do |match, url|
+            next if url == livecheck_url
+
             problem "#{url} should be `https://www.apache.org/dyn/closer.lua?path=#{match[1]}`"
+          end
+
+          version_control_pattern = %r{^(cvs|bzr|hg|fossil)://}
+          audit_urls(urls, version_control_pattern) do |match, _|
+            problem "Use of the #{match[1]}:// scheme is deprecated, pass `:using => :#{match[1]}` instead"
+          end
+
+          svn_pattern = %r{^svn\+http://}
+          audit_urls(urls, svn_pattern) do |_, _|
+            problem "Use of the svn+http:// scheme is deprecated, pass `:using => :svn` instead"
           end
 
           audit_urls(mirrors, /.*/) do |_, mirror|
@@ -129,7 +167,7 @@ module RuboCop
 
             problem "Don't use /download in SourceForge urls (url is #{url})." if url.end_with?("/download")
 
-            if url.match?(%r{^https?://sourceforge\.})
+            if url.match?(%r{^https?://sourceforge\.}) && url != livecheck_url
               problem "Use https://downloads.sourceforge.net to get geolocation (url is #{url})."
             end
 
@@ -201,7 +239,7 @@ module RuboCop
           # Use new-style archive downloads
           archive_gh_pattern = %r{https://.*github.*/(?:tar|zip)ball/}
           audit_urls(urls, archive_gh_pattern) do |_, url|
-            next if url.match?(/\.git$/)
+            next if url.end_with?(".git")
 
             problem "Use /archive/ URLs for GitHub tarballs (url is #{url})."
           end
@@ -209,7 +247,7 @@ module RuboCop
           # Don't use GitHub .zip files
           zip_gh_pattern = %r{https://.*github.*/(archive|releases)/.*\.zip$}
           audit_urls(urls, zip_gh_pattern) do |_, url|
-            next if url.match?(%r{releases/download})
+            next if url.include?("releases/download")
 
             problem "Use GitHub tarballs rather than zipballs (url is #{url})."
           end
@@ -234,9 +272,11 @@ module RuboCop
           return if formula_tap != "homebrew-core"
 
           # Check for binary URLs
-          audit_urls(urls, /(darwin|macos|osx)/i) do |_, url|
-            next if url !~ /x86_64/i && url !~ /amd64/i
-            next if BINARY_FORMULA_URLS_WHITELIST.include?(@formula_name)
+          audit_urls(urls, /(darwin|macos|osx)/i) do |match, url|
+            next if @formula_name.include?(match.to_s.downcase)
+            next if url.match?(/.(patch|diff)(\?full_index=1)?$/)
+            next if NOT_A_BINARY_URL_PREFIX_ALLOWLIST.any? { |prefix| url.start_with?(prefix) }
+            next if BINARY_BOOTSTRAP_FORMULA_URLS_ALLOWLIST.include?(@formula_name)
 
             problem "#{url} looks like a binary package, not a source archive; " \
                     "homebrew/core is source-only."
@@ -251,21 +291,22 @@ module RuboCop
           urls += mirrors
 
           # Check pypi urls
-          @pypi_pattern = %r{^https?://pypi.python.org/(.*)}
-          audit_urls(urls, @pypi_pattern) do |match, url|
-            problem "#{url} should be `https://files.pythonhosted.org/#{match[1]}`"
+          pypi_pattern = %r{^https?://pypi.python.org/}
+          audit_urls(urls, pypi_pattern) do |_, url|
+            problem "use the `Source` url found on PyPI downloads page (`#{get_pypi_url(url)}`)"
+          end
+
+          # Require long files.pythonhosted.org urls
+          pythonhosted_pattern = %r{^https?://files.pythonhosted.org/packages/source/}
+          audit_urls(urls, pythonhosted_pattern) do |_, url|
+            problem "use the `Source` url found on PyPI downloads page (`#{get_pypi_url(url)}`)"
           end
         end
 
-        def autocorrect(node)
-          lambda do |corrector|
-            url_string_node = parameters(node).first
-            url = string_content(url_string_node)
-            match = regex_match_group(url_string_node, @pypi_pattern)
-            correction = node.source.sub(url, "https://files.pythonhosted.org/#{match[1]}")
-            corrector.insert_before(node.source_range, correction)
-            corrector.remove(node.source_range)
-          end
+        def get_pypi_url(url)
+          package_file = File.basename(url)
+          package_name = package_file.match(/^(.+)-[a-z0-9.]+$/)[1]
+          "https://pypi.org/project/#{package_name}/#files"
         end
       end
     end

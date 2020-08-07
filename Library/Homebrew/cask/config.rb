@@ -2,6 +2,9 @@
 
 require "json"
 
+require "lazy_object"
+require "locale"
+
 require "extend/hash_validator"
 using HashValidator
 
@@ -11,6 +14,7 @@ module Cask
       appdir:               "/Applications",
       prefpanedir:          "~/Library/PreferencePanes",
       qlplugindir:          "~/Library/QuickLook",
+      mdimporterdir:        "~/Library/Spotlight",
       dictionarydir:        "~/Library/Dictionaries",
       fontdir:              "~/Library/Fonts",
       colorpickerdir:       "~/Library/ColorPickers",
@@ -23,6 +27,12 @@ module Cask
       screen_saverdir:      "~/Library/Screen Savers",
     }.freeze
 
+    def self.defaults
+      {
+        languages: LazyObject.new { MacOS.languages },
+      }.merge(DEFAULT_DIRS).freeze
+    end
+
     def self.global
       @global ||= new
     end
@@ -33,15 +43,15 @@ module Cask
 
     def self.for_cask(cask)
       if cask.config_path.exist?
-        from_file(cask.config_path)
+        from_json(File.read(cask.config_path))
       else
         global
       end
     end
 
-    def self.from_file(path)
+    def self.from_json(json)
       config = begin
-        JSON.parse(File.read(path))
+        JSON.parse(json)
       rescue JSON::ParserError => e
         raise e, "Cannot parse #{path}: #{e}", e.backtrace
       end
@@ -68,16 +78,16 @@ module Cask
     attr_accessor :explicit
 
     def initialize(default: nil, env: nil, explicit: {})
-      @default = self.class.canonicalize(default) if default
+      @default = self.class.canonicalize(self.class.defaults.merge(default)) if default
       @env = self.class.canonicalize(env) if env
       @explicit = self.class.canonicalize(explicit)
 
-      @env&.assert_valid_keys!(*DEFAULT_DIRS.keys)
-      @explicit.assert_valid_keys!(*DEFAULT_DIRS.keys)
+      @env&.assert_valid_keys!(*self.class.defaults.keys)
+      @explicit.assert_valid_keys!(*self.class.defaults.keys)
     end
 
     def default
-      @default ||= self.class.canonicalize(DEFAULT_DIRS)
+      @default ||= self.class.canonicalize(self.class.defaults)
     end
 
     def env
@@ -85,7 +95,16 @@ module Cask
         Shellwords.shellsplit(ENV.fetch("HOMEBREW_CASK_OPTS", ""))
                   .select { |arg| arg.include?("=") }
                   .map { |arg| arg.split("=", 2) }
-                  .map { |(flag, value)| [flag.sub(/^\-\-/, ""), value] },
+                  .map do |(flag, value)|
+                    key = flag.sub(/^--/, "")
+
+                    if key == "language"
+                      key = "languages"
+                      value = value.split(",")
+                    end
+
+                    [key, value]
+                  end,
       )
     end
 
@@ -95,6 +114,24 @@ module Cask
 
     def manpagedir
       @manpagedir ||= HOMEBREW_PREFIX/"share/man"
+    end
+
+    def languages
+      [
+        *explicit[:languages],
+        *env[:languages],
+        *default[:languages],
+      ].uniq.select do |lang|
+        # Ensure all languages are valid.
+        Locale.parse(lang)
+        true
+      rescue Locale::ParserError
+        false
+      end
+    end
+
+    def languages=(languages)
+      explicit[:languages] = languages
     end
 
     DEFAULT_DIRS.each_key do |dir|

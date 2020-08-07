@@ -2,9 +2,9 @@
 
 This document explains how to successfully use Python in a Homebrew formula.
 
-Homebrew draws a distinction between Python **applications** and Python **libraries**. The difference is that users generally do not care that applications are written in Python; it is unusual that a user would expect to be able to `import foo` after installing an application. Examples of applications are [`ansible`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/ansible.rb) and [`jrnl`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/jrnl.rb).
+Homebrew draws a distinction between Python **applications** and Python **libraries**. The difference is that users generally do not care that applications are written in Python; it is unusual that a user would expect to be able to `import foo` after installing an application. Examples of applications are [`ansible`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/ansible.rb) and [`jrnl`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/jrnl.rb).
 
-Python libraries exist to be imported by other Python modules; they are often dependencies of Python applications. They are usually no more than incidentally useful in a terminal. Examples of libraries are [`py2cairo`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/py2cairo.rb) and the bindings that are installed by [`protobuf`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/protobuf.rb).
+Python libraries exist to be imported by other Python modules; they are often dependencies of Python applications. They are usually no more than incidentally useful in a terminal. Examples of libraries are [`py2cairo`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/py2cairo.rb) and the bindings that are installed by [`protobuf`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/protobuf.rb).
 
 Bindings are a special case of libraries that allow Python code to interact with a library or application implemented in another language.
 
@@ -16,7 +16,7 @@ Applications should unconditionally bundle all of their Python-language dependen
 
 ### Python declarations
 
-Formulae for apps that require Python 3 **should** declare an unconditional dependency on `"python"`. These apps **must** work with the current Homebrew Python 3.x formula.
+Formulae for apps that require Python 3 **should** declare an unconditional dependency on `"python@3.x"`. These apps **must** work with the current Homebrew Python 3.x formula.
 
 Applications that are compatible with Python 2 **should** use the Apple-provided system Python in `/usr/bin` on systems that provide Python 2.7. No explicit Python dependency is needed since `/usr/bin` is always in `PATH` for Homebrew formulae.
 
@@ -26,19 +26,21 @@ Applications should be installed into a Python [virtualenv](https://virtualenv.p
 
 All of the Python module dependencies of the application (and their dependencies, recursively) should be declared as `resource`s in the formula and installed into the virtualenv, as well. Each dependency should be explicitly specified; please do not rely on `setup.py` or `pip` to perform automatic dependency resolution, for the [reasons described here](Acceptable-Formulae.md#we-dont-like-install-scripts-that-download-unversioned-things).
 
-You can use [homebrew-pypi-poet](https://pypi.python.org/pypi/homebrew-pypi-poet) to help you write resource stanzas. To use it, set up a virtualenv and install your package and all its dependencies. Then, `pip install homebrew-pypi-poet` into the same virtualenv. Running `poet some_package` will generate the necessary resource stanzas. You can do this like:
+You can use `brew update-python-resources` to help you write resource stanzas. To use it, simply run `brew update-python-resources <formula>`. Sometimes, `brew update-python-resources` won't be able to automatically update the resources. If this happens, try running `brew update-python-resources --print-only <formula>` to print the resource stanzas instead of applying the changes directly to the file. You can then copy and paste resources as needed.
+
+If using `brew update-python-resources` doesn't work, you can use [homebrew-pypi-poet](https://pypi.python.org/pypi/homebrew-pypi-poet) to help you write resource stanzas. To use it, set up a virtualenv and install your package and all its dependencies. Then, `pip install homebrew-pypi-poet` into the same virtualenv. Running `poet some_package` will generate the necessary resource stanzas. You can do this like:
 
 ```sh
 # Install virtualenvwrapper
 brew install python
-python -m pip install virtualenvwrapper
+python3 -m pip install virtualenvwrapper
 source $(brew --prefix)/bin/virtualenvwrapper.sh
 
 # Set up a temporary virtual environment
 mktmpenv
 
 # Install the package of interest as well as homebrew-pypi-poet
-pip install some_package homebrew-pypi-poet
+pip3 install some_package homebrew-pypi-poet
 poet some_package
 
 # Destroy the temporary virtualenv you just created
@@ -115,7 +117,7 @@ in case you need to do different things for different resources.
 
 ## Bindings
 
-To add bindings for Python 3, please add `depends_on "python"`.
+To add bindings for Python 3, please add `depends_on "python@3.x"` to work with the current Homebrew Python 3.x formula.
 
 Build Python 2 bindings with the system Python by default (don't add an option) and they should be usable with any binary-compatible Python. If that isn't the case, it's an upstream bug; [here's some advice for resolving it](https://blog.tim-smith.us/2015/09/python-extension-modules-os-x/).
 
@@ -129,7 +131,7 @@ If the bindings are installed by invoking a `setup.py`, do something like:
 
 ```ruby
 cd "source/python" do
-  system "python", *Language::Python.setup_install_args(prefix)
+  system Formula["python@3.x"].opt_bin/"python3", *Language::Python.setup_install_args(prefix)
 end
 ```
 
@@ -147,7 +149,7 @@ Sometimes we have to edit a `Makefile` on-the-fly to use our prefix for the Pyth
 
 ### Python declarations
 
-Libraries built for Python 3 should include `depends_on "python"`, which will bottle against Homebrew's Python 3.x. Python 2.x libraries must function when they are installed against either the system Python or brewed Python.
+Libraries built for Python 3 should include `depends_on "python@3.x"`, which will bottle against Homebrew's Python 3.x. Python 2.x libraries must function when they are installed against either the system Python or brewed Python.
 
 Python 2 libraries need a `uses_from_macos "python@2"` declaration; they will be built with the system Python, but should still be usable with any other Python 2.7. If this is not the case, it's an upstream bug; [here's some advice for resolving it](https://blog.tim-smith.us/2015/09/python-extension-modules-os-x/).
 
@@ -180,7 +182,7 @@ Distribute (not to be confused with distutils) is an obsolete fork of setuptools
 In the event that a formula needs to interact with `setup.py` instead of calling `pip`, Homebrew provides a helper method, `Language::Python.setup_install_args`, which returns useful arguments for invoking `setup.py`. Your formula should use this instead of invoking `setup.py` explicitly. The syntax is:
 
 ```ruby
-system "python", *Language::Python.setup_install_args(prefix)
+system Formula["python@3.x"].opt_bin/"python3", *Language::Python.setup_install_args(prefix)
 ```
 
 where `prefix` is the destination prefix (usually `libexec` or `prefix`).

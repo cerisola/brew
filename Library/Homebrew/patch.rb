@@ -117,8 +117,8 @@ class ExternalPatch
   attr_reader :resource, :strip
 
   def_delegators :resource,
-                 :url, :fetch, :patch_files, :verify_download_integrity, :cached_download,
-                 :clear_cache
+                 :url, :fetch, :patch_files, :verify_download_integrity,
+                 :cached_download, :downloaded?, :clear_cache
 
   def initialize(strip, &block)
     @strip    = strip
@@ -159,6 +159,10 @@ class ExternalPatch
         end
       end
     end
+  rescue ErrorDuringExecution => e
+    f = resource.owner.owner
+    cmd, *args = e.cmd
+    raise BuildError.new(f, cmd, args, ENV.to_hash)
   end
 
   def inspect
@@ -169,6 +173,7 @@ end
 # Legacy patches have no checksum and are not cached.
 class LegacyPatch < ExternalPatch
   def initialize(strip, url)
+    odeprecated "legacy patches", "'patch do' blocks"
     super(strip)
     resource.url(url)
     resource.download_strategy = CurlDownloadStrategy

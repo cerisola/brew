@@ -12,6 +12,7 @@ require "build_environment"
 require "build_options"
 require "formulary"
 require "software_spec"
+require "livecheck"
 require "install_renamed"
 require "pkg_version"
 require "keg"
@@ -53,9 +54,11 @@ class Formula
   include Utils::Inreplace
   include Utils::Shebang
   include Utils::Shell
+  include Context
   extend Enumerable
   extend Forwardable
   extend Cachable
+  extend Predicable
 
   # @!method inreplace(paths, before = nil, after = nil)
   # Actually implemented in {Utils::Inreplace.inreplace}.
@@ -100,6 +103,10 @@ class Formula
   # @private
   attr_reader :tap
 
+  # Whether or not to force the use of a bottle.
+  # @private
+  attr_reader :force_bottle
+
   # The stable (and default) {SoftwareSpec} for this {Formula}
   # This contains all the attributes (e.g. URL, checksum) that apply to the
   # stable version of this formula.
@@ -125,6 +132,7 @@ class Formula
   # The currently active {SoftwareSpec}.
   # @see #determine_active_spec
   attr_reader :active_spec
+
   protected :active_spec
 
   # A symbol to indicate currently active {SoftwareSpec}.
@@ -175,16 +183,19 @@ class Formula
   # Defaults to true.
   # @return [Boolean]
   attr_accessor :follow_installed_alias
+
   alias follow_installed_alias? follow_installed_alias
 
   # @private
-  def initialize(name, path, spec, alias_path: nil)
+  def initialize(name, path, spec, alias_path: nil, force_bottle: false)
     @name = name
     @path = path
     @alias_path = alias_path
     @alias_name = (File.basename(alias_path) if alias_path)
     @revision = self.class.revision || 0
     @version_scheme = self.class.version_scheme || 0
+
+    @force_bottle = force_bottle
 
     @tap = if path == Formulary.core_path(name)
       CoreTap.instance
@@ -348,10 +359,25 @@ class Formula
   # @see .desc=
   delegate desc: :"self.class"
 
+  # The SPDX ID of the software license.
+  # @method license
+  # @see .license=
+  delegate license: :"self.class"
+
   # The homepage for the software.
   # @method homepage
   # @see .homepage=
   delegate homepage: :"self.class"
+
+  # The livecheck specification for the software.
+  # @method livecheck
+  # @see .livecheck=
+  delegate livecheck: :"self.class"
+
+  # Is a livecheck specification defined for the software?
+  # @method livecheckable?
+  # @see .livecheckable?
+  delegate livecheckable?: :"self.class"
 
   # The version for the currently active {SoftwareSpec}.
   # The version is autodetected from the URL and/or tag so only needs to be
@@ -479,6 +505,10 @@ class Formula
   # The link status symlink directory for this {Formula}.
   # You probably want {#opt_prefix} instead.
   def linked_keg
+    linked_keg = possible_names.map { |name| HOMEBREW_LINKED_KEGS/name }
+                               .find(&:directory?)
+    return linked_keg if linked_keg.present?
+
     HOMEBREW_LINKED_KEGS/name
   end
 
@@ -508,8 +538,10 @@ class Formula
     return false unless head&.downloader.is_a?(VCSDownloadStrategy)
 
     downloader = head.downloader
-    downloader.shutup! unless Homebrew.args.verbose?
-    downloader.commit_outdated?(version.version.commit)
+
+    with_context quiet: true do
+      downloader.commit_outdated?(version.version.commit)
+    end
   end
 
   # The latest prefix for this formula. Checks for {#head}, then {#devel}
@@ -582,7 +614,10 @@ class Formula
   # All currently installed prefix directories.
   # @private
   def installed_prefixes
-    rack.directory? ? rack.subdirs.sort : []
+    possible_names.map { |name| HOMEBREW_CELLAR/name }
+                  .select(&:directory?)
+                  .flat_map(&:subdirs)
+                  .sort_by(&:basename)
   end
 
   # All currently installed kegs.
@@ -790,6 +825,14 @@ class Formula
     (HOMEBREW_PREFIX/"etc").extend(InstallRenamed)
   end
 
+  # A subdirectory of `etc` with the formula name suffixed.
+  # e.g. `$HOMEBREW_PREFIX/etc/openssl@1.1`
+  # Anything using `pkgetc.install` will not overwrite other files on
+  # e.g. upgrades but will write a new file named `*.default`.
+  def pkgetc
+    (HOMEBREW_PREFIX/"etc"/name).extend(InstallRenamed)
+  end
+
   # The directory where the formula's variable files should be installed.
   # This directory is not inside the `HOMEBREW_CELLAR` so it persists
   # across upgrades.
@@ -910,14 +953,10 @@ class Formula
   end
 
   # @private
-  def plist_manual
-    self.class.plist_manual
-  end
+  delegate plist_manual: :"self.class"
 
   # @private
-  def plist_startup
-    self.class.plist_startup
-  end
+  delegate plist_startup: :"self.class"
 
   # A stable path for this formula, when installed. Contains the formula name
   # but no version number. Only the active version will be linked here if
@@ -977,9 +1016,7 @@ class Formula
   end
 
   # @private
-  def pour_bottle_check_unsatisfied_reason
-    self.class.pour_bottle_check_unsatisfied_reason
-  end
+  delegate pour_bottle_check_unsatisfied_reason: :"self.class"
 
   # Can be overridden to run commands on both source and bottle installation.
   def post_install; end
@@ -991,11 +1028,12 @@ class Formula
     self.build = Tab.for_formula(self)
 
     new_env = {
-      "TMPDIR"        => HOMEBREW_TEMP,
-      "TEMP"          => HOMEBREW_TEMP,
-      "TMP"           => HOMEBREW_TEMP,
-      "HOMEBREW_PATH" => nil,
-      "PATH"          => ENV["HOMEBREW_PATH"],
+      TMPDIR:        HOMEBREW_TEMP,
+      TEMP:          HOMEBREW_TEMP,
+      TMP:           HOMEBREW_TEMP,
+      _JAVA_OPTIONS: "-Djava.io.tmpdir=#{HOMEBREW_TEMP}",
+      HOMEBREW_PATH: nil,
+      PATH:          ENV["HOMEBREW_PATH"],
     }
 
     with_env(new_env) do
@@ -1045,13 +1083,11 @@ class Formula
   def keg_only?
     return false unless keg_only_reason
 
-    keg_only_reason.valid?
+    keg_only_reason.applicable?
   end
 
   # @private
-  def keg_only_reason
-    self.class.keg_only_reason
-  end
+  delegate keg_only_reason: :"self.class"
 
   # sometimes the formula cleaner breaks things
   # skip cleaning paths in a formula with a class method like this:
@@ -1067,7 +1103,7 @@ class Formula
   end
 
   # Sometimes we accidentally install files outside prefix. After we fix that,
-  # users will get nasty link conflict error. So we create a whitelist here to
+  # users will get nasty link conflict error. So we create an allowlist here to
   # allow overwriting certain files. e.g.
   #   link_overwrite "bin/foo", "lib/bar"
   #   link_overwrite "share/man/man1/baz-*"
@@ -1080,7 +1116,7 @@ class Formula
     # keg's formula is deleted.
     begin
       keg = Keg.for(path)
-    rescue NotAKegError, Errno::ENOENT # rubocop:disable Lint/SuppressedException
+    rescue NotAKegError, Errno::ENOENT
       # file doesn't belong to any keg.
     else
       tab_tap = Tab.for_keg(keg).tap
@@ -1088,13 +1124,14 @@ class Formula
       return false if tab_tap.nil?
 
       begin
-        Formulary.factory(keg.name)
-      rescue FormulaUnavailableError # rubocop:disable Lint/SuppressedException
-        # formula for this keg is deleted, so defer to whitelist
+        f = Formulary.factory(keg.name)
+      rescue FormulaUnavailableError
+        # formula for this keg is deleted, so defer to allowlist
       rescue TapFormulaAmbiguityError, TapFormulaWithOldnameAmbiguityError
         return false # this keg belongs to another formula
       else
-        return false # this keg belongs to another formula
+        # this keg belongs to another unrelated formula
+        return false unless f.possible_names.include?(keg.name)
       end
     end
     to_check = path.relative_path_from(HOMEBREW_PREFIX).to_s
@@ -1104,6 +1141,18 @@ class Formula
         to_check =~ /^#{Regexp.escape(p).gsub('\*', ".*?")}$/
     end
   end
+
+  # Whether this {Formula} is deprecated (i.e. warns on installation).
+  # Defaults to false.
+  # @method deprecated?
+  # @return [Boolean]
+  delegate deprecated?: :"self.class"
+
+  # Whether this {Formula} is disabled (i.e. cannot be installed).
+  # Defaults to false.
+  # @method disabled?
+  # @return [Boolean]
+  delegate disabled?: :"self.class"
 
   def skip_cxxstdlib_check?
     false
@@ -1125,16 +1174,19 @@ class Formula
   # yields |self,staging| with current working directory set to the uncompressed tarball
   # where staging is a Mktemp staging context
   # @private
-  def brew
+  def brew(fetch: true, keep_tmp: false, interactive: false)
     @prefix_returns_versioned_prefix = true
-    stage do |staging|
-      staging.retain! if Homebrew.args.keep_tmp?
+    active_spec.fetch if fetch
+    stage(interactive: interactive) do |staging|
+      staging.retain! if keep_tmp
+
       prepare_patches
+      fetch_patches if fetch
 
       begin
         yield self, staging
       rescue
-        staging.retain! if Homebrew.args.interactive? || ARGV.debug?
+        staging.retain! if interactive || debug?
         raise
       ensure
         cp Dir["config.log", "CMakeCache.txt"], logs
@@ -1177,7 +1229,7 @@ class Formula
   def outdated_kegs(fetch_head: false)
     raise Migrator::MigrationNeededError, self if migration_needed?
 
-    cache_key = "#{name}-#{fetch_head}"
+    cache_key = "#{full_name}-#{fetch_head}"
     Formula.cache[:outdated_kegs] ||= {}
     Formula.cache[:outdated_kegs][cache_key] ||= begin
       all_kegs = []
@@ -1189,7 +1241,7 @@ class Formula
         next if version.head?
 
         tab = Tab.for_keg(keg)
-        next if version_scheme > tab.version_scheme
+        next if version_scheme > tab.version_scheme && pkg_version != version
         next if version_scheme == tab.version_scheme && pkg_version > version
 
         # don't consider this keg current if there's a newer formula available
@@ -1263,29 +1315,19 @@ class Formula
   end
 
   # @private
-  def pinnable?
-    @pin.pinnable?
-  end
+  delegate pinnable?: :@pin
 
   # @private
-  def pinned?
-    @pin.pinned?
-  end
+  delegate pinned?: :@pin
 
   # @private
-  def pinned_version
-    @pin.pinned_version
-  end
+  delegate pinned_version: :@pin
 
   # @private
-  def pin
-    @pin.pin
-  end
+  delegate pin: :@pin
 
   # @private
-  def unpin
-    @pin.unpin
-  end
+  delegate unpin: :@pin
 
   # @private
   def ==(other)
@@ -1307,6 +1349,11 @@ class Formula
     name <=> other.name
   end
 
+  # @private
+  def possible_names
+    [name, oldname, *aliases].compact
+  end
+
   def to_s
     name
   end
@@ -1314,6 +1361,11 @@ class Formula
   # @private
   def inspect
     "#<Formula #{name} (#{active_spec_sym}) #{path}>"
+  end
+
+  # Standard parameters for cargo builds.
+  def std_cargo_args
+    ["--locked", "--root", prefix, "--path", "."]
   end
 
   # Standard parameters for CMake builds.
@@ -1338,8 +1390,7 @@ class Formula
     args << "-DHAVE_CLOCK_GETTIME:INTERNAL=0" if MacOS.version == "10.11" && MacOS::Xcode.version >= "8.0"
 
     # Ensure CMake is using the same SDK we are using.
-    sdk = MacOS.sdk_path_if_needed
-    args << "-DCMAKE_OSX_SYSROOT=#{sdk}" if sdk
+    args << "-DCMAKE_OSX_SYSROOT=#{MacOS.sdk_for_formula(self).path}" if MacOS.sdk_root_needed?
 
     args
   end
@@ -1358,6 +1409,15 @@ class Formula
     # for git-annex, so 100,000 should be enough to avoid most
     # gratuitous backjumps build failures.
     ["--jobs=#{ENV.make_jobs}", "--max-backjumps=100000", "--install-method=copy", "--installdir=#{bin}"]
+  end
+
+  # Standard parameters for meson builds.
+  def std_meson_args
+    ["--prefix=#{prefix}", "--libdir=#{lib}", "--buildtype=release"]
+  end
+
+  def shared_library(name, version = nil)
+    "#{name}.#{version}#{"." unless version.nil?}dylib"
   end
 
   # an array of all core {Formula} names
@@ -1405,12 +1465,14 @@ class Formula
   # @private
   def self.each
     files.each do |file|
-      yield Formulary.factory(file)
-    rescue => e
-      # Don't let one broken formula break commands. But do complain.
-      onoe "Failed to import: #{file}"
-      puts e
-      next
+      yield begin
+        Formulary.factory(file)
+      rescue FormulaUnavailableError => e
+        # Don't let one broken formula break commands. But do complain.
+        onoe "Failed to import: #{file}"
+        puts e
+        next
+      end
     end
   end
 
@@ -1522,14 +1584,10 @@ class Formula
   end
 
   # @private
-  def env
-    self.class.env
-  end
+  delegate env: :"self.class"
 
   # @private
-  def conflicts
-    self.class.conflicts
-  end
+  delegate conflicts: :"self.class"
 
   # Returns a list of Dependency objects in an installable order, which
   # means if a depends on b then b will be ordered before a in this list
@@ -1549,10 +1607,10 @@ class Formula
   # @private
   def opt_or_installed_prefix_keg
     Formula.cache[:opt_or_installed_prefix_keg] ||= {}
-    Formula.cache[:opt_or_installed_prefix_keg][name] ||= if optlinked? && opt_prefix.exist?
+    Formula.cache[:opt_or_installed_prefix_keg][full_name] ||= if optlinked? && opt_prefix.exist?
       Keg.new(opt_prefix)
-    elsif installed_prefix.directory?
-      Keg.new(installed_prefix)
+    elsif (latest_installed_prefix = installed_prefixes.last)
+      Keg.new(latest_installed_prefix)
     end
   end
 
@@ -1581,7 +1639,7 @@ class Formula
   # Returns a list of Formula objects that are required at runtime.
   # @private
   def runtime_formula_dependencies(read_from_tab: true, undeclared: true)
-    cache_key = "#{name}-#{read_from_tab}-#{undeclared}"
+    cache_key = "#{full_name}-#{read_from_tab}-#{undeclared}"
 
     Formula.cache[:runtime_formula_dependencies] ||= {}
     Formula.cache[:runtime_formula_dependencies][cache_key] ||= runtime_dependencies(
@@ -1599,10 +1657,10 @@ class Formula
     # that we don't end up with something `Formula#runtime_dependencies` can't
     # read from a `Tab`.
     Formula.cache[:runtime_installed_formula_dependents] = {}
-    Formula.cache[:runtime_installed_formula_dependents][name] ||= Formula.installed
-                                                                          .select(&:opt_or_installed_prefix_keg)
-                                                                          .select(&:runtime_dependencies)
-                                                                          .select do |f|
+    Formula.cache[:runtime_installed_formula_dependents][full_name] ||= Formula.installed
+                                                                               .select(&:opt_or_installed_prefix_keg)
+                                                                               .select(&:runtime_dependencies)
+                                                                               .select do |f|
       f.runtime_formula_dependencies.any? do |dep|
         full_name == dep.full_name
       rescue
@@ -1636,6 +1694,7 @@ class Formula
       "aliases"                  => aliases.sort,
       "versioned_formulae"       => versioned_formulae.map(&:name),
       "desc"                     => desc,
+      "license"                  => license,
       "homepage"                 => homepage,
       "versions"                 => {
         "stable" => stable&.version&.to_s,
@@ -1672,10 +1731,19 @@ class Formula
       "linked_keg"               => linked_version&.to_s,
       "pinned"                   => pinned?,
       "outdated"                 => outdated?,
+      "deprecated"               => deprecated?,
+      "disabled"                 => disabled?,
     }
 
     %w[stable devel].each do |spec_sym|
       next unless spec = send(spec_sym)
+
+      hsh["urls"][spec_sym] = {
+        "url"      => spec.url,
+        "tag"      => spec.specs[:tag],
+        "revision" => spec.specs[:revision],
+      }
+
       next unless spec.bottle_defined?
 
       bottle_spec = spec.bottle_specification
@@ -1695,11 +1763,6 @@ class Formula
         }
       end
       hsh["bottle"][spec_sym] = bottle_info
-      hsh["urls"][spec_sym] = {
-        "url"      => spec.url,
-        "tag"      => spec.specs[:tag],
-        "revision" => spec.specs[:revision],
-      }
     end
 
     hsh["options"] = options.map do |opt|
@@ -1717,10 +1780,9 @@ class Formula
       }
     end
 
-    installed_kegs.each do |keg|
+    hsh["installed"] = installed_kegs.sort_by(&:version).map do |keg|
       tab = Tab.for_keg keg
-
-      hsh["installed"] << {
+      {
         "version"                 => keg.version.to_s,
         "used_options"            => tab.used_options.as_flags,
         "built_as_bottle"         => tab.built_as_bottle,
@@ -1730,8 +1792,6 @@ class Formula
         "installed_on_request"    => tab.installed_on_request,
       }
     end
-
-    hsh["installed"] = hsh["installed"].sort_by { |i| Version.create(i["version"]) }
 
     hsh
   end
@@ -1747,27 +1807,24 @@ class Formula
   end
 
   # @private
-  def run_test
+  def run_test(keep_tmp: false)
     @prefix_returns_versioned_prefix = true
 
     test_env = {
-      CURL_HOME:     ENV["CURL_HOME"] || ENV["HOME"],
       TMPDIR:        HOMEBREW_TEMP,
       TEMP:          HOMEBREW_TEMP,
       TMP:           HOMEBREW_TEMP,
       TERM:          "dumb",
       PATH:          PATH.new(ENV["PATH"], HOMEBREW_PREFIX/"bin"),
       HOMEBREW_PATH: nil,
-      _JAVA_OPTIONS: "#{ENV["_JAVA_OPTIONS"]&.+(" ")}-Duser.home=#{HOMEBREW_CACHE}/java_cache",
-      GOCACHE:       "#{HOMEBREW_CACHE}/go_cache",
-      CARGO_HOME:    "#{HOMEBREW_CACHE}/cargo_cache",
-    }
+    }.merge(common_stage_test_env)
+    test_env[:_JAVA_OPTIONS] += " -Djava.io.tmpdir=#{HOMEBREW_TEMP}"
 
     ENV.clear_sensitive_environment!
     Utils.set_git_name_email!
 
     mktemp("#{name}-test") do |staging|
-      staging.retain! if Homebrew.args.keep_tmp?
+      staging.retain! if keep_tmp
       @testpath = staging.tmpdir
       test_env[:HOME] = @testpath
       setup_home @testpath
@@ -1778,13 +1835,13 @@ class Formula
           end
         end
       rescue Exception # rubocop:disable Lint/RescueException
-        staging.retain! if ARGV.debug?
+        staging.retain! if debug?
         raise
       end
     end
   ensure
-    @testpath = nil
     @prefix_returns_versioned_prefix = false
+    @testpath = nil
   end
 
   # @private
@@ -1844,12 +1901,10 @@ class Formula
     keg = opt_or_installed_prefix_keg
     return [] unless keg
 
-    undeclared_deps = CacheStoreDatabase.use(:linkage) do |db|
+    CacheStoreDatabase.use(:linkage) do |db|
       linkage_checker = LinkageChecker.new(keg, self, cache_db: db)
       linkage_checker.undeclared_deps.map { |n| Dependency.new(n) }
     end
-
-    undeclared_deps
   end
 
   public
@@ -1876,16 +1931,17 @@ class Formula
   # # If there is a "make", "install" available, please use it!
   # system "make", "install"</pre>
   def system(cmd, *args)
-    verbose = Homebrew.args.verbose?
-    verbose_using_dots = !ENV["HOMEBREW_VERBOSE_USING_DOTS"].nil?
+    verbose_using_dots = Homebrew::EnvConfig.verbose_using_dots?
 
     # remove "boring" arguments so that the important ones are more likely to
     # be shown considering that we trim long ohai lines to the terminal width
     pretty_args = args.dup
-    unless verbose
+    unless verbose?
       case cmd
       when "./configure"
         pretty_args -= %w[--disable-dependency-tracking --disable-debug --disable-silent-rules]
+      when "cargo"
+        pretty_args -= std_cargo_args
       when "cmake"
         pretty_args -= std_cmake_args
       when "go"
@@ -1908,7 +1964,7 @@ class Formula
       log.puts Time.now, "", cmd, args, ""
       log.flush
 
-      if verbose
+      if verbose?
         rd, wr = IO.pipe
         begin
           pid = fork do
@@ -1948,11 +2004,10 @@ class Formula
       $stdout.flush
 
       unless $CHILD_STATUS.success?
-        log_lines = ENV["HOMEBREW_FAIL_LOG_LINES"]
-        log_lines ||= "15"
+        log_lines = Homebrew::EnvConfig.fail_log_lines
 
         log.flush
-        if !verbose || verbose_using_dots
+        if !verbose? || verbose_using_dots
           puts "Last #{log_lines} lines from #{logfn}:"
           Kernel.system "/usr/bin/tail", "-n", log_lines, logfn
         end
@@ -2040,7 +2095,15 @@ class Formula
     ENV.update(removed)
   end
 
+  def fetch_patches
+    patchlist.select(&:external?).each(&:fetch)
+  end
+
   private
+
+  def prepare_patches
+    patchlist.grep(DATAPatch) { |p| p.path = path }
+  end
 
   # Returns the prefix for a given formula version number.
   # @private
@@ -2075,7 +2138,18 @@ class Formula
     exit! 1 # never gets here unless exec threw or failed
   end
 
-  def stage
+  # Common environment variables used at both build and test time
+  def common_stage_test_env
+    {
+      _JAVA_OPTIONS: "-Duser.home=#{HOMEBREW_CACHE}/java_cache",
+      GOCACHE:       "#{HOMEBREW_CACHE}/go_cache",
+      GOPATH:        "#{HOMEBREW_CACHE}/go_mod_cache",
+      CARGO_HOME:    "#{HOMEBREW_CACHE}/cargo_cache",
+      CURL_HOME:     ENV["CURL_HOME"] || ENV["HOME"],
+    }
+  end
+
+  def stage(interactive: false)
     active_spec.stage do |staging|
       @source_modified_time = active_spec.source_modified_time
       @buildpath = Pathname.pwd
@@ -2086,13 +2160,9 @@ class Formula
         HOMEBREW_PATH: nil,
       }
 
-      unless Homebrew.args.interactive?
+      unless interactive
         stage_env[:HOME] = env_home
-        stage_env[:_JAVA_OPTIONS] =
-          "#{ENV["_JAVA_OPTIONS"]&.+(" ")}-Duser.home=#{HOMEBREW_CACHE}/java_cache"
-        stage_env[:GOCACHE] = "#{HOMEBREW_CACHE}/go_cache"
-        stage_env[:CARGO_HOME] = "#{HOMEBREW_CACHE}/cargo_cache"
-        stage_env[:CURL_HOME] = ENV["CURL_HOME"] || ENV["HOME"]
+        stage_env.merge!(common_stage_test_env)
       end
 
       setup_home env_home
@@ -2109,13 +2179,6 @@ class Formula
     end
   end
 
-  def prepare_patches
-    active_spec.add_legacy_patches(patches) if respond_to?(:patches)
-
-    patchlist.grep(DATAPatch) { |p| p.path = path }
-    patchlist.select(&:external?).each(&:fetch)
-  end
-
   # The methods below define the formula DSL.
   class << self
     include BuildEnvironment::DSL
@@ -2126,7 +2189,10 @@ class Formula
         raise "You cannot override Formula#brew in class #{name}"
       when :test
         define_method(:test_defined?) { true }
+      when :patches
+        odeprecated "a Formula#patches definition", "'patch do' block calls"
       when :options
+        odeprecated "a Formula#options definition", "'option do' block calls"
         instance = allocate
 
         specs.each do |spec|
@@ -2152,6 +2218,22 @@ class Formula
     # <pre>desc "Example formula"</pre>
     attr_rw :desc
 
+    # @!attribute [w]
+    # The SPDX ID of the open-source license that the formula uses.
+    # Shows when running `brew info`.
+    # Multiple licenses means that the software is licensed under multiple licenses.
+    # Do not use multiple licenses if e.g. different parts are under different licenses.
+    # <pre>license "BSD-2-Clause"</pre>
+    # <pre>license ["MIT", "GPL-2.0"]</pre>
+    # <pre>license :public_domain</pre>
+    def license(args = nil)
+      if args.nil?
+        @licenses
+      else
+        @licenses = Array(args)
+      end
+    end
+
     # @!attribute [w] homepage
     # The homepage for the software. Used by users to get more information
     # about the software and Homebrew maintainers as a point of contact for
@@ -2160,6 +2242,13 @@ class Formula
     #
     # <pre>homepage "https://www.example.com"</pre>
     attr_rw :homepage
+
+    # Whether a livecheck specification is defined or not.
+    # It returns true when a livecheck block is present in the {Formula} and
+    # false otherwise, and is used by livecheck.
+    def livecheckable?
+      @livecheckable == true
+    end
 
     # The `:startup` attribute set by {.plist_options}.
     # @private
@@ -2273,9 +2362,9 @@ class Formula
     #   prefix "/opt/homebrew" # Optional HOMEBREW_PREFIX in which the bottles were built.
     #   cellar "/opt/homebrew/Cellar" # Optional HOMEBREW_CELLAR in which the bottles were built.
     #   rebuild 1 # Making the old bottle outdated without bumping the version/revision of the formula.
-    #   sha256 "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865" => :el_capitan
-    #   sha256 "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3" => :yosemite
-    #   sha256 "1121cfccd5913f0a63fec40a6ffd44ea64f9dc135c66634ba001d10bcf4302a2" => :mavericks
+    #   sha256 "ef65c759c5097a36323fa9c77756468649e8d1980a3a4e05695c05e39568967c" => :catalina
+    #   sha256 "28f4090610946a4eb207df102d841de23ced0d06ba31cb79e040d883906dcd4f" => :mojave
+    #   sha256 "91dd0caca9bd3f38c439d5a7b6f68440c4274945615fae035ff0a369264b8a2f" => :high_sierra
     # end</pre>
     #
     # Only formulae where the upstream URL breaks or moves frequently, require compiling
@@ -2298,6 +2387,16 @@ class Formula
       stable.build
     end
 
+    # Get the `BUILD_FLAGS` from the formula's namespace set in `Formulary::load_formula`.
+    # @private
+    def build_flags
+      namespace = to_s.split("::")[0..-2].join("::")
+      return [] if namespace.empty?
+
+      mod = const_get(namespace)
+      mod.const_get(:BUILD_FLAGS)
+    end
+
     # @!attribute [w] stable
     # Allows adding {.depends_on} and {Patch}es just to the {.stable} {SoftwareSpec}.
     # This is required instead of using a conditional.
@@ -2311,7 +2410,7 @@ class Formula
     #   depends_on "libffi"
     # end</pre>
     def stable(&block)
-      @stable ||= SoftwareSpec.new
+      @stable ||= SoftwareSpec.new(flags: build_flags)
       return @stable unless block_given?
 
       @stable.instance_eval(&block)
@@ -2329,10 +2428,12 @@ class Formula
     #   depends_on "cairo"
     #   depends_on "pixman"
     # end</pre>
+    # @private
     def devel(&block)
-      @devel ||= SoftwareSpec.new
+      @devel ||= SoftwareSpec.new(flags: build_flags)
       return @devel unless block_given?
 
+      odeprecated "'devel' blocks in formulae", "'head' blocks or @-versioned formulae"
       @devel.instance_eval(&block)
     end
 
@@ -2349,7 +2450,7 @@ class Formula
     # or (if autodetect fails):
     # <pre>head "https://hg.is.awesome.but.git.has.won.example.com/", :using => :hg</pre>
     def head(val = nil, specs = {}, &block)
-      @head ||= HeadSoftwareSpec.new
+      @head ||= HeadSoftwareSpec.new(flags: build_flags)
       if block_given?
         @head.instance_eval(&block)
       elsif val
@@ -2360,7 +2461,7 @@ class Formula
     end
 
     # Additional downloads can be defined as resources and accessed in the
-    # install method. Resources can also be defined inside a {.stable}, {.devel} or
+    # install method. Resources can also be defined inside a {.stable} or
     # {.head} block. This mechanism replaces ad-hoc "subformula" classes.
     # <pre>resource "additional_files" do
     #   url "https://example.com/additional-stuff.tar.gz"
@@ -2396,7 +2497,7 @@ class Formula
     # <pre># Optional and enforce that boost is built with `--with-c++11`.
     # depends_on "boost" => [:optional, "with-c++11"]</pre>
     # <pre># If a dependency is only needed in certain cases:
-    # depends_on "sqlite" if MacOS.version == :mavericks
+    # depends_on "sqlite" if MacOS.version == :catalina
     # depends_on :xcode # If the formula really needs full Xcode.
     # depends_on :macos => :mojave # Needs at least macOS Mojave (10.14).
     # depends_on :x11 => :optional # X11/XQuartz components.
@@ -2411,9 +2512,24 @@ class Formula
       specs.each { |spec| spec.depends_on(dep) }
     end
 
-    def uses_from_macos(dep)
-      specs.each { |spec| spec.uses_from_macos(dep) }
+    # Indicates use of dependencies provided by macOS.
+    # On macOS this is a no-op (as we use the system libraries there).
+    # On Linux this will act as `depends_on`.
+    def uses_from_macos(dep, bounds = {})
+      specs.each { |spec| spec.uses_from_macos(dep, bounds) }
     end
+
+    # Block only executed on macOS. No-op on Linux.
+    # <pre>on_macos do
+    #   depends_on "mac_only_dep"
+    # end</pre>
+    def on_macos(&_block); end
+
+    # Block only executed on Linux. No-op on macOS.
+    # <pre>on_linux do
+    #   depends_on "linux_only_dep"
+    # end</pre>
+    def on_linux(&_block); end
 
     # @!attribute [w] option
     # Options can be used as arguments to `brew install`.
@@ -2455,7 +2571,7 @@ class Formula
     #   sha256 "c6bc3f48ce8e797854c4b865f6a8ff969867bbcaebd648ae6fd825683e59fef2"
     # end</pre>
     #
-    # Patches can be declared in stable, devel, and head blocks. This form is
+    # Patches can be declared in stable and head blocks. This form is
     # preferred over using conditionals.
     # <pre>stable do
     #   patch do
@@ -2539,12 +2655,12 @@ class Formula
     # end</pre>
     #
     # The block may be omitted, and if present the build may be omitted;
-    # if so, then the compiler will be blacklisted for *all* versions.
+    # if so, then the compiler will not be allowed for *all* versions.
     #
     # `major_version` should be the major release number only, for instance
     # '7' for the GCC 7 series (7.0, 7.1, etc.).
-    # If `version` or the block is omitted, then the compiler will be
-    # blacklisted for all compilers in that series.
+    # If `version` or the block is omitted, then the compiler will
+    # not be allowed for all compilers in that series.
     #
     # For example, if a bug is only triggered on GCC 7.1 but is not
     # encountered on 7.2:
@@ -2565,9 +2681,13 @@ class Formula
     #
     # The block will create, run in and delete a temporary directory.
     #
-    # We are fine if the executable does not error out, so we know linking
-    # and building the software was OK.
-    # <pre>system bin/"foobar", "--version"</pre>
+    # We want tests that don't require any user input
+    # and test the basic functionality of the application.
+    # For example foo build-foo input.foo is a good test
+    # and foo --version and foo --help are bad tests.
+    # However, a bad test is better than no test at all.
+    #
+    # See: https://docs.brew.sh/Formula-Cookbook#add-a-test-to-the-formula
     #
     # <pre>(testpath/"test.file").write <<~EOS
     #   writing some test file, if you need to
@@ -2588,6 +2708,26 @@ class Formula
       define_method(:test, &block)
     end
 
+    # @!attribute [w] livecheck
+    # Livecheck can be used to check for newer versions of the software.
+    # This method evaluates the DSL specified in the livecheck block of the
+    # {Formula} (if it exists) and sets the instance variables of a Livecheck
+    # object accordingly. This is used by brew livecheck to check for newer
+    # versions of the software.
+    #
+    # <pre>livecheck do
+    #   skip "Not maintained"
+    #   url "https://example.com/foo/releases"
+    #   regex /foo-(\d+(?:\.\d+)+)\.tar/
+    # end</pre>
+    def livecheck(&block)
+      @livecheck ||= Livecheck.new(self)
+      return @livecheck unless block_given?
+
+      @livecheckable = true
+      @livecheck.instance_eval(&block)
+    end
+
     # Defines whether the {Formula}'s bottle can be used on the given Homebrew
     # installation.
     #
@@ -2605,6 +2745,41 @@ class Formula
       @pour_bottle_check.instance_eval(&block)
     end
 
+    # Deprecates a {Formula} (on a given date, if provided) so a warning is
+    # shown on each installation. If the date has not yet passed the formula
+    # will not be deprecated.
+    def deprecate!(date: nil)
+      return if date.present? && Date.parse(date) > Date.today
+
+      @deprecated = true
+    end
+
+    # Whether this {Formula} is deprecated (i.e. warns on installation).
+    # Defaults to false.
+    # @return [Boolean]
+    def deprecated?
+      @deprecated == true
+    end
+
+    # Disables a {Formula}  (on a given date, if provided) so it cannot be
+    # installed. If the date has not yet passed the formula
+    # will be deprecated instead of disabled.
+    def disable!(date: nil)
+      if date.present? && Date.parse(date) > Date.today
+        @deprecated = true
+        return
+      end
+
+      @disabled = true
+    end
+
+    # Whether this {Formula} is disabled (i.e. cannot be installed).
+    # Defaults to false.
+    # @return [Boolean]
+    def disabled?
+      @disabled == true
+    end
+
     # @private
     def link_overwrite(*paths)
       paths.flatten!
@@ -2615,5 +2790,16 @@ class Formula
     def link_overwrite_paths
       @link_overwrite_paths ||= Set.new
     end
+
+    def ignore_missing_libraries(*)
+      raise FormulaSpecificationError, "#{__method__} is available on Linux only"
+    end
+
+    # @private
+    def allowed_missing_libraries
+      @allowed_missing_libraries ||= Set.new
+    end
   end
 end
+
+require "extend/os/formula"

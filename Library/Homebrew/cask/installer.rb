@@ -140,7 +140,7 @@ module Cask
 
     def summary
       s = +""
-      s << "#{Emoji.install_badge}  " if Emoji.enabled?
+      s << "#{Homebrew::EnvConfig.install_badge}  " unless Homebrew::EnvConfig.no_emoji?
       s << "#{@cask} was successfully #{upgrade? ? "upgraded" : "installed"}!"
       s.freeze
     end
@@ -328,8 +328,12 @@ module Cask
 
     def missing_cask_and_formula_dependencies
       collect_cask_and_formula_dependencies.reject do |cask_or_formula|
-        (cask_or_formula.try(:installed?) || cask_or_formula.try(:any_version_installed?)) &&
-          (cask_or_formula.respond_to?(:opt_linked?) ? cask_or_formula.opt_linked? : true)
+        installed = if cask_or_formula.respond_to?(:any_version_installed?)
+          cask_or_formula.any_version_installed?
+        else
+          cask_or_formula.try(:installed?)
+        end
+        installed && (cask_or_formula.respond_to?(:opt_linked?) ? cask_or_formula.opt_linked? : true)
       end
     end
 
@@ -363,12 +367,12 @@ module Cask
             force:                   false,
           ).install
         else
-          FormulaInstaller.new(cask_or_formula).yield_self do |fi|
+          FormulaInstaller.new(cask_or_formula, verbose: verbose?).yield_self do |fi|
             fi.installed_as_dependency = true
             fi.installed_on_request = false
             fi.show_header = true
-            fi.verbose = verbose?
             fi.prelude
+            fi.fetch
             fi.install
             fi.finish
           end

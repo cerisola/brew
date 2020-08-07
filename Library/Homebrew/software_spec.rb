@@ -20,28 +20,22 @@ class SoftwareSpec
     cxx11:     Option.new("c++11",     "Build using C++11 mode"),
   }.freeze
 
-  attr_reader :name, :full_name, :owner
-  attr_reader :build, :resources, :patches, :options
-  attr_reader :deprecated_flags, :deprecated_options
-  attr_reader :dependency_collector
-  attr_reader :bottle_specification
-  attr_reader :compiler_failures
-  attr_reader :uses_from_macos_elements
+  attr_reader :name, :full_name, :owner, :build, :resources, :patches, :options, :deprecated_flags,
+              :deprecated_options, :dependency_collector, :bottle_specification, :compiler_failures,
+              :uses_from_macos_elements, :bottle_disable_reason
 
-  def_delegators :@resource, :stage, :fetch, :verify_download_integrity, :source_modified_time
-  def_delegators :@resource, :download_name, :cached_download, :clear_cache
-  def_delegators :@resource, :checksum, :mirrors, :specs, :using
-  def_delegators :@resource, :version, :mirror, *Checksum::TYPES
-  def_delegators :@resource, :downloader
+  def_delegators :@resource, :stage, :fetch, :verify_download_integrity, :source_modified_time, :download_name,
+                 :cached_download, :clear_cache, :checksum, :mirrors, :specs, :using, :version, :mirror,
+                 :downloader, *Checksum::TYPES
 
-  def initialize
+  def initialize(flags: [])
     @resource = Resource.new
     @resources = {}
     @dependency_collector = DependencyCollector.new
     @bottle_specification = BottleSpecification.new
     @patches = []
     @options = Options.new
-    @flags = ARGV.flags_only
+    @flags = flags
     @deprecated_flags = []
     @deprecated_options = []
     @build = BuildOptions.new(Options.create(@flags), options)
@@ -87,15 +81,13 @@ class SoftwareSpec
     @bottle_disable_reason ? true : false
   end
 
-  attr_reader :bottle_disable_reason
-
   def bottle_defined?
     !bottle_specification.collector.keys.empty?
   end
 
   def bottled?
     bottle_specification.tag?(Utils::Bottles.tag) && \
-      (bottle_specification.compatible_cellar? || ARGV.force_bottle?)
+      (bottle_specification.compatible_cellar? || owner.force_bottle)
   end
 
   def bottle(disable_type = nil, disable_reason = nil, &block)
@@ -115,6 +107,8 @@ class SoftwareSpec
       raise DuplicateResourceError, name if resource_defined?(name)
 
       res = klass.new(name, &block)
+      return unless res.url
+
       resources[name] = res
       dependency_collector.add(res)
     else
@@ -171,7 +165,8 @@ class SoftwareSpec
     add_dep_option(dep) if dep
   end
 
-  def uses_from_macos(spec)
+  def uses_from_macos(spec, _bounds = {})
+    spec = Hash[*spec.first] if spec.is_a?(Hash)
     depends_on(spec)
   end
 
@@ -220,6 +215,7 @@ class SoftwareSpec
     end
   end
 
+  # TODO
   def add_legacy_patches(list)
     list = Patch.normalize_legacy_patches(list)
     list.each { |p| p.owner = self }
@@ -238,13 +234,13 @@ class SoftwareSpec
 end
 
 class HeadSoftwareSpec < SoftwareSpec
-  def initialize
+  def initialize(flags: [])
     super
     @resource.version = Version.create("HEAD")
   end
 
   def verify_download_integrity(_fn)
-    nil
+    # no-op
   end
 end
 
@@ -273,7 +269,7 @@ class Bottle
     end
 
     def bintray
-      "#{name}-#{version}#{extname}"
+      ERB::Util.url_encode("#{name}-#{version}#{extname}")
     end
 
     def extname
@@ -346,7 +342,7 @@ class BottleSpecification
 
   def root_url(var = nil, specs = {})
     if var.nil?
-      @root_url ||= "#{HOMEBREW_BOTTLE_DOMAIN}/#{Utils::Bottles::Bintray.repository(tap)}"
+      @root_url ||= "#{Homebrew::EnvConfig.bottle_domain}/#{Utils::Bottles::Bintray.repository(tap)}"
     else
       @root_url = var
       @root_url_specs.merge!(specs)
@@ -384,7 +380,7 @@ class BottleSpecification
       # Sort non-MacOS tags below MacOS tags.
 
       OS::Mac::Version.from_symbol tag
-    rescue ArgumentError
+    rescue MacOSVersionError
       "0.#{tag}"
     end
     checksums = {}

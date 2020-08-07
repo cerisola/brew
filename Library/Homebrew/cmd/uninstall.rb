@@ -5,6 +5,9 @@ require "formula"
 require "diagnostic"
 require "migrator"
 require "cli/parser"
+require "cask/all"
+require "cask/cmd"
+require "cask/cask_loader"
 
 module Homebrew
   module_function
@@ -16,31 +19,44 @@ module Homebrew
 
         Uninstall <formula>.
       EOS
-      switch :force,
+      switch "-f", "--force",
              description: "Delete all installed versions of <formula>."
       switch "--ignore-dependencies",
              description: "Don't fail uninstall, even if <formula> is a dependency of any installed "\
                           "formulae."
-      switch :debug
+
       min_named :formula
     end
   end
 
   def uninstall
-    uninstall_args.parse
+    args = uninstall_args.parse
 
-    kegs_by_rack = if args.force?
-      Hash[args.named.map do |name|
+    if args.force?
+      casks = []
+      kegs_by_rack = {}
+
+      args.named.each do |name|
         rack = Formulary.to_rack(name)
-        next unless rack.directory?
 
-        [rack, rack.subdirs.map { |d| Keg.new(d) }]
-      end]
+        if rack.directory?
+          kegs_by_rack[rack] = rack.subdirs.map { |d| Keg.new(d) }
+        else
+          begin
+            casks << Cask::CaskLoader.load(name)
+          rescue Cask::CaskUnavailableError
+            # Since the uninstall was forced, ignore any unavailable casks
+          end
+        end
+      end
     else
-      args.kegs.group_by(&:rack)
+      all_kegs, casks = args.kegs_casks
+      kegs_by_rack = all_kegs.group_by(&:rack)
     end
 
-    handle_unsatisfied_dependents(kegs_by_rack)
+    handle_unsatisfied_dependents(kegs_by_rack,
+                                  ignore_dependencies: args.ignore_dependencies?,
+                                  named_args:          args.named)
     return if Homebrew.failed?
 
     kegs_by_rack.each do |rack, kegs|
@@ -80,10 +96,43 @@ module Homebrew
               puts "#{keg.name} #{versions.to_sentence} #{"is".pluralize(versions.count)} still installed."
               puts "Run `brew uninstall --force #{keg.name}` to remove all versions."
             end
+
+            next unless f
+
+            paths = f.pkgetc.find.map(&:to_s) if f.pkgetc.exist?
+            if paths.present?
+              puts
+              opoo <<~EOS
+                The following #{f.name} configuration files have not been removed!
+                If desired, remove them manually with `rm -rf`:
+                  #{paths.sort.uniq.join("\n  ")}
+              EOS
+            end
+
+            unversioned_name = f.name.gsub(/@.+$/, "")
+            maybe_paths = Dir.glob("#{f.etc}/*#{unversioned_name}*")
+            maybe_paths -= paths if paths.present?
+            if maybe_paths.present?
+              puts
+              opoo <<~EOS
+                The following may be #{f.name} configuration files and have not been removed!
+                If desired, remove them manually with `rm -rf`:
+                  #{maybe_paths.sort.uniq.join("\n  ")}
+              EOS
+            end
           end
         end
       end
     end
+
+    return if casks.blank?
+
+    Cask::Cmd::Uninstall.uninstall_casks(
+      *casks,
+      binaries: args.binaries?,
+      verbose:  args.verbose?,
+      force:    args.force?,
+    )
   rescue MultipleVersionsInstalledError => e
     ofail e
     puts "Run `brew uninstall --force #{e.name}` to remove all versions."
@@ -97,40 +146,41 @@ module Homebrew
     end
   end
 
-  def handle_unsatisfied_dependents(kegs_by_rack)
-    return if args.ignore_dependencies?
+  def handle_unsatisfied_dependents(kegs_by_rack, ignore_dependencies: false, named_args: [])
+    return if ignore_dependencies
 
     all_kegs = kegs_by_rack.values.flatten(1)
-    check_for_dependents all_kegs
+    check_for_dependents(all_kegs, named_args: named_args)
   rescue MethodDeprecatedError
     # Silently ignore deprecations when uninstalling.
     nil
   end
 
-  def check_for_dependents(kegs)
+  def check_for_dependents(kegs, named_args: [])
     return false unless result = Keg.find_some_installed_dependents(kegs)
 
-    if ARGV.homebrew_developer?
-      DeveloperDependentsMessage.new(*result).output
+    if Homebrew::EnvConfig.developer?
+      DeveloperDependentsMessage.new(*result, named_args: named_args).output
     else
-      NondeveloperDependentsMessage.new(*result).output
+      NondeveloperDependentsMessage.new(*result, named_args: named_args).output
     end
 
     true
   end
 
   class DependentsMessage
-    attr_reader :reqs, :deps
+    attr_reader :reqs, :deps, :named_args
 
-    def initialize(requireds, dependents)
+    def initialize(requireds, dependents, named_args: [])
       @reqs = requireds
       @deps = dependents
+      @named_args = named_args
     end
 
     protected
 
     def sample_command
-      "brew uninstall --ignore-dependencies #{Array(Homebrew.args.named).join(" ")}"
+      "brew uninstall --ignore-dependencies #{named_args.join(" ")}"
     end
 
     def are_required_by_deps

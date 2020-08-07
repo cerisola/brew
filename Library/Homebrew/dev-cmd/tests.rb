@@ -22,22 +22,25 @@ module Homebrew
       switch "--online",
              description: "Include tests that use the GitHub API and tests that use any of the taps for "\
                           "official external commands."
+      switch "--byebug",
+             description: "Enable debugging using byebug."
       flag   "--only=",
              description: "Run only <test_script>`_spec.rb`. Appending `:`<line_number> will start at a "\
                           "specific line."
       flag   "--seed=",
              description: "Randomise tests with the specified <value> instead of a random seed."
-      switch :verbose
-      switch :debug
+
       max_named 0
     end
   end
 
   def tests
-    tests_args.parse
+    args = tests_args.parse
 
     Homebrew.install_bundler_gems!
     gem_user_dir = Gem.user_dir
+
+    require "byebug" if args.byebug?
 
     HOMEBREW_LIBRARY_PATH.cd do
       ENV.delete("HOMEBREW_COLOR")

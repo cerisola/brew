@@ -102,6 +102,23 @@ module RuboCop
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           problem "Use new-style option definitions" if find_method_def(body_node, :options)
 
+          if formula_tap == "homebrew-core"
+            # Use of build.with? implies options, which are forbidden in homebrew/core
+            find_instance_method_call(body_node, :build, :without?) do
+              problem "Formulae in homebrew/core should not use `build.without?`."
+            end
+            find_instance_method_call(body_node, :build, :with?) do
+              problem "Formulae in homebrew/core should not use `build.with?`."
+            end
+
+            return
+          end
+
+          depends_on_build_with(body_node) do |build_with_node|
+            offending_node(build_with_node)
+            problem "Use `:optional` or `:recommended` instead of `if #{build_with_node.source}`"
+          end
+
           find_instance_method_call(body_node, :build, :without?) do |method|
             next unless unless_modifier?(method.parent)
 
@@ -143,29 +160,8 @@ module RuboCop
             problem "Don't duplicate 'with': Use `build.with? \"#{match[1]}\"` to check for \"--with-#{match[1]}\""
           end
 
-          find_instance_method_call(body_node, :build, :include?) do |method|
-            arg = parameters(method).first
-            next unless match = regex_match_group(arg, /^with(out)?-(.*)/)
-
-            problem "Use build.with#{match[1]}? \"#{match[2]}\" instead of " \
-                    "build.include? 'with#{match[1]}-#{match[2]}'"
-          end
-
-          find_instance_method_call(body_node, :build, :include?) do |method|
-            arg = parameters(method).first
-            next unless match = regex_match_group(arg, /^\-\-(.*)$/)
-
-            problem "Reference '#{match[1]}' without dashes"
-          end
-
-          return if formula_tap != "homebrew-core"
-
-          # Use of build.with? implies options, which are forbidden in homebrew/core
-          find_instance_method_call(body_node, :build, :without?) do
-            problem "Formulae in homebrew/core should not use `build.without?`."
-          end
-          find_instance_method_call(body_node, :build, :with?) do
-            problem "Formulae in homebrew/core should not use `build.with?`."
+          find_instance_method_call(body_node, :build, :include?) do
+            problem "`build.include?` is deprecated"
           end
         end
 
@@ -174,6 +170,12 @@ module RuboCop
 
           node.modifier_form? && node.unless?
         end
+
+        # Finds `depends_on "foo" if build.with?("bar")` or `depends_on "foo" if build.without?("bar")`
+        def_node_search :depends_on_build_with, <<~EOS
+          (if $(send (send nil? :build) {:with? :without?} str)
+            (send nil? :depends_on str) nil?)
+        EOS
       end
 
       class MpiCheck < FormulaCop
@@ -191,6 +193,63 @@ module RuboCop
           # The dependency nodes may need to be re-sorted because of this
           lambda do |corrector|
             corrector.replace(node.source_range, "depends_on \"open-mpi\"")
+          end
+        end
+      end
+
+      class SafePopenCommands < FormulaCop
+        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          test = find_block(body_node, :test)
+
+          [:popen_read, :popen_write].each do |unsafe_command|
+            test_methods = []
+
+            unless test.nil?
+              find_instance_method_call(test, "Utils", unsafe_command) do |method|
+                test_methods << method.source_range
+              end
+            end
+
+            find_instance_method_call(body_node, "Utils", unsafe_command) do |method|
+              unless test_methods.include?(method.source_range)
+                problem "Use `Utils.safe_#{unsafe_command}` instead of `Utils.#{unsafe_command}`"
+              end
+            end
+          end
+        end
+
+        def autocorrect(node)
+          lambda do |corrector|
+            corrector.replace(node.loc.selector, "safe_#{node.method_name}")
+          end
+        end
+      end
+
+      class ShellVariables < FormulaCop
+        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          popen_commands = [
+            :popen,
+            :popen_read,
+            :safe_popen_read,
+            :popen_write,
+            :safe_popen_write,
+          ]
+
+          popen_commands.each do |command|
+            find_instance_method_call(body_node, "Utils", command) do |method|
+              next unless match = regex_match_group(parameters(method).first, /^([^"' ]+)=([^"' ]+)(?: (.*))?$/)
+
+              good_args = "Utils.#{command}({ \"#{match[1]}\" => \"#{match[2]}\" }, \"#{match[3]}\")"
+
+              problem "Use `#{good_args}` instead of `#{method.source}`"
+            end
+          end
+        end
+
+        def autocorrect(node)
+          lambda do |corrector|
+            match = regex_match_group(node, /^([^"' ]+)=([^"' ]+)(?: (.*))?$/)
+            corrector.replace(node.source_range, "{ \"#{match[1]}\" => \"#{match[2]}\" }, \"#{match[3]}\"")
           end
         end
       end
@@ -225,9 +284,7 @@ module RuboCop
             end
           end
 
-          find_instance_call(body_node, "ARGV") do |method_node|
-            next if [:debug?, :verbose?, :value].index(method_node.method_name)
-
+          find_instance_call(body_node, "ARGV") do |_method_node|
             problem "Use build instead of ARGV to check options"
           end
 
@@ -240,18 +297,18 @@ module RuboCop
           # Avoid hard-coding compilers
           find_every_method_call_by_name(body_node, :system).each do |method|
             param = parameters(method).first
-            if match = regex_match_group(param, %r{^(/usr/bin/)?(gcc|llvm-gcc|clang)\s?})
+            if match = regex_match_group(param, %r{^(/usr/bin/)?(gcc|llvm-gcc|clang)(\s|$)})
               problem "Use \"\#{ENV.cc}\" instead of hard-coding \"#{match[2]}\""
-            elsif match = regex_match_group(param, %r{^(/usr/bin/)?((g|llvm-g|clang)\+\+)\s?})
+            elsif match = regex_match_group(param, %r{^(/usr/bin/)?((g|llvm-g|clang)\+\+)(\s|$)})
               problem "Use \"\#{ENV.cxx}\" instead of hard-coding \"#{match[2]}\""
             end
           end
 
           find_instance_method_call(body_node, "ENV", :[]=) do |method|
             param = parameters(method)[1]
-            if match = regex_match_group(param, %r{^(/usr/bin/)?(gcc|llvm-gcc|clang)\s?})
+            if match = regex_match_group(param, %r{^(/usr/bin/)?(gcc|llvm-gcc|clang)(\s|$)})
               problem "Use \"\#{ENV.cc}\" instead of hard-coding \"#{match[2]}\""
-            elsif match = regex_match_group(param, %r{^(/usr/bin/)?((g|llvm-g|clang)\+\+)\s?})
+            elsif match = regex_match_group(param, %r{^(/usr/bin/)?((g|llvm-g|clang)\+\+)(\s|$)})
               problem "Use \"\#{ENV.cxx}\" instead of hard-coding \"#{match[2]}\""
             end
           end
@@ -403,7 +460,7 @@ module RuboCop
 
             path = parameters(method).first
             next unless path.str_type?
-            next unless match = regex_match_group(path, /^[^\*{},]+$/)
+            next unless match = regex_match_group(path, /^[^*{},]+$/)
 
             problem "Dir([\"#{string_content(path)}\"]) is unnecessary; just use \"#{match[0]}\""
           end
@@ -418,42 +475,6 @@ module RuboCop
             next unless match = regex_match_group(param, fileutils_methods)
 
             problem "Use the `#{match}` Ruby method instead of `#{method.source}`"
-          end
-
-          return if formula_tap != "homebrew-core"
-
-          # Avoid build-time checks in homebrew/core
-          find_every_method_call_by_name(body_node, :system).each do |method|
-            next if @formula_name.start_with?("lib")
-            next if %w[
-              beecrypt
-              ccrypt
-              git
-              gmp
-              gnupg
-              gnupg@1.4
-              google-sparsehash
-              jemalloc
-              jpeg-turbo
-              mpfr
-              open-mpi
-              openssl@1.1
-              pcre
-              protobuf
-              wolfssl
-              xz
-            ].include?(@formula_name)
-
-            params = parameters(method)
-            next unless node_equals?(params[0], "make")
-
-            params[1..].each do |arg|
-              next unless regex_match_group(arg, /^(checks?|tests?)$/)
-
-              offending_node(method)
-              problem "Formulae in homebrew/core (except e.g. cryptography, libraries) " \
-                      "should not run build-time checks"
-            end
           end
         end
 
@@ -488,6 +509,100 @@ module RuboCop
         def_node_search :languageNodeModule?, <<~EOS
           (const (const nil? :Language) :Node)
         EOS
+      end
+    end
+
+    module FormulaAuditStrict
+      class MakeCheck < FormulaCop
+        MAKE_CHECK_ALLOWLIST = %w[
+          beecrypt
+          ccrypt
+          git
+          gmp
+          gnupg
+          gnupg@1.4
+          google-sparsehash
+          jemalloc
+          jpeg-turbo
+          mpfr
+          nettle
+          open-mpi
+          openssl@1.1
+          pcre
+          protobuf
+          wolfssl
+          xz
+        ].freeze
+
+        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if formula_tap != "homebrew-core"
+
+          # Avoid build-time checks in homebrew/core
+          find_every_method_call_by_name(body_node, :system).each do |method|
+            next if @formula_name.start_with?("lib")
+            next if MAKE_CHECK_ALLOWLIST.include?(@formula_name)
+
+            params = parameters(method)
+            next unless node_equals?(params[0], "make")
+
+            params[1..].each do |arg|
+              next unless regex_match_group(arg, /^(checks?|tests?)$/)
+
+              offending_node(method)
+              problem "Formulae in homebrew/core (except e.g. cryptography, libraries) " \
+                      "should not run build-time checks"
+            end
+          end
+        end
+      end
+
+      class ShellCommands < FormulaCop
+        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          # Match shell commands separated by spaces in the same string
+          shell_cmd_with_spaces_regex = /[^"' ]*(?:\s[^"' ]*)+/
+
+          popen_commands = [
+            :popen_read,
+            :safe_popen_read,
+            :popen_write,
+            :safe_popen_write,
+          ]
+
+          shell_metacharacters = %w[> < < | ; : & * $ ? : ~ + @ !` ( ) [ ]]
+
+          find_every_method_call_by_name(body_node, :system).each do |method|
+            # Only separate when no shell metacharacters are present
+            next if shell_metacharacters.any? { |meta| string_content(parameters(method).first).include?(meta) }
+
+            next unless match = regex_match_group(parameters(method).first, shell_cmd_with_spaces_regex)
+
+            good_args = match[0].gsub(" ", "\", \"")
+            offending_node(parameters(method).first)
+            problem "Separate `system` commands into `\"#{good_args}\"`"
+          end
+
+          popen_commands.each do |command|
+            find_instance_method_call(body_node, "Utils", command) do |method|
+              index = parameters(method).first.hash_type? ? 1 : 0
+
+              # Only separate when no shell metacharacters are present
+              next if shell_metacharacters.any? { |meta| string_content(parameters(method)[index]).include?(meta) }
+
+              next unless match = regex_match_group(parameters(method)[index], shell_cmd_with_spaces_regex)
+
+              good_args = match[0].gsub(" ", "\", \"")
+              offending_node(parameters(method)[index])
+              problem "Separate `Utils.#{command}` commands into `\"#{good_args}\"`"
+            end
+          end
+        end
+
+        def autocorrect(node)
+          lambda do |corrector|
+            good_args = node.source.gsub(" ", "\", \"")
+            corrector.replace(node.source_range, good_args)
+          end
+        end
       end
     end
   end

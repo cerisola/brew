@@ -39,6 +39,7 @@ module Cask
       Artifact::Pkg,
       Artifact::Prefpane,
       Artifact::Qlplugin,
+      Artifact::Mdimporter,
       Artifact::ScreenSaver,
       Artifact::Service,
       Artifact::StageOnly,
@@ -136,13 +137,13 @@ module Cask
 
       raise CaskInvalidError.new(cask, "No default language specified.") if @language_blocks.default.nil?
 
-      locales = MacOS.languages
-                     .map do |language|
-                       Locale.parse(language)
-                     rescue Locale::ParserError
-                       nil
-                     end
-                     .compact
+      locales = cask.config.languages
+                    .map do |language|
+                      Locale.parse(language)
+                    rescue Locale::ParserError
+                      nil
+                    end
+                    .compact
 
       locales.each do |locale|
         key = locale.detect(@language_blocks.keys)
@@ -224,7 +225,7 @@ module Cask
     end
 
     def caskroom_path
-      @cask.caskroom_path
+      cask.caskroom_path
     end
 
     def staged_path

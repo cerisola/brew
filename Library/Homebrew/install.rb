@@ -10,14 +10,19 @@ module Homebrew
     module_function
 
     def check_cpu
-      case Hardware::CPU.type
-      when :ppc
-        abort <<~EOS
-          Sorry, Homebrew does not support your computer's CPU architecture.
-          For PPC support, see:
+      return if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
+
+      message = "Sorry, Homebrew does not support your computer's CPU architecture!"
+      if Hardware::CPU.arm?
+        opoo message
+        return
+      elsif Hardware::CPU.ppc?
+        message += <<~EOS
+          For PowerPC Mac (PPC32/PPC64BE) support, see:
             #{Formatter.url("https://github.com/mistydemeo/tigerbrew")}
         EOS
       end
+      abort message
     end
 
     def attempt_directory_creation
@@ -34,20 +39,20 @@ module Homebrew
       end
     end
 
-    def check_cc_argv
-      return unless ARGV.cc
+    def check_cc_argv(cc)
+      return unless cc
 
       @checks ||= Diagnostic::Checks.new
       opoo <<~EOS
-        You passed `--cc=#{ARGV.cc}`.
+        You passed `--cc=#{cc}`.
         #{@checks.please_create_pull_requests}
       EOS
     end
 
-    def perform_preinstall_checks(all_fatal: false)
+    def perform_preinstall_checks(all_fatal: false, cc: nil)
       check_cpu
       attempt_directory_creation
-      check_cc_argv
+      check_cc_argv(cc)
       diagnostic_checks(:supported_configuration_checks, fatal: all_fatal)
       diagnostic_checks(:fatal_preinstall_checks)
     end

@@ -29,11 +29,11 @@ module Homebrew
              description: "List global Homebrew analytics data or, if specified, installation and "\
                           "build error data for <formula> (provided neither `HOMEBREW_NO_ANALYTICS` "\
                           "nor `HOMEBREW_NO_GITHUB_API` are set)."
-      flag   "--days",
+      flag   "--days=",
              depends_on:  "--analytics",
              description: "How many days of analytics data to retrieve. "\
                           "The value for <days> must be `30`, `90` or `365`. The default is `30`."
-      flag   "--category",
+      flag   "--category=",
              depends_on:  "--analytics",
              description: "Which type of analytics data to retrieve. "\
                           "The value for <category> must be `install`, `install-on-request` or `build-error`; "\
@@ -52,15 +52,15 @@ module Homebrew
       switch "--all",
              depends_on:  "--json",
              description: "Print JSON of all available formulae."
-      switch :verbose,
+      switch "-v", "--verbose",
              description: "Show more verbose analytics data for <formula>."
-      switch :debug
+
       conflicts "--installed", "--all"
     end
   end
 
   def info
-    info_args.parse
+    args = info_args.parse
 
     if args.days.present?
       raise UsageError, "--days must be one of #{VALID_DAYS.join(", ")}" unless VALID_DAYS.include?(args.days)
@@ -83,20 +83,20 @@ module Homebrew
         raise FormulaUnspecifiedError if args.no_named?
       end
 
-      print_json
+      print_json(args: args)
     elsif args.github?
       raise FormulaUnspecifiedError if args.no_named?
 
       exec_browser(*args.formulae.map { |f| github_info(f) })
     else
-      print_info
+      print_info(args: args)
     end
   end
 
-  def print_info
+  def print_info(args:)
     if args.no_named?
       if args.analytics?
-        Utils::Analytics.output
+        Utils::Analytics.output(args: args)
       elsif HOMEBREW_CELLAR.exist?
         count = Formula.racks.length
         puts "#{count} #{"keg".pluralize(count)}, #{HOMEBREW_CELLAR.dup.abv}"
@@ -105,19 +105,15 @@ module Homebrew
       args.named.each_with_index do |f, i|
         puts unless i.zero?
         begin
-          formula = if f.include?("/") || File.exist?(f)
-            Formulary.factory(f)
-          else
-            Formulary.find_with_priority(f)
-          end
+          formula = Formulary.factory(f)
           if args.analytics?
-            Utils::Analytics.formula_output(formula)
+            Utils::Analytics.formula_output(formula, args: args)
           else
-            info_formula(formula)
+            info_formula(formula, args: args)
           end
         rescue FormulaUnavailableError => e
           if args.analytics?
-            Utils::Analytics.output(filter: f)
+            Utils::Analytics.output(filter: f, args: args)
             next
           end
           ofail e.message
@@ -130,7 +126,7 @@ module Homebrew
     end
   end
 
-  def print_json
+  def print_json(args:)
     ff = if args.all?
       Formula.sort
     elsif args.installed?
@@ -144,7 +140,7 @@ module Homebrew
 
   def github_remote_path(remote, path)
     if remote =~ %r{^(?:https?://|git(?:@|://))github\.com[:/](.+)/(.+?)(?:\.git)?$}
-      "https://github.com/#{Regexp.last_match(1)}/#{Regexp.last_match(2)}/blob/master/#{path}"
+      "https://github.com/#{Regexp.last_match(1)}/#{Regexp.last_match(2)}/blob/HEAD/#{path}"
     else
       "#{remote}/#{path}"
     end
@@ -163,7 +159,7 @@ module Homebrew
     end
   end
 
-  def info_formula(f)
+  def info_formula(f, args:)
     specs = []
 
     if stable = f.stable
@@ -215,6 +211,14 @@ module Homebrew
 
     puts "From: #{Formatter.url(github_info(f))}"
 
+    if f.license.present?
+      licenses = f.license
+                  .map(&:to_s)
+                  .join(", ")
+                  .sub("public_domain", "Public Domain")
+      puts "License: #{licenses}"
+    end
+
     unless f.deps.empty?
       ohai "Dependencies"
       %w[build required recommended optional].map do |type|
@@ -241,7 +245,7 @@ module Homebrew
     caveats = Caveats.new(f)
     ohai "Caveats", caveats.to_s unless caveats.empty?
 
-    Utils::Analytics.formula_output(f)
+    Utils::Analytics.formula_output(f, args: args)
   end
 
   def decorate_dependencies(dependencies)

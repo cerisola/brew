@@ -121,7 +121,6 @@ describe GitDownloadStrategy do
         git_commit_all
       end
 
-      subject.shutup!
       expect(subject.fetch_last_commit).to eq("f68266e")
     end
   end
@@ -236,6 +235,21 @@ describe CurlDownloadStrategy do
       it "adds the appropriate curl args" do
         expect(subject).to receive(:system_command!) { |*, args:, **|
           expect(args.each_cons(2)).to include(["-e", "https://somehost/also"])
+        }
+
+        subject.fetch
+      end
+    end
+
+    context "with headers set" do
+      alias_matcher :a_string_matching, :match
+
+      let(:specs) { { headers: ["foo", "bar"] } }
+
+      it "adds the appropriate curl args" do
+        expect(subject).to receive(:system_command!) { |*, args:, **|
+          expect(args.each_cons(2).to_a).to include(["--header", "foo"])
+          expect(args.each_cons(2).to_a).to include(["--header", "bar"])
         }
 
         subject.fetch

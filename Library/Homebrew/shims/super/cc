@@ -76,13 +76,13 @@ class Cmd
     when "cpp" then "cpp"
     when /llvm_(clang(\+\+)?)/
      "#{ENV["HOMEBREW_PREFIX"]}/opt/llvm/bin/#{$1}"
-    when /\w\+\+(-\d(\.\d)?)?$/
+    when /\w\+\+(-\d+(\.\d)?)?$/
       case ENV["HOMEBREW_CC"]
       when /clang/
         "clang++"
       when /llvm-gcc/
         "llvm-g++-4.2"
-      when /(g)?cc(-\d(\.\d)?)?$/
+      when /(g)?cc(-\d+(\.\d)?)?$/
         "g++" + $2.to_s
       end
     else
@@ -185,11 +185,11 @@ class Cmd
       "-fuse-linker-plugin", "-frounding-math"
       # clang doesn't support these flags
       args << arg unless tool =~ /^clang/
-    when "-Xpreprocessor"
+    when "-Xpreprocessor", "-Xclang"
       # used for -Xpreprocessor -fopenmp
       args << arg << enum.next
-    when /-mmacosx-version-min=10\.(\d+)/
-      arg = "-mmacosx-version-min=10.9" if high_sierra_or_later? && $1.to_i < 9
+    when /-mmacosx-version-min=(\d+)\.(\d+)/
+      arg = "-mmacosx-version-min=10.9" if high_sierra_or_later? && $1 == "10" && $2.to_i < 9
       args << arg
     when "--fast-math"
       arg = "-ffast-math" if tool =~ /^clang/
@@ -199,7 +199,7 @@ class Cmd
       args << arg unless tool =~ /^g..-4.[02]/
     when /^-Wl,-z,defs/
       # -Wl,-undefined,error is already the default
-    when /^-W[alp],/, /^-Wno-/
+    when /^-W[alp],/, /^-Wno-/, "-Werror=implicit-function-declaration"
       args << arg
     when /^-W.*/
       # prune warnings

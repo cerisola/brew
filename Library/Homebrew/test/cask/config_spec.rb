@@ -3,6 +3,21 @@
 describe Cask::Config, :cask do
   subject(:config) { described_class.new }
 
+  describe "::from_json" do
+    it "deserializes a configuration in JSON format" do
+      config = described_class.from_json <<~EOS
+        {
+          "default": {
+            "appdir": "/path/to/apps"
+          },
+          "env": {},
+          "explicit": {}
+        }
+      EOS
+      expect(config.appdir).to eq(Pathname("/path/to/apps"))
+    end
+  end
+
   describe "#default" do
     it "returns the default directories" do
       expect(config.default[:appdir]).to eq(Pathname(TEST_TMPDIR).join("cask-appdir"))
@@ -48,6 +63,33 @@ describe Cask::Config, :cask do
 
     it "returns directories explicitly given as arguments" do
       expect(config.explicit[:appdir]).to eq(Pathname("/explicit/path/to/apps"))
+    end
+  end
+
+  context "when installing a cask and then adding a global default dir" do
+    let(:config) {
+      json = <<~EOS
+        {
+          "default": {
+            "appdir": "/default/path/before/adding/fontdir"
+          },
+          "env": {},
+          "explicit": {}
+        }
+      EOS
+      described_class.from_json(json)
+    }
+
+    describe "#appdir" do
+      it "honors metadata of the installed cask" do
+        expect(config.appdir).to eq(Pathname("/default/path/before/adding/fontdir"))
+      end
+    end
+
+    describe "#fontdir" do
+      it "falls back to global default on incomplete metadata" do
+        expect(config.default).to include(fontdir: Pathname(TEST_TMPDIR).join("cask-fontdir"))
+      end
     end
   end
 end

@@ -3,6 +3,7 @@
 require "formula"
 require "options"
 require "cli/parser"
+require "commands"
 
 module Homebrew
   module_function
@@ -20,26 +21,58 @@ module Homebrew
              description: "Show options for formulae that are currently installed."
       switch "--all",
              description: "Show options for all available formulae."
-      switch :debug
-      conflicts "--installed", "--all"
+      flag   "--command=",
+             description: "Show options for the specified <command>."
+
+      conflicts "--installed", "--all", "--command"
     end
   end
 
   def options
-    options_args.parse
+    args = options_args.parse
 
     if args.all?
-      puts_options Formula.to_a.sort
+      puts_options Formula.to_a.sort, args: args
     elsif args.installed?
-      puts_options Formula.installed.sort
+      puts_options Formula.installed.sort, args: args
+    elsif !args.command.nil?
+      path = Commands.path(args.command)
+      odie "Unknown command: #{args.command}" unless path
+      cmd_options = if cmd_parser = CLI::Parser.from_cmd_path(path)
+        cmd_parser.processed_options.map do |short, long, _, desc|
+          [long || short, desc]
+        end
+      else
+        cmd_comment_options(path)
+      end
+      if args.compact?
+        puts cmd_options.sort.map(&:first) * " "
+      else
+        cmd_options.sort.each { |option, desc| puts "#{option}\n\t#{desc}" }
+        puts
+      end
     elsif args.no_named?
       raise FormulaUnspecifiedError
     else
-      puts_options args.formulae
+      puts_options args.formulae, args: args
     end
   end
 
-  def puts_options(formulae)
+  def cmd_comment_options(cmd_path)
+    options = []
+    comment_lines = cmd_path.read.lines.grep(/^#:/)
+    return options if comment_lines.empty?
+
+    # skip the comment's initial usage summary lines
+    comment_lines.slice(2..-1).each do |line|
+      if / (?<option>-[-\w]+) +(?<desc>.*)$/ =~ line
+        options << [option, desc]
+      end
+    end
+    options
+  end
+
+  def puts_options(formulae, args:)
     formulae.each do |f|
       next if f.options.empty?
 

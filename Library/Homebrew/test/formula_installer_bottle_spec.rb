@@ -4,6 +4,7 @@ require "formula"
 require "formula_installer"
 require "keg"
 require "tab"
+require "cmd/install"
 require "test/support/fixtures/testball"
 require "test/support/fixtures/testball_bottle"
 
@@ -23,7 +24,10 @@ describe FormulaInstaller do
     stub_formula_loader formula("gcc") { url "gcc-1.0" }
     stub_formula_loader formula("patchelf") { url "patchelf-1.0" }
     allow(Formula["patchelf"]).to receive(:latest_version_installed?).and_return(true)
-    described_class.new(formula).install
+
+    fi = FormulaInstaller.new(formula)
+    fi.fetch
+    fi.install
 
     keg = Keg.new(formula.prefix)
 
@@ -46,7 +50,7 @@ describe FormulaInstaller do
 
   specify "basic bottle install" do
     allow(DevelopmentTools).to receive(:installed?).and_return(false)
-
+    Homebrew.install_args.parse(["testball_bottle"])
     temporarily_install_bottle(TestballBottle.new) do |f|
       # Copied directly from formula_installer_spec.rb
       # as we expect the same behavior.

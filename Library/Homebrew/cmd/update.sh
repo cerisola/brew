@@ -1,8 +1,9 @@
-#:  * `update`, `up` [<options>]
+#:  * `update` [<options>]
 #:
 #:  Fetch the newest version of Homebrew and all formulae from GitHub using `git`(1) and perform any necessary migrations.
 #:
 #:          --merge                      Use `git merge` to apply updates (rather than `git rebase`).
+#:          --preinstall                 Run on auto-updates (e.g. before `brew install`). Skips some slower steps.
 #:      -f, --force                      Always do a slower, full update check (even if unnecessary).
 #:      -v, --verbose                    Print the directories checked and `git` operations performed.
 #:      -d, --debug                      Display a trace of all shell commands as they are executed.
@@ -30,7 +31,7 @@ git_init_if_necessary() {
     trap '{ rm -rf .git; exit 1; }' EXIT
     git init
     git config --bool core.autocrlf false
-    if [[ "$HOMEBREW_DEFAULT_BREW_GIT_REMOTE" != "$HOMEBREW_BREW_GIT_REMOTE" ]]
+    if [[ "$HOMEBREW_BREW_DEFAULT_GIT_REMOTE" != "$HOMEBREW_BREW_GIT_REMOTE" ]]
     then
       echo "HOMEBREW_BREW_GIT_REMOTE set: using $HOMEBREW_BREW_GIT_REMOTE for Homebrew/brew Git remote URL."
     fi
@@ -38,6 +39,7 @@ git_init_if_necessary() {
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
     latest_tag="$(git ls-remote --tags --refs -q origin | tail -n1 | cut -f2)"
     git fetch --force origin --shallow-since="$latest_tag"
+    git remote set-head origin --auto >/dev/null
     git reset --hard origin/master
     SKIP_FETCH_BREW_REPOSITORY=1
     set +e
@@ -52,13 +54,14 @@ git_init_if_necessary() {
     trap '{ rm -rf .git; exit 1; }' EXIT
     git init
     git config --bool core.autocrlf false
-    if [[ "$HOMEBREW_DEFAULT_CORE_GIT_REMOTE" != "$HOMEBREW_CORE_GIT_REMOTE" ]]
+    if [[ "$HOMEBREW_CORE_DEFAULT_GIT_REMOTE" != "$HOMEBREW_CORE_GIT_REMOTE" ]]
     then
       echo "HOMEBREW_CORE_GIT_REMOTE set: using $HOMEBREW_CORE_GIT_REMOTE for Homebrew/core Git remote URL."
     fi
     git config remote.origin.url "$HOMEBREW_CORE_GIT_REMOTE"
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
     git fetch --force --depth=1 origin refs/heads/master:refs/remotes/origin/master
+    git remote set-head origin --auto >/dev/null
     git reset --hard origin/master
     SKIP_FETCH_CORE_REPOSITORY=1
     set +e
@@ -84,6 +87,11 @@ upstream_branch() {
   local upstream_branch
 
   upstream_branch="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null)"
+  if [[ -z "$upstream_branch" ]]
+  then
+    git remote set-head origin --auto >/dev/null
+    upstream_branch="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null)"
+  fi
   upstream_branch="${upstream_branch#refs/remotes/origin/}"
   [[ -z "$upstream_branch" ]] && upstream_branch="master"
   echo "$upstream_branch"
@@ -253,7 +261,7 @@ EOS
     # Work around bug where git rebase --quiet is not quiet
     if [[ -z "$HOMEBREW_VERBOSE" ]]
     then
-      git rebase "$REMOTE_REF" >/dev/null
+      git rebase "${QUIET_ARGS[@]}" "$REMOTE_REF" >/dev/null
     else
       git rebase "${QUIET_ARGS[@]}" "$REMOTE_REF"
     fi
@@ -414,7 +422,7 @@ EOS
 
   git_init_if_necessary
 
-  if [[ "$HOMEBREW_DEFAULT_BREW_GIT_REMOTE" != "$HOMEBREW_BREW_GIT_REMOTE" ]]
+  if [[ "$HOMEBREW_BREW_DEFAULT_GIT_REMOTE" != "$HOMEBREW_BREW_GIT_REMOTE" ]]
   then
     safe_cd "$HOMEBREW_REPOSITORY"
     echo "HOMEBREW_BREW_GIT_REMOTE set: using $HOMEBREW_BREW_GIT_REMOTE for Homebrew/brew Git remote."
@@ -424,7 +432,7 @@ EOS
     git fetch --force origin --shallow-since="$latest_tag"
   fi
 
-  if [[ "$HOMEBREW_DEFAULT_CORE_GIT_REMOTE" != "$HOMEBREW_CORE_GIT_REMOTE" ]] &&
+  if [[ "$HOMEBREW_CORE_DEFAULT_GIT_REMOTE" != "$HOMEBREW_CORE_GIT_REMOTE" ]] &&
      [[ -d "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core" ]]
   then
     safe_cd "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core"
@@ -597,9 +605,9 @@ EOS
         -n "$HOMEBREW_UPDATE_FAILED" ||
         -n "$HOMEBREW_UPDATE_FORCE" ||
         -d "$HOMEBREW_LIBRARY/LinkedKegs" ||
+        ! -f "$HOMEBREW_CACHE/all_commands_list.txt" ||
         (-n "$HOMEBREW_DEVELOPER" && -z "$HOMEBREW_UPDATE_PREINSTALL") ]]
   then
-    unset HOMEBREW_RUBY_PATH
     brew update-report "$@"
     return $?
   elif [[ -z "$HOMEBREW_UPDATE_PREINSTALL" ]]

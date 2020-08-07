@@ -41,8 +41,6 @@ module Homebrew
         url "https://www.brew.sh/valid-1.0.tar.gz"
       RUBY
 
-      expect(ft).not_to have_data
-      expect(ft).not_to have_end
       expect(ft).to have_trailing_newline
 
       expect(ft =~ /\burl\b/).to be_truthy
@@ -54,20 +52,6 @@ module Homebrew
     specify "#trailing_newline?" do
       ft = formula_text "newline"
       expect(ft).to have_trailing_newline
-    end
-
-    specify "#data?" do
-      ft = formula_text "data", <<~RUBY
-        patch :DATA
-      RUBY
-
-      expect(ft).to have_data
-    end
-
-    specify "#end?" do
-      ft = formula_text "end", "", patch: "__END__\na patch here"
-      expect(ft).to have_end
-      expect(ft.without_patch).to eq("class End < Formula\n  \nend")
     end
   end
 
@@ -95,85 +79,175 @@ module Homebrew
       end
     end
 
+    describe "#audit_license" do
+      let(:spdx_data) {
+        JSON.parse Pathname(File.join(File.dirname(__FILE__), "../../data/spdx.json")).read
+      }
+
+      let(:custom_spdx_id) { "zzz" }
+      let(:standard_mismatch_spdx_id) { "0BSD" }
+      let(:license_array) { ["0BSD", "GPL-3.0"] }
+      let(:license_array_mismatch) { ["0BSD", "MIT"] }
+      let(:license_array_nonstandard) { ["0BSD", "zzz", "MIT"] }
+
+      it "does not check if the formula is not a new formula" do
+        fa = formula_auditor "foo", <<~RUBY, spdx_data: spdx_data, new_formula: false
+          class Foo < Formula
+            url "https://brew.sh/foo-1.0.tgz"
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems).to be_empty
+      end
+
+      it "detects no license info" do
+        fa = formula_auditor "foo", <<~RUBY, spdx_data: spdx_data, new_formula: true, core_tap: true
+          class Foo < Formula
+            url "https://brew.sh/foo-1.0.tgz"
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems.first).to match "Formulae in homebrew/core must specify a license."
+      end
+
+      it "detects if license is not a standard spdx-id" do
+        fa = formula_auditor "foo", <<~RUBY, spdx_data: spdx_data, new_formula: true
+          class Foo < Formula
+            url "https://brew.sh/foo-1.0.tgz"
+            license "#{custom_spdx_id}"
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems.first).to match "Formula foo contains non-standard SPDX licenses: [\"zzz\"]."
+      end
+
+      it "detects if license array contains a non-standard spdx-id" do
+        fa = formula_auditor "foo", <<~RUBY, spdx_data: spdx_data, new_formula: true
+          class Foo < Formula
+            url "https://brew.sh/foo-1.0.tgz"
+            license #{license_array_nonstandard}
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems.first).to match "Formula foo contains non-standard SPDX licenses: [\"zzz\"]."
+      end
+
+      it "verifies that a license info is a standard spdx id" do
+        fa = formula_auditor "foo", <<~RUBY, spdx_data: spdx_data, new_formula: true
+          class Foo < Formula
+            url "https://brew.sh/foo-1.0.tgz"
+            license "0BSD"
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems).to be_empty
+      end
+
+      it "verifies that a license array contains only standard spdx id" do
+        fa = formula_auditor "foo", <<~RUBY, spdx_data: spdx_data, new_formula: true
+          class Foo < Formula
+            url "https://brew.sh/foo-1.0.tgz"
+            license #{license_array}
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems).to be_empty
+      end
+
+      it "checks online and verifies that a standard license id is the same "\
+        "as what is indicated on its Github repo" do
+        fa = formula_auditor "cask", <<~RUBY, spdx_data: spdx_data, online: true, core_tap: true, new_formula: true
+          class Cask < Formula
+            url "https://github.com/cask/cask/archive/v0.8.4.tar.gz"
+            head "https://github.com/cask/cask.git"
+            license "GPL-3.0"
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems).to be_empty
+      end
+
+      it "checks online and verifies that a standard license id is in the same exempted license group" \
+         "as what is indicated on its GitHub repo" do
+        fa = formula_auditor "cask", <<~RUBY, spdx_data: spdx_data, online: true, new_formula: true
+          class Cask < Formula
+            url "https://github.com/cask/cask/archive/v0.8.4.tar.gz"
+            head "https://github.com/cask/cask.git"
+            license "GPL-3.0-or-later"
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems).to be_empty
+      end
+
+      it "checks online and verifies that a standard license array is in the same exempted license group" \
+         "as what is indicated on its GitHub repo" do
+        fa = formula_auditor "cask", <<~RUBY, spdx_data: spdx_data, online: true, new_formula: true
+          class Cask < Formula
+            url "https://github.com/cask/cask/archive/v0.8.4.tar.gz"
+            head "https://github.com/cask/cask.git"
+            license ["GPL-3.0-or-later", "MIT"]
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems).to be_empty
+      end
+
+      it "checks online and detects that a formula-specified license is not "\
+        "the same as what is indicated on its Github repository" do
+        fa = formula_auditor "cask", <<~RUBY, online: true, spdx_data: spdx_data, core_tap: true, new_formula: true
+          class Cask < Formula
+            url "https://github.com/cask/cask/archive/v0.8.4.tar.gz"
+            head "https://github.com/cask/cask.git"
+            license "#{standard_mismatch_spdx_id}"
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems.first).to match "Formula license #{Array(standard_mismatch_spdx_id)} "\
+                                           "does not match GitHub license [\"GPL-3.0\"]."
+      end
+
+      it "checks online and detects that an array of license does not contain "\
+        "what is indicated on its Github repository" do
+        fa = formula_auditor "cask", <<~RUBY, online: true, spdx_data: spdx_data, core_tap: true, new_formula: true
+          class Cask < Formula
+            url "https://github.com/cask/cask/archive/v0.8.4.tar.gz"
+            head "https://github.com/cask/cask.git"
+            license #{license_array_mismatch}
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems.first).to match "Formula license #{license_array_mismatch} "\
+          "does not match GitHub license [\"GPL-3.0\"]."
+      end
+
+      it "checks online and verifies that an array of license contains "\
+        "what is indicated on its Github repository" do
+        fa = formula_auditor "cask", <<~RUBY, online: true, spdx_data: spdx_data, core_tap: true, new_formula: true
+          class Cask < Formula
+            url "https://github.com/cask/cask/archive/v0.8.4.tar.gz"
+            head "https://github.com/cask/cask.git"
+            license #{license_array}
+          end
+        RUBY
+
+        fa.audit_license
+        expect(fa.problems).to be_empty
+      end
+    end
+
     describe "#audit_file" do
-      specify "file permissions" do
-        allow(File).to receive(:umask).and_return(022)
-
-        fa = formula_auditor "foo", <<~RUBY
-          class Foo < Formula
-            url "https://brew.sh/foo-1.0.tgz"
-          end
-        RUBY
-
-        path = fa.formula.path
-
-        path.chmod 0600
-        fa.audit_file
-        expect(fa.problems)
-          .to eq([
-                   "Incorrect file permissions (600): chmod +r #{path}",
-                 ])
-        fa.problems.clear
-
-        path.chmod 0444
-        fa.audit_file
-        expect(fa.problems)
-          .to eq([
-                   "Incorrect file permissions (444): chmod u+w #{path}",
-                 ])
-        fa.problems.clear
-
-        path.chmod 0646
-        fa.audit_file
-        expect(fa.problems)
-          .to eq([
-                   "Incorrect file permissions (646): chmod o-w #{path}",
-                 ])
-        fa.problems.clear
-
-        path.chmod 0002
-        fa.audit_file
-        expect(fa.problems)
-          .to eq([
-                   "Incorrect file permissions (002): chmod +r #{path}",
-                   "Incorrect file permissions (002): chmod u+w #{path}",
-                   "Incorrect file permissions (002): chmod o-w #{path}",
-                 ])
-        fa.problems.clear
-      end
-
-      specify "DATA but no __END__" do
-        fa = formula_auditor "foo", <<~RUBY
-          class Foo < Formula
-            url "https://brew.sh/foo-1.0.tgz"
-            patch :DATA
-          end
-        RUBY
-
-        fa.audit_file
-        expect(fa.problems).to eq(["'DATA' was found, but no '__END__'"])
-      end
-
-      specify "__END__ but no DATA" do
-        fa = formula_auditor "foo", <<~RUBY
-          class Foo < Formula
-            url "https://brew.sh/foo-1.0.tgz"
-          end
-          __END__
-          a patch goes here
-        RUBY
-
-        fa.audit_file
-        expect(fa.problems).to eq(["'__END__' was found, but 'DATA' is not used"])
-      end
-
-      specify "no trailing newline" do
-        fa = formula_auditor "foo", 'class Foo<Formula; url "file:///foo-1.0.tgz";end'
-
-        fa.audit_file
-        expect(fa.problems).to eq(["File should end with a newline"])
-      end
-
       specify "no issue" do
         fa = formula_auditor "foo", <<~RUBY
           class Foo < Formula
@@ -186,60 +260,6 @@ module Homebrew
         expect(fa.problems).to eq([])
       end
     end
-
-    # Intentionally outputted non-interpolated strings
-    # rubocop:disable Lint/InterpolationCheck
-    describe "#line_problems" do
-      specify "pkgshare" do
-        fa = formula_auditor "foo", <<~RUBY, strict: true
-          class Foo < Formula
-            url "https://brew.sh/foo-1.0.tgz"
-          end
-        RUBY
-
-        fa.line_problems 'ohai "#{share}/foo"', 3
-        expect(fa.problems.shift).to eq("Use \#{pkgshare} instead of \#{share}/foo")
-
-        fa.line_problems 'ohai "#{share}/foo/bar"', 3
-        expect(fa.problems.shift).to eq("Use \#{pkgshare} instead of \#{share}/foo")
-
-        fa.line_problems 'ohai share/"foo"', 3
-        expect(fa.problems.shift).to eq('Use pkgshare instead of (share/"foo")')
-
-        fa.line_problems 'ohai share/"foo/bar"', 3
-        expect(fa.problems.shift).to eq('Use pkgshare instead of (share/"foo")')
-
-        fa.line_problems 'ohai "#{share}/foo-bar"', 3
-        expect(fa.problems).to eq([])
-
-        fa.line_problems 'ohai share/"foo-bar"', 3
-        expect(fa.problems).to eq([])
-
-        fa.line_problems 'ohai share/"bar"', 3
-        expect(fa.problems).to eq([])
-      end
-
-      # Regression test for https://github.com/Homebrew/legacy-homebrew/pull/48744
-      # Formulae with "++" in their name would break various audit regexps:
-      #   Error: nested *?+ in regexp: /^libxml++3\s/
-      specify "++ in name" do
-        fa = formula_auditor "foolibc++", <<~RUBY, strict: true
-          class Foolibcxx < Formula
-            desc "foolibc++ is a test"
-            url "https://brew.sh/foo-1.0.tgz"
-          end
-        RUBY
-
-        fa.line_problems 'ohai "#{share}/foolibc++"', 3
-        expect(fa.problems.shift)
-          .to eq("Use \#{pkgshare} instead of \#{share}/foolibc++")
-
-        fa.line_problems 'ohai share/"foolibc++"', 3
-        expect(fa.problems.shift)
-          .to eq('Use pkgshare instead of (share/"foolibc++")')
-      end
-    end
-    # rubocop:enable Lint/InterpolationCheck
 
     describe "#audit_github_repository" do
       specify "#audit_github_repository when HOMEBREW_NO_GITHUB_API is set" do
@@ -257,6 +277,20 @@ module Homebrew
       end
     end
 
+    describe "#audit_github_repository_archived" do
+      specify "#audit_github_repository_archived when HOMEBREW_NO_GITHUB_API is set" do
+        fa = formula_auditor "foo", <<~RUBY, strict: true, online: true
+          class Foo < Formula
+            homepage "https://github.com/example/example"
+            url "https://brew.sh/foo-1.0.tgz"
+          end
+        RUBY
+
+        fa.audit_github_repository_archived
+        expect(fa.problems).to eq([])
+      end
+    end
+
     describe "#audit_gitlab_repository" do
       specify "#audit_gitlab_repository for stars, forks and creation date" do
         fa = formula_auditor "foo", <<~RUBY, strict: true, online: true
@@ -267,6 +301,20 @@ module Homebrew
         RUBY
 
         fa.audit_gitlab_repository
+        expect(fa.problems).to eq([])
+      end
+    end
+
+    describe "#audit_gitlab_repository_archived" do
+      specify "#audit gitlab repository for archived status" do
+        fa = formula_auditor "foo", <<~RUBY, strict: true, online: true
+          class Foo < Formula
+            homepage "https://gitlab.com/libtiff/libtiff"
+            url "https://brew.sh/foo-1.0.tgz"
+          end
+        RUBY
+
+        fa.audit_gitlab_repository_archived
         expect(fa.problems).to eq([])
       end
     end
@@ -287,7 +335,7 @@ module Homebrew
 
     describe "#audit_deps" do
       describe "a dependency on a macOS-provided keg-only formula" do
-        describe "which is whitelisted" do
+        describe "which is allowlisted" do
           subject { fa }
 
           let(:fa) do
@@ -319,11 +367,11 @@ module Homebrew
           its(:problems) { are_expected.to be_empty }
         end
 
-        describe "which is not whitelisted", :needs_macos do
+        describe "which is not allowlisted", :needs_macos do
           subject { fa }
 
           let(:fa) do
-            formula_auditor "foo", <<~RUBY, new_formula: true
+            formula_auditor "foo", <<~RUBY, new_formula: true, core_tap: true
               class Foo < Formula
                 url "https://brew.sh/foo-1.0.tgz"
                 homepage "https://brew.sh"
@@ -353,72 +401,9 @@ module Homebrew
       end
     end
 
-    describe "#audit_keg_only_style" do
-      specify "keg_only_needs_downcasing" do
-        fa = formula_auditor "foo", <<~RUBY, strict: true
-          class Foo < Formula
-            url "https://brew.sh/foo-1.0.tgz"
-
-            keg_only "Because why not"
-          end
-        RUBY
-
-        fa.audit_keg_only_style
-        expect(fa.problems)
-          .to eq(["'Because' from the keg_only reason should be 'because'.\n"])
-      end
-
-      specify "keg_only_redundant_period" do
-        fa = formula_auditor "foo", <<~RUBY, strict: true
-          class Foo < Formula
-            url "https://brew.sh/foo-1.0.tgz"
-
-            keg_only "because this line ends in a period."
-          end
-        RUBY
-
-        fa.audit_keg_only_style
-        expect(fa.problems)
-          .to eq(["keg_only reason should not end with a period."])
-      end
-
-      specify "keg_only_handles_block_correctly" do
-        fa = formula_auditor "foo", <<~RUBY, strict: true
-          class Foo < Formula
-            url "https://brew.sh/foo-1.0.tgz"
-
-            keg_only <<~EOF
-              this line starts with a lowercase word.
-
-              This line does not but that shouldn't be a
-              problem
-            EOF
-          end
-        RUBY
-
-        fa.audit_keg_only_style
-        expect(fa.problems)
-          .to eq([])
-      end
-
-      specify "keg_only_handles_whitelist_correctly" do
-        fa = formula_auditor "foo", <<~RUBY, strict: true
-          class Foo < Formula
-            url "https://brew.sh/foo-1.0.tgz"
-
-            keg_only "Apple ships foo in the CLT package"
-          end
-        RUBY
-
-        fa.audit_keg_only_style
-        expect(fa.problems)
-          .to eq([])
-      end
-    end
-
     describe "#audit_revision_and_version_scheme" do
       subject {
-        fa = described_class.new(Formulary.factory(formula_path))
+        fa = described_class.new(Formulary.factory(formula_path), git: true)
         fa.audit_revision_and_version_scheme
         fa.problems.first
       }
@@ -434,6 +419,7 @@ module Homebrew
         origin_formula_path.write <<~RUBY
           class Foo#{foo_version} < Formula
             url "https://brew.sh/foo-1.0.tar.gz"
+            sha256 "31cccfc6630528db1c8e3a06f6decf2a370060b982841cfab2b8677400a5092e"
             revision 2
             version_scheme 1
           end
@@ -459,7 +445,7 @@ module Homebrew
         formula_path.write text
       end
 
-      def formula_gsub_commit(before, after = "")
+      def formula_gsub_origin_commit(before, after = "")
         text = origin_formula_path.read
         text.gsub!(before, after)
         origin_formula_path.unlink
@@ -475,19 +461,48 @@ module Homebrew
         end
       end
 
+      context "checksums" do
+        context "should not change with the same version" do
+          before do
+            formula_gsub(
+              'sha256 "31cccfc6630528db1c8e3a06f6decf2a370060b982841cfab2b8677400a5092e"',
+              'sha256 "3622d2a53236ed9ca62de0616a7e80fd477a9a3f862ba09d503da188f53ca523"',
+            )
+          end
+
+          it { is_expected.to match("stable sha256 changed without the version also changing") }
+        end
+
+        context "can change with the different version" do
+          before do
+            formula_gsub_origin_commit(
+              'sha256 "31cccfc6630528db1c8e3a06f6decf2a370060b982841cfab2b8677400a5092e"',
+              'sha256 "3622d2a53236ed9ca62de0616a7e80fd477a9a3f862ba09d503da188f53ca523"',
+            )
+            formula_gsub "foo-1.0.tar.gz", "foo-1.1.tar.gz"
+            formula_gsub_origin_commit(
+              'sha256 "3622d2a53236ed9ca62de0616a7e80fd477a9a3f862ba09d503da188f53ca523"',
+              'sha256 "e048c5e6144f5932d8672c2fade81d9073d5b3ca1517b84df006de3d25414fc1"',
+            )
+          end
+
+          it { is_expected.to be_nil }
+        end
+      end
+
       context "revisions" do
         context "should not be removed when first committed above 0" do
           it { is_expected.to be_nil }
         end
 
         context "should not decrease with the same version" do
-          before { formula_gsub_commit "revision 2", "revision 1" }
+          before { formula_gsub_origin_commit "revision 2", "revision 1" }
 
           it { is_expected.to match("revision should not decrease (from 2 to 1)") }
         end
 
         context "should not be removed with the same version" do
-          before { formula_gsub_commit "revision 2" }
+          before { formula_gsub_origin_commit "revision 2" }
 
           it { is_expected.to match("revision should not decrease (from 2 to 0)") }
         end
@@ -499,15 +514,15 @@ module Homebrew
         end
 
         context "should be removed with a newer version" do
-          before { formula_gsub_commit "foo-1.0.tar.gz", "foo-1.1.tar.gz" }
+          before { formula_gsub_origin_commit "foo-1.0.tar.gz", "foo-1.1.tar.gz" }
 
           it { is_expected.to match("'revision 2' should be removed") }
         end
 
         context "should not warn on an newer version revision removal" do
           before do
-            formula_gsub_commit "revision 2", ""
-            formula_gsub_commit "foo-1.0.tar.gz", "foo-1.1.tar.gz"
+            formula_gsub_origin_commit "revision 2", ""
+            formula_gsub_origin_commit "foo-1.0.tar.gz", "foo-1.1.tar.gz"
           end
 
           it { is_expected.to be_nil }
@@ -524,9 +539,9 @@ module Homebrew
 
         context "should not warn on past increment by more than 1" do
           before do
-            formula_gsub_commit "revision 2", "# no revision"
-            formula_gsub_commit "foo-1.0.tar.gz", "foo-1.1.tar.gz"
-            formula_gsub_commit "# no revision", "revision 3"
+            formula_gsub_origin_commit "revision 2", "# no revision"
+            formula_gsub_origin_commit "foo-1.0.tar.gz", "foo-1.1.tar.gz"
+            formula_gsub_origin_commit "# no revision", "revision 3"
           end
 
           it { is_expected.to be_nil }
@@ -535,16 +550,16 @@ module Homebrew
 
       context "version_schemes" do
         context "should not decrease with the same version" do
-          before { formula_gsub_commit "version_scheme 1" }
+          before { formula_gsub_origin_commit "version_scheme 1" }
 
           it { is_expected.to match("version_scheme should not decrease (from 1 to 0)") }
         end
 
         context "should not decrease with a new version" do
           before do
-            formula_gsub_commit "foo-1.0.tar.gz", "foo-1.1.tar.gz"
-            formula_gsub_commit "version_scheme 1", ""
-            formula_gsub_commit "revision 2", ""
+            formula_gsub_origin_commit "foo-1.0.tar.gz", "foo-1.1.tar.gz"
+            formula_gsub_origin_commit "version_scheme 1", ""
+            formula_gsub_origin_commit "revision 2", ""
           end
 
           it { is_expected.to match("version_scheme should not decrease (from 1 to 0)") }
@@ -552,10 +567,10 @@ module Homebrew
 
         context "should only increment by 1" do
           before do
-            formula_gsub_commit "version_scheme 1", "# no version_scheme"
-            formula_gsub_commit "foo-1.0.tar.gz", "foo-1.1.tar.gz"
-            formula_gsub_commit "revision 2", ""
-            formula_gsub_commit "# no version_scheme", "version_scheme 3"
+            formula_gsub_origin_commit "version_scheme 1", "# no version_scheme"
+            formula_gsub_origin_commit "foo-1.0.tar.gz", "foo-1.1.tar.gz"
+            formula_gsub_origin_commit "revision 2", ""
+            formula_gsub_origin_commit "# no version_scheme", "version_scheme 3"
           end
 
           it { is_expected.to match("version_schemes should only increment by 1") }
@@ -571,8 +586,8 @@ module Homebrew
 
         context "committed can decrease" do
           before do
-            formula_gsub_commit "revision 2"
-            formula_gsub_commit "foo-1.0.tar.gz", "foo-0.9.tar.gz"
+            formula_gsub_origin_commit "revision 2"
+            formula_gsub_origin_commit "foo-1.0.tar.gz", "foo-0.9.tar.gz"
           end
 
           it { is_expected.to be_nil }
@@ -633,5 +648,12 @@ module Homebrew
         expect(fa.problems).to eq([])
       end
     end
+
+    include_examples "formulae exist", described_class::VERSIONED_KEG_ONLY_ALLOWLIST
+    include_examples "formulae exist", described_class::VERSIONED_HEAD_SPEC_ALLOWLIST
+    include_examples "formulae exist", described_class::PROVIDED_BY_MACOS_DEPENDS_ON_ALLOWLIST
+    include_examples "formulae exist", described_class::THROTTLED_FORMULAE.keys
+    include_examples "formulae exist", described_class::UNSTABLE_ALLOWLIST.keys
+    include_examples "formulae exist", described_class::GNOME_DEVEL_ALLOWLIST.keys
   end
 end

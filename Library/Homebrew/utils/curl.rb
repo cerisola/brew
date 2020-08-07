@@ -17,7 +17,7 @@ def curl_args(*extra_args, show_output: false, user_agent: :default)
   args = []
 
   # do not load .curlrc unless requested (must be the first argument)
-  args << "--disable" unless ENV["HOMEBREW_CURLRC"]
+  args << "--disable" unless Homebrew::EnvConfig.curlrc?
 
   args << "--globoff"
 
@@ -34,13 +34,12 @@ def curl_args(*extra_args, show_output: false, user_agent: :default)
 
   unless show_output
     args << "--fail"
-    args << "--progress-bar" unless Homebrew.args.verbose?
-    args << "--verbose" if ENV["HOMEBREW_CURL_VERBOSE"]
+    args << "--progress-bar" unless Context.current.verbose?
+    args << "--verbose" if Homebrew::EnvConfig.curl_verbose?
     args << "--silent" unless $stdout.tty?
   end
 
-  # When changing the default value, the manpage has to be updated.
-  args << "--retry" << (ENV["HOMEBREW_CURL_RETRIES"] || "3")
+  args << "--retry" << Homebrew::EnvConfig.curl_retries
 
   args + extra_args
 end
@@ -55,21 +54,25 @@ def curl(*args, secrets: [], **options)
                   secrets:      secrets
 end
 
-def curl_download(*args, to: nil, **options)
+def curl_download(*args, to: nil, partial: true, **options)
   destination = Pathname(to)
   destination.dirname.mkpath
 
-  range_stdout = curl_output("--location", "--range", "0-1",
-                             "--dump-header", "-",
-                             "--write-out", "%\{http_code}",
-                             "--output", "/dev/null", *args, **options).stdout
-  headers, _, http_status = range_stdout.partition("\r\n\r\n")
+  if partial
+    range_stdout = curl_output("--location", "--range", "0-1",
+                               "--dump-header", "-",
+                               "--write-out", "%\{http_code}",
+                               "--output", "/dev/null", *args, **options).stdout
+    headers, _, http_status = range_stdout.partition("\r\n\r\n")
 
-  supports_partial_download = http_status.to_i == 206 # Partial Content
-  if supports_partial_download &&
-     destination.exist? &&
-     destination.size == %r{^.*Content-Range: bytes \d+-\d+/(\d+)\r\n.*$}m.match(headers)&.[](1)&.to_i
-    return # We've already downloaded all the bytes
+    supports_partial_download = http_status.to_i == 206 # Partial Content
+    if supports_partial_download &&
+       destination.exist? &&
+       destination.size == %r{^.*Content-Range: bytes \d+-\d+/(\d+)\r\n.*$}m.match(headers)&.[](1)&.to_i
+      return # We've already downloaded all the bytes
+    end
+  else
+    supports_partial_download = false
   end
 
   continue_at = if destination.exist? && supports_partial_download
@@ -128,7 +131,7 @@ def curl_check_http_content(url, user_agents: [:default], check_content: false, 
     return "The URL #{url} is not reachable (HTTP status code #{details[:status]})"
   end
 
-  if url.start_with?("https://") && ENV["HOMEBREW_NO_INSECURE_REDIRECT"] &&
+  if url.start_with?("https://") && Homebrew::EnvConfig.no_insecure_redirect? &&
      !details[:final_url].start_with?("https://")
     return "The URL #{url} redirects back to HTTP"
   end
@@ -197,8 +200,9 @@ def curl_http_content_headers_and_checksum(url, hash_needed: false, user_agent: 
   status_code = :unknown
   while status_code == :unknown || status_code.to_s.start_with?("3")
     headers, _, output = output.partition("\r\n\r\n")
-    status_code = headers[%r{HTTP\/.* (\d+)}, 1]
-    final_url = headers[/^Location:\s*(.*)$/i, 1]&.chomp
+    status_code = headers[%r{HTTP/.* (\d+)}, 1]
+    location = headers[/^Location:\s*(.*)$/i, 1]
+    final_url = location.chomp if location
   end
 
   output_hash = Digest::SHA256.file(file.path) if hash_needed
@@ -209,7 +213,7 @@ def curl_http_content_headers_and_checksum(url, hash_needed: false, user_agent: 
     url:            url,
     final_url:      final_url,
     status:         status_code,
-    etag:           headers[%r{ETag: ([wW]\/)?"(([^"]|\\")*)"}, 2],
+    etag:           headers[%r{ETag: ([wW]/)?"(([^"]|\\")*)"}, 2],
     content_length: headers[/Content-Length: (\d+)/, 1],
     file_hash:      output_hash,
     file:           output,

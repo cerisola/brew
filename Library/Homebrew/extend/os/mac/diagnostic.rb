@@ -12,6 +12,7 @@ module Homebrew
           check_xcode_minimum_version
           check_clt_minimum_version
           check_if_xcode_needs_clt_installed
+          check_if_supported_sdk_available
         ].freeze
       end
 
@@ -45,7 +46,7 @@ module Homebrew
       end
 
       def check_for_unsupported_macos
-        return if ARGV.homebrew_developer?
+        return if Homebrew::EnvConfig.developer?
 
         who = +"We"
         if OS::Mac.prerelease?
@@ -72,7 +73,7 @@ module Homebrew
         # `brew test-bot` runs `brew doctor` in the CI for the Homebrew/brew
         # repository. This only needs to support whatever CI providers
         # Homebrew/brew is currently using.
-        return if ENV["HOMEBREW_GITHUB_ACTIONS"]
+        return if ENV["GITHUB_ACTIONS"]
 
         message = <<~EOS
           Your Xcode (#{MacOS::Xcode.version}) is outdated.
@@ -99,7 +100,7 @@ module Homebrew
         # `brew test-bot` runs `brew doctor` in the CI for the Homebrew/brew
         # repository. This only needs to support whatever CI providers
         # Homebrew/brew is currently using.
-        return if ENV["HOMEBREW_GITHUB_ACTIONS"]
+        return if ENV["GITHUB_ACTIONS"]
 
         <<~EOS
           A newer Command Line Tools release is available.
@@ -141,7 +142,7 @@ module Homebrew
       def check_ruby_version
         ruby_version = "2.6.3"
         return if RUBY_VERSION == ruby_version
-        return if ARGV.homebrew_developer? && OS::Mac.prerelease?
+        return if Homebrew::EnvConfig.developer? && OS::Mac.prerelease?
 
         <<~EOS
           Ruby version #{RUBY_VERSION} is unsupported on #{MacOS.version}. Homebrew
@@ -190,7 +191,8 @@ module Homebrew
       def check_xcode_license_approved
         # If the user installs Xcode-only, they have to approve the
         # license or no "xc*" tool will work.
-        return unless `/usr/bin/xcrun clang 2>&1` =~ /license/ && !$CHILD_STATUS.success?
+        return unless `/usr/bin/xcrun clang 2>&1`.include?("license")
+        return if $CHILD_STATUS.success?
 
         <<~EOS
           You have not agreed to the Xcode license.
@@ -343,6 +345,37 @@ module Homebrew
 
           You should set the "HOMEBREW_TEMP" environment variable to a suitable
           directory on the same volume as your Cellar.
+        EOS
+      end
+
+      def check_deprecated_caskroom_taps
+        tapped_caskroom_taps = Tap.select { |t| t.user == "caskroom" || t.name == "phinze/cask" }
+                                  .map(&:name)
+        return if tapped_caskroom_taps.empty?
+
+        <<~EOS
+          You have the following deprecated, cask taps tapped:
+            #{tapped_caskroom_taps.join("\n  ")}
+          Untap them with `brew untap`.
+        EOS
+      end
+
+      def check_if_supported_sdk_available
+        return unless MacOS.sdk_root_needed?
+        return if MacOS.sdk
+
+        locator = MacOS.sdk_locator
+
+        source = if locator.source == :clt
+          "CLT"
+        else
+          "Xcode"
+        end
+
+        <<~EOS
+          Your #{source} does not support macOS #{MacOS.version}.
+          It is either outdated or was modified.
+          Please update your #{source} or delete it if no updates are available.
         EOS
       end
     end

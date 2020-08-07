@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "cask/cmd"
+
 module Commands
   module_function
 
@@ -89,6 +91,7 @@ module Commands
     cmds += internal_developer_commands
     cmds += external_commands
     cmds += internal_commands_aliases if aliases
+    cmds += cask_commands(aliases: aliases).map { |cmd| "cask #{cmd}" }
     cmds.sort
   end
 
@@ -101,7 +104,7 @@ module Commands
   end
 
   def official_external_commands_paths
-    %w[bundle services].map do |cmd|
+    %w[bundle services test-bot].map do |cmd|
       tap = Tap.fetch("Homebrew/#{cmd}")
       tap.install unless tap.installed?
       external_ruby_v2_cmd_path(cmd)
@@ -129,9 +132,37 @@ module Commands
     Tap.cmd_directories.flat_map do |path|
       find_commands(path).select(&:executable?)
                          .map(&method(:basename_without_extension))
-                         .map { |p| p.to_s.sub(/^brew(cask)?-/, '\1 ').strip }
+                         .map { |p| p.to_s.delete_prefix("brew-").strip }
     end.map(&:to_s)
        .sort
+  end
+
+  def cask_commands(aliases: false)
+    cmds = cask_internal_commands
+    cmds += cask_internal_command_aliases if aliases
+    cmds += cask_external_commands
+    cmds
+  end
+
+  def cask_internal_commands
+    Cask::Cmd.commands
+  end
+
+  def cask_internal_command_aliases
+    Cask::Cmd.aliases.keys
+  end
+
+  def cask_external_commands
+    PATH.new(Tap.cmd_directories, ENV["HOMEBREW_PATH"]).flat_map do |search_path|
+      find_commands(search_path).map do |possible_command|
+        path = possible_command.to_path
+        command_name = path.match(/brewcask-(.*)\.rb/) { |data| data[1].delete_suffix(".rb") }
+        if command_name.blank? && possible_command.executable?
+          command_name = path.match(/brewcask-(.*)/) { |data| data[1] }
+        end
+        command_name
+      end.compact
+    end
   end
 
   def basename_without_extension(path)
@@ -142,5 +173,20 @@ module Commands
     Pathname.glob("#{path}/*")
             .select(&:file?)
             .sort
+  end
+
+  def rebuild_internal_commands_completion_list
+    cmds = internal_commands + internal_developer_commands + internal_commands_aliases
+
+    file = HOMEBREW_REPOSITORY/"completions/internal_commands_list.txt"
+    file.atomic_write(cmds.sort.join("\n") + "\n")
+  end
+
+  def rebuild_commands_completion_list
+    # Ensure that the cache exists so we can build the commands list
+    HOMEBREW_CACHE.mkpath
+
+    file = HOMEBREW_CACHE/"all_commands_list.txt"
+    file.atomic_write(commands(aliases: true).sort.join("\n") + "\n")
   end
 end

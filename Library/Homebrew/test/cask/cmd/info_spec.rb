@@ -2,6 +2,7 @@
 
 require_relative "shared_examples/requires_cask_token"
 require_relative "shared_examples/invalid_option"
+require "utils"
 
 describe Cask::Cmd::Info, :cask do
   it_behaves_like "a command that requires a Cask token"
@@ -14,7 +15,7 @@ describe Cask::Cmd::Info, :cask do
       local-caffeine: 1.2.3
       https://brew.sh/
       Not installed
-      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/local-caffeine.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/local-caffeine.rb
       ==> Name
       None
       ==> Artifacts
@@ -29,7 +30,7 @@ describe Cask::Cmd::Info, :cask do
       with-auto-updates: 1.0 (auto_updates)
       https://brew.sh/autoupdates
       Not installed
-      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/with-auto-updates.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/with-auto-updates.rb
       ==> Name
       AutoUpdates
       ==> Artifacts
@@ -43,7 +44,7 @@ describe Cask::Cmd::Info, :cask do
         local-caffeine: 1.2.3
         https://brew.sh/
         Not installed
-        From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/local-caffeine.rb
+        From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/local-caffeine.rb
         ==> Name
         None
         ==> Artifacts
@@ -52,7 +53,7 @@ describe Cask::Cmd::Info, :cask do
         local-transmission: 2.61
         https://brew.sh/
         Not installed
-        From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/local-transmission.rb
+        From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/local-transmission.rb
         ==> Name
         Transmission
         ==> Artifacts
@@ -74,7 +75,7 @@ describe Cask::Cmd::Info, :cask do
       with-caveats: 1.2.3
       https://brew.sh/
       Not installed
-      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/with-caveats.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/with-caveats.rb
       ==> Name
       None
       ==> Artifacts
@@ -99,7 +100,7 @@ describe Cask::Cmd::Info, :cask do
       with-conditional-caveats: 1.2.3
       https://brew.sh/
       Not installed
-      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/with-conditional-caveats.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/with-conditional-caveats.rb
       ==> Name
       None
       ==> Artifacts
@@ -114,7 +115,7 @@ describe Cask::Cmd::Info, :cask do
       with-languages: 1.2.3
       https://brew.sh/
       Not installed
-      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/with-languages.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/with-languages.rb
       ==> Name
       None
       ==> Languages
@@ -131,7 +132,7 @@ describe Cask::Cmd::Info, :cask do
       without-languages: 1.2.3
       https://brew.sh/
       Not installed
-      From: https://github.com/cerisola/homebrew-cask/blob/master/Casks/without-languages.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/without-languages.rb
       ==> Name
       None
       ==> Artifacts
@@ -139,7 +140,16 @@ describe Cask::Cmd::Info, :cask do
     EOS
   end
 
-  it "can run be run with a url twice", :needs_network do
+  it "can run be run with a url twice and returns analytics", :needs_network do
+    analytics = {
+      "analytics" => {
+        "install" => {
+          "30d" => { "docker" => 1000 }, "90d" => { "docker" => 2000 }, "365d" => { "docker" => 3000 }
+        },
+      },
+    }
+    expect(Utils::Analytics).to receive(:formulae_brew_sh_json).twice.with("cask/docker.json")
+    .and_return(analytics)
     expect {
       described_class.run("https://raw.githubusercontent.com/cerisola/homebrew-cask" \
                           "/d0b2c58652ae5eff20a7a4ac93292a08b250912b/Casks/docker.rb")
@@ -155,6 +165,8 @@ describe Cask::Cmd::Info, :cask do
       Docker CE
       ==> Artifacts
       Docker.app (App)
+      ==> Analytics
+      install: 1,000 (30 days), 2,000 (90 days), 3,000 (365 days)
       ==> Downloading https://raw.githubusercontent.com/cerisola/homebrew-cask/d0b2c58652ae5eff20a7a4ac93292a08b250912b/Casks/docker.rb.
       docker: 2.0.0.2-ce-mac81,30215 (auto_updates)
       https://www.docker.com/community-edition
@@ -164,6 +176,8 @@ describe Cask::Cmd::Info, :cask do
       Docker CE
       ==> Artifacts
       Docker.app (App)
+      ==> Analytics
+      install: 1,000 (30 days), 2,000 (90 days), 3,000 (365 days)
     EOS
   end
 end

@@ -34,11 +34,11 @@ module Homebrew
 
   def irb
     # work around IRB modifying ARGV.
-    irb_args.parse(ARGV.dup)
+    args = irb_args.parse(ARGV.dup.freeze)
 
     if args.examples?
       puts "'v8'.f # => instance of the v8 formula"
-      puts ":hub.f.installed?"
+      puts ":hub.f.latest_version_installed?"
       puts ":lua.f.methods - 1.methods"
       puts ":mpd.f.recursive_dependencies.reject(&:installed?)"
       return

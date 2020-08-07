@@ -3,7 +3,7 @@
 require "exceptions"
 
 describe MultipleVersionsInstalledError do
-  subject { described_class.new("foo") }
+  subject { described_class.new("foo has multiple installed versions") }
 
   its(:to_s) { is_expected.to eq("foo has multiple installed versions") }
 end
@@ -115,20 +115,6 @@ describe TapAlreadyTappedError do
   subject { described_class.new("foo") }
 
   its(:to_s) { is_expected.to eq("Tap foo already tapped.\n") }
-end
-
-describe TapPinStatusError do
-  context "pinned" do
-    subject { described_class.new("foo", true) }
-
-    its(:to_s) { is_expected.to eq("foo is already pinned.") }
-  end
-
-  context "unpinned" do
-    subject { described_class.new("foo", false) }
-
-    its(:to_s) { is_expected.to eq("foo is already unpinned.") }
-  end
 end
 
 describe BuildError do

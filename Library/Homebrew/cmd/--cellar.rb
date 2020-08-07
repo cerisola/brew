@@ -13,14 +13,14 @@ module Homebrew
         Display Homebrew's Cellar path. *Default:* `$(brew --prefix)/Cellar`, or if
         that directory doesn't exist, `$(brew --repository)/Cellar`.
 
-        If <formula> is provided, display the location in the cellar where <formula>
+        If <formula> is provided, display the location in the Cellar where <formula>
         would be installed, without any sort of versioned directory as the last path.
       EOS
     end
   end
 
   def __cellar
-    __cellar_args.parse
+    args = __cellar_args.parse
 
     if args.no_named?
       puts HOMEBREW_CELLAR

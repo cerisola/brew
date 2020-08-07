@@ -16,7 +16,9 @@ module Homebrew
       check_style_impl(files, :json, **options)
     end
 
-    def check_style_impl(files, output_type, fix: false, except_cops: nil, only_cops: nil)
+    def check_style_impl(files, output_type,
+                         fix: false, except_cops: nil, only_cops: nil, display_cop_names: false,
+                         debug: false, verbose: false)
       Homebrew.install_bundler_gems!
       require "rubocop"
       require "rubocops"
@@ -30,7 +32,8 @@ module Homebrew
         "--parallel"
       end
 
-      args += ["--extra-details", "--display-cop-names"] if Homebrew.args.verbose?
+      args += ["--extra-details"] if verbose
+      args += ["--display-cop-names"] if display_cop_names || verbose
 
       if except_cops
         except_cops.map! { |cop| RuboCop::Cop::Cop.registry.qualified_cop_name(cop.to_s, "") }
@@ -56,16 +59,16 @@ module Homebrew
         File.expand_path(file).start_with? HOMEBREW_LIBRARY_PATH
       end
 
-      if files && !has_non_formula
+      if files.present? && !has_non_formula
         config = if files.first && File.exist?("#{files.first}/spec")
           HOMEBREW_LIBRARY/".rubocop_rspec.yml"
         else
-          HOMEBREW_LIBRARY/".rubocop_audit.yml"
+          HOMEBREW_LIBRARY/".rubocop.yml"
         end
         args << "--config" << config
       end
 
-      if files.nil?
+      if files.blank?
         args << HOMEBREW_LIBRARY_PATH
       else
         args += files
@@ -77,15 +80,13 @@ module Homebrew
 
       case output_type
       when :print
-        args << "--debug" if ARGV.debug?
-        args << "--display-cop-names" if ARGV.include? "--display-cop-names"
-        args << "--format" << "simple" if files
+        args << "--debug" if debug
+        args << "--format" << "simple" if files.present?
         system(cache_env, "rubocop", *args)
         rubocop_success = $CHILD_STATUS.success?
       when :json
         json, err, status =
-          Open3.capture3(cache_env, "rubocop",
-                         "--format", "json", *args)
+          Open3.capture3(cache_env, "rubocop", "--format", "json", *args)
         # exit status of 1 just means violations were found; other numbers mean
         # execution errors.
         # exitstatus can also be nil if RuboCop process crashes, e.g. due to
@@ -100,7 +101,7 @@ module Homebrew
         raise "Invalid output_type for check_style_impl: #{output_type}"
       end
 
-      return rubocop_success if files.present? || !has_non_formula
+      return rubocop_success if files.present?
 
       shellcheck   = which("shellcheck")
       shellcheck ||= which("shellcheck", ENV["HOMEBREW_PATH"])

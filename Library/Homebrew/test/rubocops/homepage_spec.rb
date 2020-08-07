@@ -62,6 +62,8 @@ describe RuboCop::Cop::FormulaAudit::Homepage do
         "sf3"    => "http://foo.sf.net/",
         "sf4"    => "http://foo.sourceforge.io/",
         "waldo"  => "http://www.gnu.org/waldo",
+        "dotgit" => "https://github.com/foo/bar.git",
+        "rtd"    => "https://foo.readthedocs.org",
       }
 
       formula_homepages.each do |name, homepage|
@@ -73,8 +75,8 @@ describe RuboCop::Cop::FormulaAudit::Homepage do
         RUBY
 
         inspect_source(source)
-        if homepage.match?(%r{http:\/\/www\.freedesktop\.org})
-          if homepage.match?(/Software/)
+        if homepage.include?("http://www.freedesktop.org")
+          if homepage.include?("Software")
             expected_offenses = [{  message:  "#{homepage} should be styled " \
                                              "`https://wiki.freedesktop.org/www/Software/project_name`",
                                     severity: :convention,
@@ -89,7 +91,7 @@ describe RuboCop::Cop::FormulaAudit::Homepage do
                                     column:   2,
                                     source:   source }]
           end
-        elsif homepage.match?(%r{https:\/\/code\.google\.com})
+        elsif homepage.include?("https://code.google.com")
           expected_offenses = [{  message:  "#{homepage} should end with a slash",
                                   severity: :convention,
                                   line:     2,
@@ -100,6 +102,18 @@ describe RuboCop::Cop::FormulaAudit::Homepage do
                                   severity: :convention,
                                   line:     2,
                                   column:   2,
+                                  source:   source }]
+        elsif homepage.match?("https://github.com/foo/bar.git")
+          expected_offenses = [{  message:  "GitHub homepages (`#{homepage}`) should not end with .git",
+                                  severity: :convention,
+                                  line:     2,
+                                  column:   11,
+                                  source:   source }]
+        elsif homepage.match?("https://foo.readthedocs.org")
+          expected_offenses = [{  message:  "#{homepage} should be `https://foo.readthedocs.io`",
+                                  severity: :convention,
+                                  line:     2,
+                                  column:   11,
                                   source:   source }]
         else
           expected_offenses = [{  message:  "Please use https:// for #{homepage}",

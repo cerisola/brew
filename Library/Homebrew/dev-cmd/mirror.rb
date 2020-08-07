@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "bintray"
 require "cli/parser"
 
 module Homebrew
@@ -10,54 +11,31 @@ module Homebrew
       usage_banner <<~EOS
         `mirror` <formula>
 
-        Reuploads the stable URL for a formula to Bintray to use it as a mirror.
+        Reupload the stable URL of a formula to Bintray for use as a mirror.
       EOS
-      switch :verbose
-      switch :debug
+      flag   "--bintray-org=",
+             description: "Upload to the specified Bintray organisation (default: `homebrew`)."
+      flag   "--bintray-repo=",
+             description: "Upload to the specified Bintray repository (default: `mirror`)."
+      switch "--no-publish",
+             description: "Upload to Bintray, but don't publish."
+
       hide_from_man_page!
       min_named :formula
     end
   end
 
   def mirror
-    mirror_args.parse
+    args = mirror_args.parse
 
-    bintray_user = ENV["HOMEBREW_BINTRAY_USER"]
-    bintray_key = ENV["HOMEBREW_BINTRAY_KEY"]
-    raise "Missing HOMEBREW_BINTRAY_USER or HOMEBREW_BINTRAY_KEY variables!" if !bintray_user || !bintray_key
+    bintray_org = args.bintray_org || "homebrew"
+    bintray_repo = args.bintray_repo || "mirror"
 
-    args.formulae.each do |f|
-      bintray_package = Utils::Bottles::Bintray.package f.name
-      bintray_repo_url = "https://api.bintray.com/packages/homebrew/mirror"
-      package_url = "#{bintray_repo_url}/#{bintray_package}"
+    bintray = Bintray.new(org: bintray_org)
 
-      unless system curl_executable, "--silent", "--fail", "--output", "/dev/null", package_url
-        package_blob = <<~JSON
-          {"name": "#{bintray_package}",
-           "public_download_numbers": true,
-           "public_stats": true}
-        JSON
-        curl "--silent", "--fail", "--user", "#{bintray_user}:#{bintray_key}",
-             "--header", "Content-Type: application/json",
-             "--data", package_blob, bintray_repo_url
-        puts
-      end
-
-      downloader = f.downloader
-
-      downloader.fetch
-
-      filename = downloader.basename
-
-      destination_url = "https://dl.bintray.com/homebrew/mirror/#{filename}"
-      ohai "Uploading to #{destination_url}"
-
-      content_url =
-        "https://api.bintray.com/content/homebrew/mirror/#{bintray_package}/#{f.pkg_version}/#{filename}?publish=1"
-      curl "--silent", "--fail", "--user", "#{bintray_user}:#{bintray_key}",
-           "--upload-file", downloader.cached_location, content_url
-      puts
-      ohai "Mirrored #{filename}!"
+    args.formulae.each do |formula|
+      mirror_url = bintray.mirror_formula(formula, repo: bintray_repo, publish_package: !args.no_publish?)
+      ohai "Mirrored #{formula.full_name} to #{mirror_url}!"
     end
   end
 end

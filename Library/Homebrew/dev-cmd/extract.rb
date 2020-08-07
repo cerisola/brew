@@ -89,14 +89,15 @@ module Homebrew
       EOS
       flag   "--version=",
              description: "Extract the specified <version> of <formula> instead of the most recent."
-      switch :force
-      switch :debug
+      switch "-f", "--force",
+             description: "Overwrite the destination formula if it already exists."
+
       named 2
     end
   end
 
   def extract
-    extract_args.parse
+    args = extract_args.parse
 
     if args.named.first !~ HOMEBREW_TAP_FORMULA_REGEX
       name = args.named.first.downcase
@@ -108,7 +109,7 @@ module Homebrew
     end
 
     destination_tap = Tap.fetch(args.named.second)
-    unless ARGV.homebrew_developer?
+    unless Homebrew::EnvConfig.developer?
       odie "Cannot extract formula to homebrew/core!" if destination_tap.core_tap?
       odie "Cannot extract formula to the same tap!" if destination_tap == source_tap
     end
@@ -132,7 +133,15 @@ module Homebrew
       loop do
         rev = rev.nil? ? "HEAD" : "#{rev}~1"
         rev, (path,) = Git.last_revision_commit_of_files(repo, pattern, before_commit: rev)
-        odie "Could not find #{name}! The formula or version may not have existed." if rev.nil?
+        if rev.nil? && source_tap.shallow?
+          odie <<~EOS
+            Could not find #{name} but #{source_tap} is a shallow clone!
+            Try again after running:
+              git -C "#{source_tap.path}" fetch --unshallow
+          EOS
+        elsif rev.nil?
+          odie "Could not find #{name}! The formula or version may not have existed."
+        end
 
         file = repo/path
         result = Git.last_revision_of_file(repo, file, before_commit: rev)
@@ -147,7 +156,7 @@ module Homebrew
         if version_segments && Gem::Version.correct?(test_formula.version)
           test_formula_version_segments = Gem::Version.new(test_formula.version).segments
           if version_segments.length < test_formula_version_segments.length
-            odebug "Apply semantic versioning with #{test_formual_version_segments}"
+            odebug "Apply semantic versioning with #{test_formula_version_segments}"
             break if version_segments == test_formula_version_segments.first(version_segments.length)
           end
         end
@@ -183,7 +192,10 @@ module Homebrew
     # Remove any existing version suffixes, as a new one will be added later
     name.sub!(/\b@(.*)\z\b/i, "")
     versioned_name = Formulary.class_s("#{name}@#{version}")
-    result.gsub!("class #{class_name} < Formula", "class #{versioned_name} < Formula")
+    result.sub!("class #{class_name} < Formula", "class #{versioned_name} < Formula")
+
+    # Remove bottle blocks, they won't work.
+    result.sub!(/  bottle do.+?end\n\n/m, "") if destination_tap != source_tap
 
     path = destination_tap.path/"Formula/#{name}@#{version}.rb"
     if path.exist?
@@ -197,7 +209,8 @@ module Homebrew
       odebug "Overwriting existing formula at #{path}"
       path.delete
     end
-    ohai "Writing formula for #{name} from revision #{rev} to #{path}"
+    ohai "Writing formula for #{name} from revision #{rev} to:"
+    puts path
     path.write result
   end
 

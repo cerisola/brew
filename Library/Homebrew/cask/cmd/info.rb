@@ -46,6 +46,7 @@ module Cask
 
       def self.info(cask)
         puts get_info(cask)
+        ::Utils::Analytics.cask_output(cask, args: Homebrew::CLI::Args.new)
       end
 
       def self.title_info(cask)
@@ -96,7 +97,7 @@ module Cask
         url = if cask.tap.custom_remote? && !cask.tap.remote.nil?
           cask.tap.remote
         else
-          "#{cask.tap.default_remote}/blob/master/Casks/#{cask.token}.rb"
+          "#{cask.tap.default_remote}/blob/HEAD/Casks/#{cask.token}.rb"
         end
 
         "From: #{Formatter.url(url)}"

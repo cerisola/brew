@@ -14,15 +14,13 @@ module Homebrew
         Unpin <formula>, allowing them to be upgraded by `brew upgrade` <formula>.
         See also `pin`.
       EOS
-      switch :verbose
-      switch :debug
+
+      min_named :formula
     end
   end
 
   def unpin
-    unpin_args.parse
-
-    raise FormulaUnspecifiedError if args.no_named?
+    args = unpin_args.parse
 
     args.resolved_formulae.each do |f|
       if f.pinned?

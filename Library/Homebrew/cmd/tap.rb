@@ -8,7 +8,7 @@ module Homebrew
   def tap_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
-        `tap` [<options>] <user>`/`<repo> [<URL>]
+        `tap` [<options>] [<user>`/`<repo>] [<URL>]
 
         Tap a formula repository.
 
@@ -25,8 +25,10 @@ module Homebrew
         using protocols other than HTTPS, e.g. SSH, git, HTTP, FTP(S), rsync.
       EOS
       switch "--full",
-             description: "Convert a shallow clone to a full clone without untapping. By default, taps are no "\
-                          "longer cloned as shallow clones."
+             description: "Convert a shallow clone to a full clone without untapping. Taps are only cloned as "\
+                          "shallow clones on continuous integration, or if `--shallow` was originally passed."
+      switch "--shallow",
+             description: "Fetch tap as a shallow clone rather than a full clone. Useful for continuous integration."
       switch "--force-auto-update",
              description: "Auto-update tap even if it is not hosted on GitHub. By default, only taps "\
                           "hosted on GitHub are auto-updated (for performance reasons)."
@@ -34,15 +36,13 @@ module Homebrew
              description: "Migrate tapped formulae from symlink-based to directory-based structure."
       switch "--list-pinned",
              description: "List all pinned taps."
-      switch :quiet,
-             description: "Suppress any warnings."
-      switch :debug
+
       max_named 2
     end
   end
 
   def tap
-    tap_args.parse
+    args = tap_args.parse
 
     if args.repair?
       Tap.each(&:link_completions_and_manpages)
@@ -51,11 +51,20 @@ module Homebrew
     elsif args.no_named?
       puts Tap.names
     else
+      full_clone = if args.full?
+        true
+      elsif !args.shallow?
+        ENV["CI"].blank?
+      else
+        !args.shallow?
+      end
+      odebug "Tapping as #{full_clone ? "full" : "shallow"} clone"
       tap = Tap.fetch(args.named.first)
       begin
         tap.install clone_target:      args.named.second,
-                    force_auto_update: force_auto_update?,
-                    quiet:             args.quiet?
+                    force_auto_update: force_auto_update?(args: args),
+                    quiet:             args.quiet?,
+                    full_clone:        full_clone
       rescue TapRemoteMismatchError => e
         odie e
       rescue TapAlreadyTappedError
@@ -64,7 +73,7 @@ module Homebrew
     end
   end
 
-  def force_auto_update?
+  def force_auto_update?(args:)
     # if no relevant flag is present, return nil, meaning "no change"
     true if args.force_auto_update?
   end

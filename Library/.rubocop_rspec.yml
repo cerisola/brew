@@ -2,22 +2,27 @@ inherit_from: ./.rubocop.yml
 
 AllCops:
   Include:
-    - '**/*_spec.rb'
+    - '**/cmd/**/*.rb'
+    - '**/lib/**/*.rb'
+    - '**/spec/**/*.rb'
   Exclude:
     - '**/vendor/**/*'
 
-NewFormulaAudit:
-  Enabled: true
+# allow style to be disabled in non-formulae code
+Style/DisableCopsWithinSourceCodeDirective:
+  Enabled: false
 
 # Intentionally disabled as it doesn't fit with our code style.
 RSpec/AnyInstance:
+  Enabled: false
+RSpec/FilePath:
   Enabled: false
 RSpec/ImplicitBlockExpectation:
   Enabled: false
 RSpec/SubjectStub:
   Enabled: false
 
-# TODO: try to enable these (also requires fixing Homebrew/bundle)
+# TODO: try to enable these
 RSpec/ContextWording:
   Enabled: false
 RSpec/DescribeClass:
@@ -31,7 +36,7 @@ RSpec/RepeatedDescription:
 RSpec/RepeatedExampleGroupDescription:
   Enabled: false
 
-# TODO: try to reduce these (also requires fixing Homebrew/bundle)
+# TODO: try to reduce these
 RSpec/ExampleLength:
   Max: 75
 RSpec/MultipleExpectations:

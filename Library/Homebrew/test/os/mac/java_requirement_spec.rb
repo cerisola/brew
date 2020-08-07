@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "cli/args"
 require "requirements/java_requirement"
 require "fileutils"
 

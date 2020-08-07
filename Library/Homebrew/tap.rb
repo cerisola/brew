@@ -243,7 +243,7 @@ class Tap
 
     if installed?
       raise TapRemoteMismatchError.new(name, @remote, requested_remote) if clone_target && requested_remote != remote
-      raise TapAlreadyTappedError, name if force_auto_update.nil?
+      raise TapAlreadyTappedError, name if force_auto_update.nil? && !shallow?
     end
 
     # ensure git is installed
@@ -272,7 +272,7 @@ class Tap
     begin
       safe_system "git", *args
       unless Readall.valid_tap?(self, aliases: true)
-        raise "Cannot tap #{name}: invalid syntax in tap!" unless ARGV.homebrew_developer?
+        raise "Cannot tap #{name}: invalid syntax in tap!" unless Homebrew::EnvConfig.developer?
       end
     rescue Interrupt, RuntimeError
       ignore_interrupts do
@@ -286,6 +286,7 @@ class Tap
 
     config["forceautoupdate"] = force_auto_update unless force_auto_update.nil?
 
+    Commands.rebuild_commands_completion_list
     link_completions_and_manpages
 
     formatted_contents = contents.presence&.to_sentence&.dup&.prepend(" ")
@@ -334,6 +335,8 @@ class Tap
     path.rmtree
     path.parent.rmdir_if_possible
     puts "Untapped#{formatted_contents} (#{abv})."
+
+    Commands.rebuild_commands_completion_list
     clear_cache
   end
 
@@ -497,26 +500,6 @@ class Tap
     @pinned = pinned_symlink_path.directory?
   end
 
-  # Pin this {Tap}.
-  def pin
-    raise TapUnavailableError, name unless installed?
-    raise TapPinStatusError.new(name, true) if pinned?
-
-    pinned_symlink_path.make_relative_symlink(path)
-    @pinned = true
-  end
-
-  # Unpin this {Tap}.
-  def unpin
-    raise TapUnavailableError, name unless installed?
-    raise TapPinStatusError.new(name, false) unless pinned?
-
-    pinned_symlink_path.delete
-    pinned_symlink_path.parent.rmdir_if_possible
-    pinned_symlink_path.parent.parent.rmdir_if_possible
-    @pinned = false
-  end
-
   def to_hash
     hash = {
       "name"          => name,
@@ -530,7 +513,6 @@ class Tap
       "cask_tokens"   => cask_tokens,
       "cask_files"    => cask_files.map(&:to_s),
       "command_files" => command_files.map(&:to_s),
-      "pinned"        => pinned?,
     }
 
     if installed?
@@ -641,12 +623,9 @@ class CoreTap < Tap
   end
 
   def install(full_clone: true, quiet: false, clone_target: nil, force_auto_update: nil)
-    if HOMEBREW_CORE_GIT_REMOTE != default_remote
-      puts "HOMEBREW_CORE_GIT_REMOTE set: using #{HOMEBREW_CORE_GIT_REMOTE} " \
-           "for Homebrew/core Git remote URL."
-      clone_target ||= HOMEBREW_CORE_GIT_REMOTE
-    end
-    super(full_clone: full_clone, quiet: quiet, clone_target: clone_target, force_auto_update: force_auto_update)
+    remote = Homebrew::EnvConfig.core_git_remote
+    puts "HOMEBREW_CORE_GIT_REMOTE set: using #{remote} for Homebrew/core Git remote URL." if remote != default_remote
+    super(full_clone: full_clone, quiet: quiet, clone_target: remote, force_auto_update: force_auto_update)
   end
 
   # @private

@@ -3,9 +3,13 @@
 require "keg"
 require "language/python"
 require "formula"
+require "formulary"
 require "version"
 require "development_tools"
 require "utils/shell"
+require "system_config"
+require "cask/caskroom"
+require "cask/quarantine"
 
 module Homebrew
   module Diagnostic
@@ -60,6 +64,10 @@ module Homebrew
     end
 
     class Checks
+      def initialize(verbose = true)
+        @verbose = verbose
+      end
+
       ############# HELPERS
       # Finds files in `HOMEBREW_PREFIX` *and* /usr/local.
       # Specify paths relative to a prefix, e.g. "include/foo.h".
@@ -73,6 +81,18 @@ module Homebrew
       def inject_file_list(list, string)
         list.reduce(string.dup) { |acc, elem| acc << "  #{elem}\n" }
             .freeze
+      end
+
+      def user_tilde(path)
+        path.gsub(ENV["HOME"], "~")
+      end
+
+      def none_string
+        "<NONE>"
+      end
+
+      def add_info(*args)
+        ohai(*args) if @verbose
       end
       ############# END HELPERS
 
@@ -170,11 +190,11 @@ module Homebrew
         EOS
       end
 
-      def __check_stray_files(dir, pattern, white_list, message)
+      def __check_stray_files(dir, pattern, allow_list, message)
         return unless File.directory?(dir)
 
         files = Dir.chdir(dir) do
-          (Dir.glob(pattern) - Dir.glob(white_list))
+          (Dir.glob(pattern) - Dir.glob(allow_list))
             .select { |f| File.file?(f) && !File.symlink?(f) }
             .map { |f| File.join(dir, f) }
         end
@@ -186,7 +206,7 @@ module Homebrew
       def check_for_stray_dylibs
         # Dylibs which are generally OK should be added to this list,
         # with a short description of the software they come with.
-        white_list = [
+        allow_list = [
           "libfuse.2.dylib", # MacFuse
           "libfuse_ino64.2.dylib", # MacFuse
           "libmacfuse_i32.2.dylib", # OSXFuse MacFuse compatibility layer
@@ -206,7 +226,7 @@ module Homebrew
           "sentinel-*.dylib", # SentinelOne
         ]
 
-        __check_stray_files "/usr/local/lib", "*.dylib", white_list, <<~EOS
+        __check_stray_files "/usr/local/lib", "*.dylib", allow_list, <<~EOS
           Unbrewed dylibs were found in /usr/local/lib.
           If you didn't put them there on purpose they could cause problems when
           building Homebrew formulae, and may need to be deleted.
@@ -218,7 +238,7 @@ module Homebrew
       def check_for_stray_static_libs
         # Static libs which are generally OK should be added to this list,
         # with a short description of the software they come with.
-        white_list = [
+        allow_list = [
           "libntfs-3g.a", # NTFS-3G
           "libntfs.a", # NTFS-3G
           "libublio.a", # NTFS-3G
@@ -231,7 +251,7 @@ module Homebrew
           "libtrustedcomponents.a", # Symantec Endpoint Protection
         ]
 
-        __check_stray_files "/usr/local/lib", "*.a", white_list, <<~EOS
+        __check_stray_files "/usr/local/lib", "*.a", allow_list, <<~EOS
           Unbrewed static libraries were found in /usr/local/lib.
           If you didn't put them there on purpose they could cause problems when
           building Homebrew formulae, and may need to be deleted.
@@ -243,7 +263,7 @@ module Homebrew
       def check_for_stray_pcs
         # Package-config files which are generally OK should be added to this list,
         # with a short description of the software they come with.
-        white_list = [
+        allow_list = [
           "fuse.pc", # OSXFuse/MacFuse
           "macfuse.pc", # OSXFuse MacFuse compatibility layer
           "osxfuse.pc", # OSXFuse
@@ -251,7 +271,7 @@ module Homebrew
           "libublio.pc", # NTFS-3G
         ]
 
-        __check_stray_files "/usr/local/lib/pkgconfig", "*.pc", white_list, <<~EOS
+        __check_stray_files "/usr/local/lib/pkgconfig", "*.pc", allow_list, <<~EOS
           Unbrewed .pc files were found in /usr/local/lib/pkgconfig.
           If you didn't put them there on purpose they could cause problems when
           building Homebrew formulae, and may need to be deleted.
@@ -261,7 +281,7 @@ module Homebrew
       end
 
       def check_for_stray_las
-        white_list = [
+        allow_list = [
           "libfuse.la", # MacFuse
           "libfuse_ino64.la", # MacFuse
           "libosxfuse_i32.la", # OSXFuse
@@ -272,7 +292,7 @@ module Homebrew
           "libublio.la", # NTFS-3G
         ]
 
-        __check_stray_files "/usr/local/lib", "*.la", white_list, <<~EOS
+        __check_stray_files "/usr/local/lib", "*.la", allow_list, <<~EOS
           Unbrewed .la files were found in /usr/local/lib.
           If you didn't put them there on purpose they could cause problems when
           building Homebrew formulae, and may need to be deleted.
@@ -282,7 +302,7 @@ module Homebrew
       end
 
       def check_for_stray_headers
-        white_list = [
+        allow_list = [
           "fuse.h", # MacFuse
           "fuse/**/*.h", # MacFuse
           "macfuse/**/*.h", # OSXFuse MacFuse compatibility layer
@@ -291,7 +311,7 @@ module Homebrew
           "ntfs-3g/**/*.h", # NTFS-3G
         ]
 
-        __check_stray_files "/usr/local/include", "**/*.h", white_list, <<~EOS
+        __check_stray_files "/usr/local/include", "**/*.h", allow_list, <<~EOS
           Unbrewed header files were found in /usr/local/include.
           If you didn't put them there on purpose they could cause problems when
           building Homebrew formulae, and may need to be deleted.
@@ -391,11 +411,11 @@ module Homebrew
                 message = inject_file_list conflicts, <<~EOS
                   /usr/bin occurs before #{HOMEBREW_PREFIX}/bin
                   This means that system-provided programs will be used instead of those
-                  provided by Homebrew. The following tools exist at both paths:
-
-                  Consider setting your PATH so that #{HOMEBREW_PREFIX}/bin
-                  occurs before /usr/bin. Here is a one-liner:
+                  provided by Homebrew. Consider setting your PATH so that
+                  #{HOMEBREW_PREFIX}/bin occurs before /usr/bin. Here is a one-liner:
                     #{Utils::Shell.prepend_path_in_profile("#{HOMEBREW_PREFIX}/bin")}
+
+                  The following tools exist at both paths:
                 EOS
               end
             end
@@ -443,7 +463,8 @@ module Homebrew
 
         scripts = []
 
-        whitelist = %W[
+        allowlist = %W[
+          /bin /sbin
           /usr/bin /usr/sbin
           /usr/X11/bin /usr/X11R6/bin /opt/X11/bin
           #{HOMEBREW_PREFIX}/bin #{HOMEBREW_PREFIX}/sbin
@@ -452,7 +473,7 @@ module Homebrew
         ].map(&:downcase)
 
         paths.each do |p|
-          next if whitelist.include?(p.downcase) || !File.directory?(p)
+          next if allowlist.include?(p.downcase) || !File.directory?(p)
 
           realpath = Pathname.new(p).realpath.to_s
           next if realpath.start_with?(real_cellar.to_s, HOMEBREW_CELLAR.to_s)
@@ -538,11 +559,11 @@ module Homebrew
       end
 
       def check_brew_git_origin
-        examine_git_origin(HOMEBREW_REPOSITORY, HOMEBREW_BREW_GIT_REMOTE)
+        examine_git_origin(HOMEBREW_REPOSITORY, Homebrew::EnvConfig.brew_git_remote)
       end
 
       def check_coretap_git_origin
-        examine_git_origin(CoreTap.instance.path, HOMEBREW_CORE_GIT_REMOTE)
+        examine_git_origin(CoreTap.instance.path, Homebrew::EnvConfig.core_git_remote)
       end
 
       def check_casktap_git_origin
@@ -559,7 +580,7 @@ module Homebrew
         return if !Utils.git_available? || !(coretap_path/".git").exist?
 
         branch = coretap_path.git_branch
-        return if branch.nil? || branch =~ /master/
+        return if branch.blank? || branch.include?("master")
 
         <<~EOS
           #{CoreTap.instance.full_name} is not on the master branch.
@@ -640,6 +661,20 @@ module Homebrew
         EOS
       end
 
+      def check_deprecated_disabled
+        return unless HOMEBREW_CELLAR.exist?
+
+        deprecated_or_disabled = Formula.installed.select(&:deprecated?)
+        deprecated_or_disabled += Formula.installed.select(&:disabled?)
+        return if deprecated_or_disabled.empty?
+
+        <<~EOS
+          Some installed formulae are deprecated or disabled.
+          You should find replacements for the following formulae:
+            #{deprecated_or_disabled.sort_by(&:full_name).uniq * "\n  "}
+        EOS
+      end
+
       def check_git_status
         return unless Utils.git_available?
 
@@ -653,6 +688,11 @@ module Homebrew
             `git status --untracked-files=all --porcelain 2>/dev/null`
           end
           next if status.blank?
+
+          # these will result in uncommitted gems.
+          if path == HOMEBREW_REPOSITORY
+            next if ENV["HOMEBREW_SORBET"] || ENV["HOMEBREW_PATCHELF_RB"]
+          end
 
           message ||= ""
           message += "\n" unless message.empty?
@@ -817,8 +857,175 @@ module Homebrew
         EOS
       end
 
+      def check_deleted_formula
+        kegs = Keg.all
+        deleted_formulae = []
+        kegs.each do |keg|
+          keg_name = keg.name
+          deleted_formulae << keg_name if Formulary.tap_paths(keg_name).blank?
+        end
+        return if deleted_formulae.blank?
+
+        <<~EOS
+          Some installed formulae were deleted!
+          You should find replacements for the following formulae:
+            #{deleted_formulae.join("\n  ")}
+        EOS
+      end
+
+      def check_cask_software_versions
+        add_info "Homebrew Version", HOMEBREW_VERSION
+        add_info "macOS", MacOS.full_version
+        add_info "SIP", begin
+          csrutil = "/usr/bin/csrutil"
+          if File.executable?(csrutil)
+            Open3.capture2(csrutil, "status")
+                 .first
+                 .gsub("This is an unsupported configuration, likely to break in " \
+                       "the future and leave your machine in an unknown state.", "")
+                 .gsub("System Integrity Protection status: ", "")
+                 .delete("\t\.")
+                 .capitalize
+                 .strip
+          else
+            "N/A"
+          end
+        end
+        add_info "Java", SystemConfig.describe_java
+
+        nil
+      end
+
+      def check_cask_install_location
+        locations = Dir.glob(HOMEBREW_CELLAR.join("brew-cask", "*")).reverse
+        return if locations.empty?
+
+        locations.map do |l|
+          "Legacy install at #{l}. Run `brew uninstall --force brew-cask`."
+        end.join "\n"
+      end
+
+      def check_cask_staging_location
+        # Skip this check when running CI since the staging path is not writable for security reasons
+        return if ENV["GITHUB_ACTIONS"]
+
+        path = Cask::Caskroom.path
+
+        add_info "Homebrew Cask Staging Location", user_tilde(path.to_s)
+
+        return unless path.exist? && !path.writable?
+
+        <<~EOS
+          The staging path #{user_tilde(path.to_s)} is not writable by the current user.
+          To fix, run \'sudo chown -R $(whoami):staff #{user_tilde(path.to_s)}'
+        EOS
+      end
+
+      def check_cask_taps
+        default_tap = Tap.default_cask_tap
+        alt_taps = Tap.select { |t| t.cask_dir.exist? && t != default_tap }
+
+        error_tap_paths = []
+
+        add_info "Homebrew Cask Taps:", ([default_tap, *alt_taps].map do |tap|
+          if tap.path.blank?
+            none_string
+          else
+            cask_count = begin
+                tap.cask_files.count
+              rescue
+                error_tap_paths << tap.path
+                0
+              end
+
+            "#{tap.path} (#{cask_count} #{"cask".pluralize(cask_count)})"
+          end
+        end)
+
+        taps = "tap".pluralize error_tap_paths.count
+        "Unable to read from cask #{taps}: #{error_tap_paths.to_sentence}" if error_tap_paths.present?
+      end
+
+      def check_cask_load_path
+        paths = $LOAD_PATH.map(&method(:user_tilde))
+
+        add_info "$LOAD_PATHS", paths.presence || none_string
+
+        "$LOAD_PATH is empty" if paths.blank?
+      end
+
+      def check_cask_environment_variables
+        environment_variables = %w[
+          RUBYLIB
+          RUBYOPT
+          RUBYPATH
+          RBENV_VERSION
+          CHRUBY_VERSION
+          GEM_HOME
+          GEM_PATH
+          BUNDLE_PATH
+          PATH
+          SHELL
+          HOMEBREW_CASK_OPTS
+        ]
+
+        locale_variables = ENV.keys.grep(/^(?:LC_\S+|LANG|LANGUAGE)\Z/).sort
+
+        add_info "Cask Environment Variables:", ((locale_variables + environment_variables).sort.each do |var|
+          next unless ENV.key?(var)
+
+          var = %Q(#{var}="#{ENV[var]}")
+          user_tilde(var)
+        end)
+      end
+
+      def check_cask_xattr
+        result = system_command "/usr/bin/xattr"
+
+        return if result.status.success?
+
+        if result.stderr.include? "ImportError: No module named pkg_resources"
+          result = system_command "/usr/bin/python", "--version"
+
+          if result.stdout.include? "Python 2.7"
+            <<~EOS
+              Your Python installation has a broken version of setuptools.
+              To fix, reinstall macOS or run 'sudo /usr/bin/python -m pip install -I setuptools'.
+            EOS
+          else
+            <<~EOS
+              The system Python version is wrong.
+              To fix, run 'defaults write com.apple.versioner.python Version 2.7'.
+            EOS
+          end
+        elsif result.stderr.include? "pkg_resources.DistributionNotFound"
+          "Your Python installation is unable to find xattr."
+        else
+          "unknown xattr error: #{result.stderr.split("\n").last}"
+        end
+      end
+
+      def check_cask_quarantine_support
+        case Cask::Quarantine.check_quarantine_support
+        when :quarantine_available
+          nil
+        when :xattr_broken
+          "There's not a working version of xattr."
+        when :no_swift
+          "Swift is not available on this system."
+        when :no_quarantine
+          "This feature requires the macOS 10.10 SDK or higher."
+        else
+          "Unknown support status"
+        end
+      end
+
       def all
         methods.map(&:to_s).grep(/^check_/)
+      end
+
+      def cask_checks
+        all.grep(/^check_cask_/)
       end
     end
   end

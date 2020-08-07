@@ -27,7 +27,7 @@ This is all that really matters:
 - Ensure that any dependencies are accurate and minimal. We don't need to
   support every possible optional feature for the software.
 - Use the GitHub squash & merge workflow where bottles aren't required.
-- Use `brew pull` otherwise, which adds messages to auto-close pull requests and pull bottles built by the Brew Test Bot.
+- Use `brew pr-publish` or `brew pr-pull` otherwise, which adds messages to auto-close pull requests and pull bottles built by the Brew Test Bot.
 - Thank people for contributing.
 
 Checking dependencies is important, because they will probably stick around
@@ -36,6 +36,10 @@ forever. Nobody really checks if they are necessary or not. Use the
 
 Depend on as little stuff as possible. Disable X11 functionality if possible.
 For example, we build Wireshark, but not the heavy GUI.
+
+For [some formulae](https://github.com/Homebrew/homebrew-core/search?q=%22homebrew%2Fmirror%22&unscoped_q=%22homebrew%2Fmirror%22),
+we mirror the tarballs to our own BinTray automatically as part of the
+bottle publish CI run.
 
 Homebrew is about Unix software. Stuff that builds to an `.app` should
 be in Homebrew Cask instead.
@@ -60,7 +64,7 @@ We now accept versioned formulae as long as they [meet the requirements](Version
 Merging should be done in the `Homebrew/brew` repository to preserve history & GPG commit signing,
 and squash/merge via GitHub should be used for formulae where those formulae
 don't need bottles or the change does not require new bottles to be pulled.
-Otherwise, you should use `brew pull` (or `rebase`/`cherry-pick` contributions).
+Otherwise, you should use `brew pr-pull` (or `rebase`/`cherry-pick` contributions).
 
 Don’t `rebase` until you finally `push`. Once `master` is pushed, you can’t
 `rebase`: **you’re a maintainer now!**
@@ -161,6 +165,6 @@ All communication should ideally occur in public on GitHub. Where this is not po
 
 This makes it easier for other maintainers, contributors and users to follow along with what we're doing (and, more importantly, why we're doing it) and means that decisions have a linkable URL.
 
-All maintainers (and lead maintainer) communication through any medium is bound by [Homebrew's Code of Conduct](https://github.com/Homebrew/.github/blob/master/CODE_OF_CONDUCT.md#code-of-conduct). Abusive behaviour towards other maintainers, contributors or users will not be tolerated; the maintainer will be given a warning and if their behaviour continues they will be removed as a maintainer.
+All maintainers (and lead maintainer) communication through any medium is bound by [Homebrew's Code of Conduct](https://github.com/Homebrew/.github/blob/HEAD/CODE_OF_CONDUCT.md#code-of-conduct). Abusive behaviour towards other maintainers, contributors or users will not be tolerated; the maintainer will be given a warning and if their behaviour continues they will be removed as a maintainer.
 
 Maintainers should feel free to pleasantly disagree with the work and decisions of other maintainers. Healthy, friendly, technical disagreement between maintainers is actively encouraged and should occur in public on the issue tracker to make the project better. Interpersonal issues should be handled privately in Slack, ideally with moderation. If work or decisions are insufficiently documented or explained any maintainer or contributor should feel free to ask for clarification. No maintainer may ever justify a decision with e.g. "because I say so" or "it was I who did X" alone. Off-topic discussions on the issue tracker, [bike-shedding](https://en.wikipedia.org/wiki/Law_of_triviality) and personal attacks are forbidden.

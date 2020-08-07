@@ -24,7 +24,7 @@ module Cask
         name.split("::").last.match?(/^Abstract[^a-z]/)
       end
 
-      def self.visible
+      def self.visible?
         true
       end
 
@@ -37,6 +37,7 @@ module Cask
       end
 
       attr_accessor :args
+
       private :args=
 
       def initialize(*args)

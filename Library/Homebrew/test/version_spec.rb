@@ -16,6 +16,28 @@ describe Version::Token do
   specify "#to_s" do
     expect(described_class.new("foo").to_s).to eq("foo")
   end
+
+  it "can be compared against nil" do
+    expect(described_class.create("2")).to be > nil
+    expect(described_class.create("p194")).to be > nil
+  end
+
+  it "can be compared against Version::NULL_TOKEN" do
+    expect(described_class.create("2")).to be > Version::NULL_TOKEN
+    expect(described_class.create("p194")).to be > Version::NULL_TOKEN
+  end
+
+  it "can be compared against strings" do
+    expect(described_class.create("2")).to be == "2"
+    expect(described_class.create("p194")).to be == "p194"
+    expect(described_class.create("1")).to be == 1
+  end
+
+  specify "comparison returns nil for non-token" do
+    v = described_class.create("1")
+    expect(v <=> Object.new).to be nil
+    expect { v > Object.new }.to raise_error(ArgumentError)
+  end
 end
 
 describe Version::NULL do
@@ -171,6 +193,16 @@ describe Version do
     versions = %w[R16B R15B03-1 R15B03 R15B02 R15B01 R14B04 R14B03
                   R14B02 R14B01 R14B R13B04 R13B03 R13B02-1].reverse
     expect(versions.sort_by { |v| described_class.create(v) }).to eq(versions)
+  end
+
+  describe "#empty?" do
+    it "returns true if version is empty" do
+      expect(described_class.create("").empty?).to eq(true)
+    end
+
+    it "returns false if version is not empty" do
+      expect(described_class.create("1.2.3").empty?).to eq(false)
+    end
   end
 
   specify "hash equality" do

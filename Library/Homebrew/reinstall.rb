@@ -7,7 +7,7 @@ require "messages"
 module Homebrew
   module_function
 
-  def reinstall_formula(f, build_from_source: true)
+  def reinstall_formula(f, build_from_source: true, args:)
     return if args.dry_run?
 
     if f.opt_prefix.directory?
@@ -18,16 +18,20 @@ module Homebrew
       backup keg
     end
 
-    build_options = BuildOptions.new(Options.create(Homebrew.args.flags_only), f.options)
+    build_options = BuildOptions.new(Options.create(args.flags_only), f.options)
     options = build_options.used_options
     options |= f.build.used_options
     options &= f.options
 
-    fi = FormulaInstaller.new(f)
+    fi = FormulaInstaller.new(f, force_bottle:               args.force_bottle?,
+                                 build_from_source_formulae: args.build_from_source_formulae,
+                                 debug: args.debug?, quiet: args.quiet?, verbose: args.verbose?)
     fi.options              = options
-    fi.build_bottle         = ARGV.build_bottle?
-    fi.interactive          = Homebrew.args.interactive?
-    fi.git                  = Homebrew.args.git?
+    fi.force                = args.force?
+    fi.keep_tmp             = args.keep_tmp?
+    fi.build_bottle         = args.build_bottle?
+    fi.interactive          = args.interactive?
+    fi.git                  = args.git?
     fi.link_keg           ||= keg_was_linked if keg_had_linked_opt
     fi.build_from_source    = true if build_from_source
     if tab
@@ -36,6 +40,7 @@ module Homebrew
       fi.installed_on_request    = tab.installed_on_request
     end
     fi.prelude
+    fi.fetch
 
     oh1 "Reinstalling #{Formatter.identifier(f.full_name)} #{options.to_a.join " "}"
 
@@ -44,7 +49,7 @@ module Homebrew
   rescue FormulaInstallationAlreadyAttemptedError
     nil
   rescue Exception # rubocop:disable Lint/RescueException
-    ignore_interrupts { restore_backup(keg, keg_was_linked) }
+    ignore_interrupts { restore_backup(keg, keg_was_linked, verbose: args.verbose?) }
     raise
   else
     begin
@@ -69,7 +74,7 @@ module Homebrew
     end
   end
 
-  def restore_backup(keg, keg_was_linked)
+  def restore_backup(keg, keg_was_linked, verbose:)
     path = backup_path(keg)
 
     return unless path.directory?
@@ -77,7 +82,7 @@ module Homebrew
     Pathname.new(keg).rmtree if keg.exist?
 
     path.rename keg
-    keg.link if keg_was_linked
+    keg.link(verbose: verbose) if keg_was_linked
   end
 
   def backup_path(path)

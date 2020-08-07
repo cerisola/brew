@@ -48,14 +48,7 @@ or to __disable__ automatic `brew cleanup`:
     export HOMEBREW_NO_INSTALL_CLEANUP=1
 
 ## How do I uninstall Homebrew?
-To uninstall Homebrew, paste the command below in a terminal prompt.
-
-```sh
-ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/uninstall)"
-```
-
-Download the [uninstall script](https://raw.githubusercontent.com/Homebrew/install/master/uninstall)
-and run `./uninstall --help` to view more uninstall options.
+To uninstall Homebrew, run the [uninstall script from the Homebrew/install repository](https://github.com/homebrew/install#uninstall-homebrew).
 
 ## How do I uninstall a formula?
 If you do not uninstall all of the versions that Homebrew has installed,
@@ -81,7 +74,7 @@ the launchctl PATH for *all users*. For earlier versions of macOS, see
 [this page](https://developer.apple.com/legacy/library/qa/qa1067/_index.html).
 
 ## How do I contribute to Homebrew?
-Read our [contribution guidelines](https://github.com/Homebrew/brew/blob/master/CONTRIBUTING.md#contributing-to-homebrew).
+Read our [contribution guidelines](https://github.com/Homebrew/brew/blob/HEAD/CONTRIBUTING.md#contributing-to-homebrew).
 
 ## Why do you compile everything?
 Homebrew provides pre-compiled versions for many formulae. These
@@ -159,7 +152,7 @@ creating a separate user account especially for use of Homebrew.
 
 If it’s not in `man brew`, it’s probably an external command. These are documented [here](External-Commands.md).
 
-## Why haven’t you pulled my pull request?
+## Why haven’t you merged my pull request?
 If it’s been a while, bump it with a “bump” comment. Sometimes we miss requests and there are plenty of them. Maybe we were thinking on something. It will encourage consideration. In the meantime if you could rebase the pull request so that it can be cherry-picked more easily we will love you for a long time.
 
 ## Can I edit formulae myself?

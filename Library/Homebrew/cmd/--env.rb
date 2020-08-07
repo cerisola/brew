@@ -27,16 +27,15 @@ module Homebrew
   end
 
   def __env
-    __env_args.parse
+    args = __env_args.parse
 
-    ENV.activate_extensions!
-    ENV.deps = args.formulae if superenv?
+    ENV.activate_extensions!(env: args.env)
+    ENV.deps = args.formulae if superenv?(args.env)
     ENV.setup_build_environment
 
     shell = if args.plain?
       nil
     elsif args.shell.nil?
-      # legacy behavior
       :bash unless $stdout.tty?
     elsif args.shell == "auto"
       Utils::Shell.parent || Utils::Shell.preferred

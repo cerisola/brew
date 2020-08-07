@@ -4,12 +4,10 @@ if ENV["HOMEBREW_TESTS_COVERAGE"]
   require "simplecov"
 
   formatters = [SimpleCov::Formatter::HTMLFormatter]
-  if ENV["HOMEBREW_COVERALLS_REPO_TOKEN"] && RUBY_PLATFORM[/darwin/]
-    require "coveralls"
+  if ENV["HOMEBREW_CODECOV_TOKEN"] && RUBY_PLATFORM[/darwin/]
+    require "codecov"
 
-    Coveralls::Output.no_color if !ENV["HOMEBREW_COLOR"] && (ENV["HOMEBREW_NO_COLOR"] || !$stdout.tty?)
-
-    formatters << Coveralls::SimpleCov::Formatter
+    formatters << SimpleCov::Formatter::Codecov
 
     if ENV["TEST_ENV_NUMBER"]
       SimpleCov.at_exit do
@@ -18,16 +16,7 @@ if ENV["HOMEBREW_TESTS_COVERAGE"]
       end
     end
 
-    ENV["CI_NAME"] = ENV["HOMEBREW_CI_NAME"]
-    ENV["COVERALLS_REPO_TOKEN"] = ENV["HOMEBREW_COVERALLS_REPO_TOKEN"]
-
-    ENV["CI_BUILD_NUMBER"] = ENV["HOMEBREW_CI_BUILD_NUMBER"]
-    ENV["CI_BRANCH"] = ENV["HOMEBREW_CI_BRANCH"]
-    %r{refs/pull/(?<pr>\d+)/merge} =~ ENV["HOMEBREW_CI_BUILD_NUMBER"]
-    ENV["CI_PULL_REQUEST"] = pr
-    ENV["CI_BUILD_URL"] = "https://github.com/#{ENV["HOMEBREW_GITHUB_REPOSITORY"]}/pull/#{pr}/checks"
-
-    ENV["CI_JOB_ID"] = ENV["TEST_ENV_NUMBER"] || "1"
+    ENV["CODECOV_TOKEN"] = ENV["HOMEBREW_CODECOV_TOKEN"]
   end
 
   SimpleCov.formatters = SimpleCov::Formatter::MultiFormatter.new(formatters)
@@ -39,6 +28,8 @@ require "rspec/retry"
 require "rubocop"
 require "rubocop/rspec/support"
 require "find"
+require "byebug"
+require "timeout"
 
 $LOAD_PATH.push(File.expand_path("#{ENV["HOMEBREW_LIBRARY"]}/Homebrew/test/support/lib"))
 
@@ -52,6 +43,7 @@ require "test/support/helper/output_as_tty"
 
 require "test/support/helper/spec/shared_context/homebrew_cask" if OS.mac?
 require "test/support/helper/spec/shared_context/integration_test"
+require "test/support/helper/spec/shared_examples/formulae_exist"
 
 TEST_DIRECTORIES = [
   CoreTap.instance.path/"Formula",
@@ -74,6 +66,17 @@ RSpec.configure do |config|
 
   config.expect_with :rspec do |c|
     c.max_formatted_output_length = 200
+  end
+
+  # Use rspec-retry in CI.
+  if ENV["CI"]
+    config.verbose_retry = true
+    config.display_try_failure_messages = true
+    config.default_retry_count = 2
+
+    config.around(:each, :needs_network) do |example|
+      example.run_with_retry retry: 3, retry_wait: 3
+    end
   end
 
   # Never truncate output objects.
@@ -122,11 +125,9 @@ RSpec.configure do |config|
     skip "Requires network connection." unless ENV["HOMEBREW_TEST_ONLINE"]
   end
 
-  config.around(:each, :needs_network) do |example|
-    example.run_with_retry retry: 3, retry_wait: 1
-  end
-
   config.before(:each, :needs_svn) do
+    skip "subversion not installed." unless quiet_system "#{HOMEBREW_SHIMS_PATH}/scm/svn", "--version"
+
     svn_paths = PATH.new(ENV["PATH"])
     if OS.mac?
       xcrun_svn = Utils.popen_read("xcrun", "-f", "svn")
@@ -163,6 +164,7 @@ RSpec.configure do |config|
       Keg.clear_cache
       Tab.clear_cache
       FormulaInstaller.clear_attempted
+      FormulaInstaller.clear_installed
 
       TEST_DIRECTORIES.each(&:mkpath)
 
@@ -170,27 +172,38 @@ RSpec.configure do |config|
 
       @__files_before_test = find_files
 
-      @__argv = ARGV.dup
       @__env = ENV.to_hash # dup doesn't work on ENV
 
-      unless example.metadata.key?(:focus) || ENV.key?("VERBOSE_TESTS")
-        @__stdout = $stdout.clone
-        @__stderr = $stderr.clone
+      @__stdout = $stdout.clone
+      @__stderr = $stderr.clone
+
+      if (example.metadata.keys & [:focus, :byebug]).empty? && !ENV.key?("VERBOSE_TESTS")
         $stdout.reopen(File::NULL)
         $stderr.reopen(File::NULL)
       end
 
-      example.run
+      begin
+        timeout = example.metadata.fetch(:timeout, 60)
+        inner_timeout = nil
+        Timeout.timeout(timeout) do
+          example.run
+        rescue Timeout::Error => e
+          inner_timeout = e
+        end
+      rescue Timeout::Error
+        raise "Example exceeded maximum runtime of #{timeout} seconds."
+      end
+
+      raise inner_timeout if inner_timeout
+    rescue SystemExit => e
+      raise "Unexpected exit with status #{e.status}."
     ensure
-      ARGV.replace(@__argv)
       ENV.replace(@__env)
 
-      unless example.metadata.key?(:focus) || ENV.key?("VERBOSE_TESTS")
-        $stdout.reopen(@__stdout)
-        $stderr.reopen(@__stderr)
-        @__stdout.close
-        @__stderr.close
-      end
+      $stdout.reopen(@__stdout)
+      $stderr.reopen(@__stderr)
+      @__stdout.close
+      @__stderr.close
 
       Formulary.clear_cache
       Tap.clear_cache

@@ -94,6 +94,17 @@ __brew_complete_tapped() {
   __brewcomp "$taps"
 }
 
+__brew_complete_commands() {
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  HOMEBREW_CACHE=$(brew --cache)
+  HOMEBREW_REPOSITORY=$(brew --repo)
+  # Do not auto-complete "*instal" or "*uninstal" aliases for "*install" commands.
+  [[ -f "$HOMEBREW_CACHE/all_commands_list.txt" ]] &&
+    local cmds="$(cat "$HOMEBREW_CACHE/all_commands_list.txt" | \grep -v instal$)" ||
+    local cmds="$(cat "$HOMEBREW_REPOSITORY/completions/internal_commands_list.txt" | \grep -v instal$)"
+  COMPREPLY=($(compgen -W "$cmds" -- "$cur"))
+}
+
 _brew_analytics() {
   case "$COMP_CWORD" in
     2)  __brewcomp "off on regenerate-uuid state" ;;
@@ -147,7 +158,27 @@ _brew_create() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   case "$cur" in
     -*)
-      __brewcomp "--autotools --cmake --meson --no-fetch --HEAD --set-name --set-version --tap --force --verbose --debug --help"
+      __brewcomp "
+      --HEAD
+      --autotools
+      --cmake
+      --crystal
+      --debug
+      --force
+      --go
+      --help
+      --meson
+      --no-fetch
+      --node
+      --perl
+      --python
+      --ruby
+      --rust
+      --set-name
+      --set-version
+      --tap
+      --verbose
+      "
       return
       ;;
   esac
@@ -422,7 +453,7 @@ _brew_search() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   case "$cur" in
     -*)
-      __brewcomp "--casks --debian --desc --fedora --fink --macports --opensuse --ubuntu"
+      __brewcomp "--cask --debian --desc --fedora --fink --macports --opensuse --ubuntu"
       return
       ;;
   esac
@@ -798,10 +829,7 @@ _brew() {
 
   if [[ "$i" -eq "$COMP_CWORD" ]]
   then
-    # Do not auto-complete "*instal" or "*uninstal" aliases for "*install" commands.
-    # Prefix newline to prevent not checking the first command.
-    local cmds=$'\n'"$(brew commands --quiet --include-aliases | \grep -v instal$)"
-    __brewcomp "$cmds"
+    __brew_complete_commands
     return
   fi
 
@@ -816,6 +844,7 @@ _brew() {
     cask)                       _brew_cask ;;
     cat)                        __brew_complete_formulae ;;
     cleanup)                    _brew_cleanup ;;
+    command)                    __brew_complete_commands ;;
     create)                     _brew_create ;;
     deps)                       _brew_deps ;;
     desc)                       _brew_desc ;;
@@ -824,6 +853,7 @@ _brew() {
     edit)                       __brew_complete_formulae ;;
     fetch)                      _brew_fetch ;;
     gist-logs)                  _brew_gist_logs ;;
+    help)                       __brew_complete_commands ;;
     home|homepage)              __brew_complete_formulae ;;
     info|abv)                   _brew_info ;;
     install|instal)             _brew_install ;;
@@ -837,6 +867,7 @@ _brew() {
     outdated)                   _brew_outdated ;;
     pin)                        __brew_complete_formulae ;;
     postinstall)                _brew_postinstall ;;
+    prof)                       __brew_complete_commands ;;
     pull)                       _brew_pull ;;
     readall)                    _brew_readall ;;
     reinstall)                  _brew_install ;;
@@ -845,7 +876,6 @@ _brew() {
     switch)                     _brew_switch ;;
     tap)                        _brew_tap ;;
     tap-info)                   _brew_tap_info ;;
-    tap-pin)                    __brew_complete_tapped ;;
     tap-new)                    _brew_tap_new ;;
     tap-unpin)                  _brew_tap_unpin ;;
     test)                       __brew_complete_installed ;;

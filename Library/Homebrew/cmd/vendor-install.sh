@@ -17,27 +17,17 @@ if [[ -n "$HOMEBREW_MACOS" ]]
 then
   if [[ "$HOMEBREW_PROCESSOR" = "Intel" ]]
   then
-    ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.6.3.mavericks.bottle.tar.gz"
-    ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.mavericks.bottle.tar.gz"
-    ruby_SHA="ab81211a2052ccaa6d050741c433b728d0641523d8742eef23a5b450811e5104"
+    ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.6.3_2.yosemite.bottle.tar.gz"
+    ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.6.3_2/portable-ruby-2.6.3_2.yosemite.bottle.tar.gz"
+    ruby_SHA="b065e5e3783954f3e65d8d3a6377ca51649bfcfa21b356b0dd70490f74c6bd86"
   fi
 elif [[ -n "$HOMEBREW_LINUX" ]]
 then
   case "$HOMEBREW_PROCESSOR" in
     x86_64)
-      ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.6.3.x86_64_linux.bottle.tar.gz"
-      ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.x86_64_linux.bottle.tar.gz"
-      ruby_SHA="e8c9b6d3dc5f40844e07b4b694897b8b7cb5a7dab1013b3b8712a22868f98c98"
-      ;;
-    aarch64)
-      ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.6.3.aarch64_linux.bottle.tar.gz"
-      ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.aarch64_linux.bottle.tar.gz"
-      ruby_SHA="c0b08e2835897af74948508a004d30380b8bcf14264e0dcce194e2c199fb1e35"
-      ;;
-    armv[67]*)
-      ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.6.3.armv6_linux.bottle.tar.gz"
-      ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.6.3/portable-ruby-2.6.3.armv6_linux.bottle.tar.gz"
-      ruby_SHA="78e36e4671fd08790bfbfda4408d559341c9872bf48a4f6eab78157a3bf3efa6"
+      ruby_URL="$HOMEBREW_BOTTLE_DOMAIN/bottles-portable-ruby/portable-ruby-2.6.3_2.x86_64_linux.bottle.tar.gz"
+      ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.6.3_2/portable-ruby-2.6.3_2.x86_64_linux.bottle.tar.gz"
+      ruby_SHA="97e639a64dcec285392b53ad804b5334c324f1d2a8bdc2b5087b8bf8051e332f"
       ;;
   esac
 fi
@@ -144,7 +134,7 @@ EOS
 EOSCRIPT
 )"
   else
-    odie "Cannot verify the checksum ('shasum' or 'sha256sum' not found)!"
+    odie "Cannot verify checksum ('shasum' or 'sha256sum' not found)!"
   fi
 
   if [[ "$sha" != "$VENDOR_SHA" ]]
@@ -197,7 +187,7 @@ install() {
     then
       mv "$VENDOR_VERSION.reinstall" "$VENDOR_VERSION"
     fi
-    odie "Failed to vendor $VENDOR_NAME $VENDOR_VERSION."
+    odie "Failed to install $VENDOR_NAME $VENDOR_VERSION!"
   fi
 
   trap - SIGINT
@@ -222,13 +212,13 @@ homebrew-vendor-install() {
         [[ "$option" = *d* ]] && HOMEBREW_DEBUG=1
         ;;
       *)
-        [[ -n "$VENDOR_NAME" ]] && odie "This command does not take multiple vendor targets"
+        [[ -n "$VENDOR_NAME" ]] && odie "This command does not take multiple vendor targets!"
         VENDOR_NAME="$option"
         ;;
     esac
   done
 
-  [[ -z "$VENDOR_NAME" ]] && odie "This command requires one vendor target."
+  [[ -z "$VENDOR_NAME" ]] && odie "This command requires a vendor target!"
   [[ -n "$HOMEBREW_DEBUG" ]] && set -x
 
   url_var="${VENDOR_NAME}_URL"
@@ -237,16 +227,13 @@ homebrew-vendor-install() {
   VENDOR_URL="${!url_var}"
   VENDOR_URL2="${!url2_var}"
   VENDOR_SHA="${!sha_var}"
+  VENDOR_VERSION="$(<"$VENDOR_DIR/portable-$VENDOR_NAME-version")"
 
   if [[ -z "$VENDOR_URL" || -z "$VENDOR_SHA" ]]
   then
-    odie <<-EOS
-Cannot find a vendored version of $VENDOR_NAME for your $HOMEBREW_PROCESSOR
-processor on $HOMEBREW_PRODUCT!
-EOS
+    odie "No Homebrew $VENDOR_NAME $VENDOR_VERSION available for $HOMEBREW_PROCESSOR processors!"
   fi
 
-  VENDOR_VERSION="$(<"$VENDOR_DIR/portable-$VENDOR_NAME-version")"
   CACHED_LOCATION="$HOMEBREW_CACHE/$(basename "$VENDOR_URL")"
 
   lock "vendor-install-$VENDOR_NAME"

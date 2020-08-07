@@ -31,28 +31,29 @@ module Homebrew
   end
 
   def man
-    man_args.parse
+    args = man_args.parse
 
     odie "`brew man --link` is now done automatically by `brew update`." if args.link?
 
-    regenerate_man_pages
+    Commands.rebuild_internal_commands_completion_list
+    regenerate_man_pages(preserve_date: args.fail_if_changed?)
 
-    if system "git", "-C", HOMEBREW_REPOSITORY, "diff", "--quiet", "docs/Manpage.md", "manpages"
-      puts "No changes to manpage output detected."
+    if system "git", "-C", HOMEBREW_REPOSITORY, "diff", "--quiet", "docs/Manpage.md", "manpages", "completions"
+      puts "No changes to manpage or completions output detected."
     elsif args.fail_if_changed?
       Homebrew.failed = true
     end
   end
 
-  def regenerate_man_pages
+  def regenerate_man_pages(preserve_date:)
     Homebrew.install_bundler_gems!
 
     markup = build_man_page
-    convert_man_page(markup, TARGET_DOC_PATH/"Manpage.md")
-    convert_man_page(markup, TARGET_MAN_PATH/"brew.1")
+    convert_man_page(markup, TARGET_DOC_PATH/"Manpage.md", preserve_date: preserve_date)
+    convert_man_page(markup, TARGET_MAN_PATH/"brew.1", preserve_date: preserve_date)
 
     cask_markup = (SOURCE_PATH/"brew-cask.1.md").read
-    convert_man_page(cask_markup, TARGET_MAN_PATH/"brew-cask.1")
+    convert_man_page(cask_markup, TARGET_MAN_PATH/"brew-cask.1", preserve_date: preserve_date)
   end
 
   def build_man_page
@@ -63,6 +64,7 @@ module Homebrew
     variables[:developer_commands] = generate_cmd_manpages(Commands.internal_developer_commands_paths)
     variables[:official_external_commands] = generate_cmd_manpages(Commands.official_external_commands_paths)
     variables[:global_options] = global_options_manpage
+    variables[:environment_variables] = env_vars_manpage
 
     readme = HOMEBREW_REPOSITORY/"README.md"
     variables[:lead] =
@@ -92,14 +94,13 @@ module Homebrew
     path.basename.to_s.sub(/\.(rb|sh)$/, "").sub(/^--/, "~~")
   end
 
-  def convert_man_page(markup, target)
+  def convert_man_page(markup, target, preserve_date:)
     manual = target.basename(".1")
     organisation = "Homebrew"
 
     # Set the manpage date to the existing one if we're checking for changes.
     # This avoids the only change being e.g. a new date.
-    date = if args.fail_if_changed? &&
-              target.extname == ".1" && target.exist?
+    date = if preserve_date && target.extname == ".1" && target.exist?
       /"(\d{1,2})" "([A-Z][a-z]+) (\d{4})" "#{organisation}" "#{manual}"/ =~ target.read
       Date.parse("#{Regexp.last_match(1)} #{Regexp.last_match(2)} #{Regexp.last_match(3)}")
     else
@@ -122,10 +123,11 @@ module Homebrew
       ronn.close_write
       ronn_output = ronn.read
       odie "Got no output from ronn!" if ronn_output.blank?
-      if format_flag == "--markdown"
+      case format_flag
+      when "--markdown"
         ronn_output = ronn_output.gsub(%r{<var>(.*?)</var>}, "*`\\1`*")
                                  .gsub(/\n\n\n+/, "\n\n")
-      elsif format_flag == "--roff"
+      when "--roff"
         ronn_output = ronn_output.gsub(%r{<code>(.*?)</code>}, "\\fB\\1\\fR")
                                  .gsub(%r{<var>(.*?)</var>}, "\\fI\\1\\fR")
                                  .gsub(/(^\[?\\fB.+): /, "\\1\n    ")
@@ -145,7 +147,7 @@ module Homebrew
 
   def generate_cmd_manpages(cmd_paths)
     man_page_lines = []
-    man_args = Homebrew.args
+
     # preserve existing manpage order
     cmd_paths.sort_by(&method(:sort_key_for_path))
              .each do |cmd_path|
@@ -159,14 +161,14 @@ module Homebrew
 
       man_page_lines << cmd_man_page_lines
     end
-    Homebrew.args = man_args
+
     man_page_lines.compact.join("\n")
   end
 
   def cmd_parser_manpage_lines(cmd_parser)
     lines = [format_usage_banner(cmd_parser.usage_banner_text)]
     lines += cmd_parser.processed_options.map do |short, long, _, desc|
-      next if !long.nil? && cmd_parser.global_option?(cmd_parser.option_to_name(long), desc)
+      next if !long.nil? && Homebrew::CLI::Parser.global_options.include?([short, long, desc])
 
       generate_option_doc(short, long, desc)
     end.reject(&:blank?)
@@ -188,7 +190,7 @@ module Homebrew
       end
 
       # Omit the common global_options documented separately in the man page.
-      next if line.match?(/--(debug|force|help|quiet|verbose) /)
+      next if line.match?(/--(debug|help|quiet|verbose) /)
 
       # Format one option or a comma-separated pair of short and long options.
       lines << line.gsub(/^ +(-+[a-z-]+), (-+[a-z-]+) +/, "* `\\1`, `\\2`:\n  ")
@@ -200,16 +202,30 @@ module Homebrew
 
   def global_options_manpage
     lines = ["These options are applicable across multiple subcommands.\n"]
-    lines += Homebrew::CLI::Parser.global_options.values.map do |names, _, desc|
-      short, long = names
+    lines += Homebrew::CLI::Parser.global_options.map do |short, long, desc|
       generate_option_doc(short, long, desc)
+    end
+    lines.join("\n")
+  end
+
+  def env_vars_manpage
+    lines = Homebrew::EnvConfig::ENVS.flat_map do |env, hash|
+      entry = "  * `#{env}`:\n    #{hash[:description]}\n"
+      default = hash[:default_text]
+      default ||= "`#{hash[:default]}`." if hash[:default]
+      entry += "\n\n    *Default:* #{default}\n" if default
+
+      entry
     end
     lines.join("\n")
   end
 
   def generate_option_doc(short, long, desc)
     comma = (short && long) ? ", " : ""
-    "* #{format_short_opt(short)}" + comma + "#{format_long_opt(long)}:" + "\n  " + desc + "\n"
+    <<~EOS
+      * #{format_short_opt(short)}#{comma}#{format_long_opt(long)}:
+        #{desc}
+    EOS
   end
 
   def format_short_opt(opt)

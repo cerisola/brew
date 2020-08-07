@@ -201,6 +201,24 @@ describe RuboCop::Cop::FormulaAudit::OptionDeclarations do
     RUBY
   end
 
+  it "build.without? in dependencies" do
+    expect_offense(<<~RUBY)
+      class Foo < Formula
+        depends_on "bar" if build.without?("baz")
+                            ^^^^^^^^^^^^^^^^^^^^^ Use `:optional` or `:recommended` instead of `if build.without?("baz")`
+      end
+    RUBY
+  end
+
+  it "build.with? in dependencies" do
+    expect_offense(<<~RUBY)
+      class Foo < Formula
+        depends_on "bar" if build.with?("baz")
+                            ^^^^^^^^^^^^^^^^^^ Use `:optional` or `:recommended` instead of `if build.with?("baz")`
+      end
+    RUBY
+  end
+
   it "unless build.without? conditional" do
     expect_offense(<<~RUBY)
       class Foo < Formula
@@ -279,27 +297,14 @@ describe RuboCop::Cop::FormulaAudit::OptionDeclarations do
     RUBY
   end
 
-  it "build.include? conditional" do
+  it "build.include? deprecated" do
     expect_offense(<<~RUBY)
       class Foo < Formula
         desc "foo"
         url 'https://brew.sh/foo-1.0.tgz'
         def post_install
-          return if build.include? "without-bar"
-                                    ^^^^^^^^^^^ Use build.without? \"bar\" instead of build.include? 'without-bar'
-        end
-      end
-    RUBY
-  end
-
-  it "build.include? with dashed args conditional" do
-    expect_offense(<<~RUBY)
-      class Foo < Formula
-        desc "foo"
-        url 'https://brew.sh/foo-1.0.tgz'
-        def post_install
-          return if build.include? "--bar"
-                                    ^^^^^ Reference 'bar' without dashes
+          return if build.include? "foo"
+                    ^^^^^^^^^^^^^^^^^^^^ `build.include?` is deprecated
         end
       end
     RUBY
@@ -345,21 +350,239 @@ describe RuboCop::Cop::FormulaAudit::MpiCheck do
   end
 end
 
-describe RuboCop::Cop::FormulaAudit::Miscellaneous do
+describe RuboCop::Cop::FormulaAudit::SafePopenCommands do
   subject(:cop) { described_class.new }
 
-  context "When auditing formula" do
-    it "build-time checks in homebrew/core" do
-      expect_offense(<<~RUBY, "/homebrew-core/")
+  context "When auditing popen commands" do
+    it "Utils.popen_read should become Utils.safe_popen_read" do
+      expect_offense(<<~RUBY)
         class Foo < Formula
-          desc "foo"
-          url 'https://brew.sh/foo-1.0.tgz'
-          system "make", "-j1", "test"
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Formulae in homebrew/core (except e.g. cryptography, libraries) should not run build-time checks
+          def install
+            Utils.popen_read "foo"
+            ^^^^^^^^^^^^^^^^^^^^^^ Use `Utils.safe_popen_read` instead of `Utils.popen_read`
+          end
         end
       RUBY
     end
 
+    it "Utils.safe_popen_write should become Utils.popen_write" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.popen_write "foo"
+            ^^^^^^^^^^^^^^^^^^^^^^^ Use `Utils.safe_popen_write` instead of `Utils.popen_write`
+          end
+        end
+      RUBY
+    end
+
+    it "does not correct Utils.popen_read in test block" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          def install; end
+          test do
+            Utils.popen_read "foo"
+          end
+        end
+      RUBY
+    end
+
+    it "corrects Utils.popen_read to Utils.safe_popen_read" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen_read "foo"
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.safe_popen_read "foo"
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "corrects Utils.popen_write to Utils.safe_popen_write" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen_write "foo"
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.safe_popen_write "foo"
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "does not correct to Utils.safe_popen_read in test block" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install; end
+          test do
+            Utils.popen_write "foo"
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(source)
+    end
+  end
+end
+
+describe RuboCop::Cop::FormulaAudit::ShellVariables do
+  subject(:cop) { described_class.new }
+
+  context "When auditing shell variables" do
+    it "Shell variables should be expanded in Utils.popen" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.popen "SHELL=bash foo"
+                         ^^^^^^^^^^^^^^ Use `Utils.popen({ "SHELL" => "bash" }, "foo")` instead of `Utils.popen "SHELL=bash foo"`
+          end
+        end
+      RUBY
+    end
+
+    it "Shell variables should be expanded in Utils.safe_popen_read" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.safe_popen_read "SHELL=bash foo"
+                                   ^^^^^^^^^^^^^^ Use `Utils.safe_popen_read({ "SHELL" => "bash" }, "foo")` instead of `Utils.safe_popen_read "SHELL=bash foo"`
+          end
+        end
+      RUBY
+    end
+
+    it "Shell variables should be expanded in Utils.safe_popen_write" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.safe_popen_write "SHELL=bash foo"
+                                    ^^^^^^^^^^^^^^ Use `Utils.safe_popen_write({ "SHELL" => "bash" }, "foo")` instead of `Utils.safe_popen_write "SHELL=bash foo"`
+          end
+        end
+      RUBY
+    end
+
+    it "Shell variables should be expanded and keep inline string variables in the arguments" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.popen "SHELL=bash \#{bin}/foo"
+                         ^^^^^^^^^^^^^^^^^^^^^ Use `Utils.popen({ "SHELL" => "bash" }, "\#{bin}/foo")` instead of `Utils.popen "SHELL=bash \#{bin}/foo"`
+          end
+        end
+      RUBY
+    end
+
+    it "corrects shell variables in Utils.popen" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen("SHELL=bash foo")
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen({ "SHELL" => "bash" }, "foo")
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "corrects shell variables in Utils.safe_popen_read" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.safe_popen_read("SHELL=bash foo")
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.safe_popen_read({ "SHELL" => "bash" }, "foo")
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "corrects shell variables in Utils.safe_popen_write" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.safe_popen_write("SHELL=bash foo")
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.safe_popen_write({ "SHELL" => "bash" }, "foo")
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "corrects shell variables with inline string variable in arguments" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen("SHELL=bash \#{bin}/foo")
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen({ "SHELL" => "bash" }, "\#{bin}/foo")
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+  end
+end
+
+describe RuboCop::Cop::FormulaAudit::Miscellaneous do
+  subject(:cop) { described_class.new }
+
+  context "When auditing formula" do
     it "FileUtils usage" do
       expect_offense(<<~RUBY)
         class Foo < Formula
@@ -594,18 +817,6 @@ describe RuboCop::Cop::FormulaAudit::Miscellaneous do
         class Foo < Formula
           desc "foo"
           url 'https://brew.sh/foo-1.0.tgz'
-        end
-      RUBY
-    end
-
-    it "Using ARGV to check options" do
-      expect_no_offenses(<<~RUBY)
-        class Foo < Formula
-          desc "foo"
-          url 'https://brew.sh/foo-1.0.tgz'
-          def install
-            verbose = Homebrew.args.verbose?
-          end
         end
       RUBY
     end
@@ -858,6 +1069,272 @@ describe RuboCop::Cop::FormulaAudit::Miscellaneous do
           ^^^^^^^^^^^^^^^ Replace depends_on :foo unless build.include? "without-foo" with depends_on :foo => :recommended
         end
       RUBY
+    end
+  end
+end
+
+describe RuboCop::Cop::FormulaAuditStrict::MakeCheck do
+  subject(:cop) { described_class.new }
+
+  it "build-time checks in homebrew/core" do
+    expect_offense(<<~RUBY, "/homebrew-core/")
+      class Foo < Formula
+        desc "foo"
+        url 'https://brew.sh/foo-1.0.tgz'
+        system "make", "-j1", "test"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Formulae in homebrew/core (except e.g. cryptography, libraries) should not run build-time checks
+      end
+    RUBY
+  end
+
+  include_examples "formulae exist", described_class::MAKE_CHECK_ALLOWLIST
+end
+
+describe RuboCop::Cop::FormulaAuditStrict::ShellCommands do
+  subject(:cop) { described_class.new }
+
+  context "When auditing shell commands" do
+    it "system arguments should be separated" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            system "foo bar"
+                   ^^^^^^^^^ Separate `system` commands into `\"foo\", \"bar\"`
+          end
+        end
+      RUBY
+    end
+
+    it "system arguments with string interpolation should be separated" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            system "\#{bin}/foo bar"
+                   ^^^^^^^^^^^^^^^^ Separate `system` commands into `\"\#{bin}/foo\", \"bar\"`
+          end
+        end
+      RUBY
+    end
+
+    it "system arguments with metacharacters should not be separated" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          def install
+            system "foo bar > baz"
+          end
+        end
+      RUBY
+    end
+
+    it "only the first system argument should be separated" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          def install
+            system "foo", "bar baz"
+          end
+        end
+      RUBY
+    end
+
+    it "Utils.popen arguments should not be separated" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.popen("foo bar")
+          end
+        end
+      RUBY
+    end
+
+    it "Utils.popen_read arguments should be separated" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.popen_read("foo bar")
+                             ^^^^^^^^^ Separate `Utils.popen_read` commands into `\"foo\", \"bar\"`
+          end
+        end
+      RUBY
+    end
+
+    it "Utils.safe_popen_read arguments should be separated" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.safe_popen_read("foo bar")
+                                  ^^^^^^^^^ Separate `Utils.safe_popen_read` commands into `\"foo\", \"bar\"`
+          end
+        end
+      RUBY
+    end
+
+    it "Utils.popen_write arguments should be separated" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.popen_write("foo bar")
+                              ^^^^^^^^^ Separate `Utils.popen_write` commands into `\"foo\", \"bar\"`
+          end
+        end
+      RUBY
+    end
+
+    it "Utils.safe_popen_write arguments should be separated" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.safe_popen_write("foo bar")
+                                   ^^^^^^^^^ Separate `Utils.safe_popen_write` commands into `\"foo\", \"bar\"`
+          end
+        end
+      RUBY
+    end
+
+    it "Utils.popen_read arguments with string interpolation should be separated" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.popen_read("\#{bin}/foo bar")
+                             ^^^^^^^^^^^^^^^^ Separate `Utils.popen_read` commands into `\"\#{bin}/foo\", \"bar\"`
+          end
+        end
+      RUBY
+    end
+
+    it "Utils.popen_read arguments with metacharacters should not be separated" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.popen_read("foo bar > baz")
+          end
+        end
+      RUBY
+    end
+
+    it "only the first Utils.popen_read argument should be separated" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.popen_read("foo", "bar baz")
+          end
+        end
+      RUBY
+    end
+
+    it "Utils.popen_read arguments should be separated following a shell variable" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          def install
+            Utils.popen_read({ "SHELL" => "bash"}, "foo bar")
+                                                   ^^^^^^^^^ Separate `Utils.popen_read` commands into `\"foo\", \"bar\"`
+          end
+        end
+      RUBY
+    end
+
+    it "separates shell commands in system" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install
+            system "foo bar"
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          def install
+            system "foo", "bar"
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "separates shell commands with string interpolation in system" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install
+            system "\#{foo}/bar baz"
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          def install
+            system "\#{foo}/bar", "baz"
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "separates shell commands in Utils.popen_read" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen_read("foo bar")
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen_read("foo", "bar")
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "separates shell commands with string interpolation in Utils.popen_read" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen_read("\#{foo}/bar baz")
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen_read("\#{foo}/bar", "baz")
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "separates shell commands following a shell variable in Utils.popen_read" do
+      source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen_read({ "SHELL" => "bash" }, "foo bar")
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          def install
+            Utils.popen_read({ "SHELL" => "bash" }, "foo", "bar")
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
     end
   end
 end

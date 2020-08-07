@@ -9,12 +9,12 @@ module RuboCop
       # or if it doesn't, checks if a comment in the form
       # `# example.com was verified as official when first introduced to the cask`
       # is present.
-      class HomepageMatchesUrl < Cop # rubocop:disable Metrics/ClassLength
+      class HomepageMatchesUrl < Cop
         extend Forwardable
         include CaskHelp
 
         REFERENCE_URL =
-          "https://github.com/cerisola/homebrew-cask/blob/master/doc/" \
+          "https://github.com/cerisola/homebrew-cask/blob/HEAD/doc/" \
           "cask_language_reference/stanzas/url.md#when-url-and-homepage-hostnames-differ-add-a-comment"
 
         COMMENT_FORMAT = /# [^ ]+ was verified as official when first introduced to the cask/.freeze
@@ -40,6 +40,7 @@ module RuboCop
         private
 
         attr_reader :cask_block
+
         def_delegators :cask_block, :cask_node, :toplevel_stanzas,
                        :sorted_toplevel_stanzas
 
@@ -128,12 +129,18 @@ module RuboCop
           string = stanza.stanza_node.children[2]
           return string.str_content if string.str_type?
 
-          string.to_s.gsub(%r{.*"([a-z0-9]+\:\/\/[^"]+)".*}m, '\1')
+          string.to_s.gsub(%r{.*"([a-z0-9]+://[^"]+)".*}m, '\1')
         end
 
         def url_match_homepage?(stanza)
           host = extract_url(stanza).downcase
-          host_uri = URI(remove_non_ascii(host))
+          host_uri = begin
+            URI(remove_non_ascii(host))
+          rescue URI::InvalidURIError
+            # Can't check if we can't parse.
+            return true
+          end
+
           host = if host.match?(/:\d/) && host_uri.port != 80
             "#{host_uri.host}:#{host_uri.port}"
           else
@@ -141,10 +148,10 @@ module RuboCop
           end
           home = homepage.downcase
           if (split_host = host.split(".")).length >= 3
-            host = split_host[-2..-1].join(".")
+            host = split_host[-2..].join(".")
           end
           if (split_home = homepage.split(".")).length >= 3
-            home = split_home[-2..-1].join(".")
+            home = split_home[-2..].join(".")
           end
           host == home
         end

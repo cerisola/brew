@@ -7,11 +7,12 @@ require "install"
 require "search"
 require "cleanup"
 require "cli/parser"
+require "upgrade"
 
 module Homebrew
-  module_function
-
   extend Search
+
+  module_function
 
   def install_args
     Homebrew::CLI::Parser.new do
@@ -23,7 +24,7 @@ module Homebrew
         Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for the
         installed formulae or, every 30 days, for all formulae.
       EOS
-      switch :debug,
+      switch "-d", "--debug",
              description: "If brewing fails, open an interactive debugging session with access to IRB "\
                           "or a shell inside the temporary build directory."
       flag   "--env=",
@@ -70,10 +71,10 @@ module Homebrew
              depends_on:  "--build-bottle",
              description: "Optimise bottles for the specified architecture rather than the oldest "\
                           "architecture supported by the version of macOS the bottles are built on."
-      switch :force,
+      switch "-f", "--force",
              description: "Install without checking for previously installed keg-only or "\
                           "non-migrated versions."
-      switch :verbose,
+      switch "-v", "--verbose",
              description: "Print the verification and postinstall steps."
       switch "--display-times",
              env:         :display_install_times,
@@ -93,7 +94,7 @@ module Homebrew
   end
 
   def install
-    install_args.parse
+    args = install_args.parse
 
     args.named.each do |name|
       next if File.exist?(name)
@@ -114,13 +115,13 @@ module Homebrew
 
     formulae = []
 
-    unless ARGV.casks.empty?
+    unless args.casks.empty?
       cask_args = []
       cask_args << "--force" if args.force?
       cask_args << "--debug" if args.debug?
       cask_args << "--verbose" if args.verbose?
 
-      ARGV.casks.each do |c|
+      args.casks.each do |c|
         ohai "brew cask install #{c} #{cask_args.join " "}"
         system("#{HOMEBREW_PREFIX}/bin/brew", "cask", "install", c, *cask_args)
       end
@@ -128,7 +129,7 @@ module Homebrew
 
     # if the user's flags will prevent bottle only-installations when no
     # developer tools are available, we need to stop them early on
-    FormulaInstaller.prevent_build_flags unless DevelopmentTools.installed?
+    FormulaInstaller.prevent_build_flags(args)
 
     args.formulae.each do |f|
       # head-only without --HEAD is an error
@@ -152,7 +153,7 @@ module Homebrew
       end
 
       # --HEAD, fail with no head defined
-      raise "No head is defined for #{f.full_name}" if args.head? && f.head.nil?
+      raise "No head is defined for #{f.full_name}" if args.HEAD? && f.head.nil?
 
       # --devel, fail with no devel defined
       raise "No devel block is defined for #{f.full_name}" if args.devel? && f.devel.nil?
@@ -254,19 +255,23 @@ module Homebrew
 
     return if formulae.empty?
 
-    Install.perform_preinstall_checks
+    Install.perform_preinstall_checks(cc: args.cc)
 
     formulae.each do |f|
-      Migrator.migrate_if_needed(f)
-      install_formula(f)
+      Migrator.migrate_if_needed(f, force: args.force?)
+      install_formula(f, args: args)
       Cleanup.install_formula_clean!(f)
     end
-    Homebrew.messages.display_messages
+
+    check_installed_dependents(args: args)
+
+    Homebrew.messages.display_messages(display_times: args.display_times?)
   rescue FormulaUnreadableError, FormulaClassUnavailableError,
          TapFormulaUnreadableError, TapFormulaClassUnavailableError => e
     # Need to rescue before `FormulaUnavailableError` (superclass of this)
     # is handled, as searching for a formula doesn't make sense here (the
     # formula was found, but there's a problem with its implementation).
+    $stderr.puts e.backtrace if Homebrew::EnvConfig.developer?
     ofail e.message
   rescue FormulaUnavailableError => e
     if e.name == "updog"
@@ -314,18 +319,27 @@ module Homebrew
     end
   end
 
-  def install_formula(f)
+  def install_formula(f, args:)
     f.print_tap_action
     build_options = f.build
 
-    fi = FormulaInstaller.new(f)
+    fi = FormulaInstaller.new(f, force_bottle:               args.force_bottle?,
+                                 include_test_formulae:      args.include_test_formulae,
+                                 build_from_source_formulae: args.build_from_source_formulae,
+                                 debug: args.debug?, quiet: args.quiet?, verbose: args.verbose?)
     fi.options              = build_options.used_options
+    fi.env                  = args.env
+    fi.force                = args.force?
+    fi.keep_tmp             = args.keep_tmp?
     fi.ignore_deps          = args.ignore_dependencies?
     fi.only_deps            = args.only_dependencies?
     fi.build_bottle         = args.build_bottle?
+    fi.bottle_arch          = args.bottle_arch
     fi.interactive          = args.interactive?
     fi.git                  = args.git?
+    fi.cc                   = args.cc
     fi.prelude
+    fi.fetch
     fi.install
     fi.finish
   rescue FormulaInstallationAlreadyAttemptedError

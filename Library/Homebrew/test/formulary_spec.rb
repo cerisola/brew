@@ -16,7 +16,7 @@ describe Formulary do
         bottle do
           cellar :any_skip_relocation
           root_url "file://#{bottle_dir}"
-          sha256 "d48bbbe583dcfbfa608579724fc6f0328b3cd316935c6ea22f134610aaf2952f" => :#{Utils::Bottles.tag}
+          sha256 "8f9aecd233463da6a4ea55f5f88fc5841718c013f3e2a7941350d6130f1dc149" => :#{Utils::Bottles.tag}
         end
 
         def install
@@ -149,6 +149,7 @@ describe Formulary do
       let(:installer) { FormulaInstaller.new(installed_formula) }
 
       it "returns a Formula when given a rack" do
+        installer.fetch
         installer.install
 
         f = described_class.from_rack(installed_formula.rack)
@@ -156,6 +157,7 @@ describe Formulary do
       end
 
       it "returns a Formula when given a Keg" do
+        installer.fetch
         installer.install
 
         keg = Keg.new(installed_formula.prefix)
@@ -229,22 +231,6 @@ describe Formulary do
       expect {
         described_class.to_rack("a/b/#{formula_name}")
       }.to raise_error(TapFormulaUnavailableError)
-    end
-  end
-
-  describe "::find_with_priority" do
-    let(:core_path) { CoreTap.new.formula_dir/"#{formula_name}.rb" }
-    let(:tap) { Tap.new("homebrew", "foo") }
-    let(:tap_path) { tap.path/"#{formula_name}.rb" }
-
-    before do
-      core_path.write formula_content
-      tap_path.write formula_content
-    end
-
-    it "prioritizes core Formulae" do
-      formula = described_class.find_with_priority(formula_name)
-      expect(formula.path).to eq(core_path)
     end
   end
 

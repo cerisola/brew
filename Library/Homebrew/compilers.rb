@@ -2,8 +2,8 @@
 
 # @private
 module CompilerConstants
-  GNU_GCC_VERSIONS = %w[4.9 5 6 7 8 9].freeze
-  GNU_GCC_REGEXP = /^gcc-(4\.9|[5-9])$/.freeze
+  GNU_GCC_VERSIONS = %w[4.9 5 6 7 8 9 10].freeze
+  GNU_GCC_REGEXP = /^gcc-(4\.9|[5-9]|10)$/.freeze
   COMPILER_SYMBOL_MAP = {
     "gcc"        => :gcc,
     "clang"      => :clang,
@@ -106,7 +106,7 @@ class CompilerSelector
 
   def gnu_gcc_versions
     # prioritize gcc version provided by gcc formula.
-    v = Formulary.factory("gcc").version.to_s.slice(/\d/)
+    v = Formulary.factory("gcc").version.to_s.slice(/\d+/)
     GNU_GCC_VERSIONS - [v] + [v] # move the version to the end of the list
   rescue FormulaUnavailableError
     GNU_GCC_VERSIONS

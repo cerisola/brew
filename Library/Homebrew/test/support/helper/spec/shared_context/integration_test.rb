@@ -46,7 +46,7 @@ RSpec.shared_context "integration test" do
 
     example.run
   ensure
-    FileUtils.rm_r HOMEBREW_PREFIX/"bin"
+    FileUtils.rm_rf HOMEBREW_PREFIX/"bin"
   end
 
   # Generate unique ID to be able to
@@ -161,6 +161,12 @@ RSpec.shared_context "integration test" do
       content = <<~RUBY
         url "https://brew.sh/#{name}-1.0"
       RUBY
+
+    when "package_license"
+      content = <<~RUBY
+        url "https://brew.sh/#patchelf-1.0"
+        license "0BSD"
+      RUBY
     end
 
     Formulary.core_path(name).tap do |formula_path|
@@ -177,6 +183,7 @@ RSpec.shared_context "integration test" do
     fi = FormulaInstaller.new(Formula[name])
     fi.build_bottle = build_bottle
     fi.prelude
+    fi.fetch
     fi.install
     fi.finish
   end
@@ -186,7 +193,7 @@ RSpec.shared_context "integration test" do
     path.mkpath
     path.cd do
       system "git", "init"
-      system "git", "remote", "add", "origin", "https://github.com/Homebrew/homebrew-foo"
+      system "git", "remote", "add", "origin", "https://github.com/cerisola/homebrew-foo"
       FileUtils.touch "readme"
       system "git", "add", "--all"
       system "git", "commit", "-m", "init"

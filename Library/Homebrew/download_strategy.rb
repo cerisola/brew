@@ -13,6 +13,7 @@ require "mechanize/http/content_disposition_parser"
 class AbstractDownloadStrategy
   extend Forwardable
   include FileUtils
+  include Context
 
   module Pourable
     def stage
@@ -21,9 +22,9 @@ class AbstractDownloadStrategy
     end
   end
 
-  attr_reader :cache, :cached_location, :url
-  attr_reader :meta, :name, :version, :shutup
-  private :meta, :name, :version, :shutup
+  attr_reader :cache, :cached_location, :url, :meta, :name, :version
+
+  private :meta, :name, :version
 
   def initialize(url, name, version, **meta)
     @url = url
@@ -31,24 +32,18 @@ class AbstractDownloadStrategy
     @version = version
     @cache = meta.fetch(:cache, HOMEBREW_CACHE)
     @meta = meta
-    @shutup = false
     extend Pourable if meta[:bottle]
   end
 
   # Download and cache the resource as {#cached_location}.
   def fetch; end
 
-  # Suppress output
-  def shutup!
-    @shutup = true
-  end
-
   def puts(*args)
-    super(*args) unless shutup
+    super(*args) unless quiet?
   end
 
   def ohai(*args)
-    super(*args) unless shutup
+    super(*args) unless quiet?
   end
 
   # Unpack {#cached_location} into the current working directory, and possibly
@@ -60,7 +55,7 @@ class AbstractDownloadStrategy
                           ref_type: @ref_type, ref: @ref)
                   .extract_nestedly(basename:             basename,
                                     prioritise_extension: true,
-                                    verbose:              Homebrew.args.verbose? && !shutup)
+                                    verbose:              verbose? && !quiet?)
     chdir
   end
 
@@ -102,9 +97,9 @@ class AbstractDownloadStrategy
   def system_command!(*args, **options)
     super(
       *args,
-      print_stdout: !shutup,
-      print_stderr: !shutup,
-      verbose:      Homebrew.args.verbose? && !shutup,
+      print_stdout: !quiet?,
+      print_stderr: !quiet?,
+      verbose:      verbose? && !quiet?,
       env:          env,
       **options,
     )
@@ -220,7 +215,7 @@ class AbstractFileDownloadStrategy < AbstractDownloadStrategy
   end
 
   def basename
-    cached_location.basename.sub(/^[\da-f]{64}\-\-/, "")
+    cached_location.basename.sub(/^[\da-f]{64}--/, "")
   end
 
   private
@@ -326,6 +321,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
     end
   ensure
     download_lock&.unlock
+    download_lock&.path&.unlink
   end
 
   def clear_cache
@@ -344,8 +340,8 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
     @resolved_info_cache ||= {}
     return @resolved_info_cache[url] if @resolved_info_cache.include?(url)
 
-    if ENV["HOMEBREW_ARTIFACT_DOMAIN"]
-      url = url.sub(%r{^((ht|f)tps?://)?}, ENV["HOMEBREW_ARTIFACT_DOMAIN"].chomp("/") + "/")
+    if (domain = Homebrew::EnvConfig.artifact_domain)
+      url = url.sub(%r{^((ht|f)tps?://)?}, domain.chomp("/") + "/")
     end
 
     out, _, status= curl_output("--location", "--silent", "--head", "--request", "GET", url.to_s)
@@ -373,7 +369,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
     content_disposition_parser = Mechanize::HTTP::ContentDispositionParser.new
 
     parse_content_disposition = lambda do |line|
-      next unless content_disposition = content_disposition_parser.parse(line, true)
+      next unless content_disposition = content_disposition_parser.parse(line.sub(/; *$/, ""), true)
 
       filename = nil
 
@@ -388,7 +384,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
     filenames = lines.map(&parse_content_disposition).compact
 
     time =
-      lines.map { |line| line[/^Last\-Modified:\s*(.+)/i, 1] }
+      lines.map { |line| line[/^Last-Modified:\s*(.+)/i, 1] }
            .compact
            .map { |t| t.match?(/^\d+$/) ? Time.at(t.to_i) : Time.parse(t) }
            .last
@@ -401,7 +397,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
   def _fetch(url:, resolved_url:)
     ohai "Downloading from #{resolved_url}" if url != resolved_url
 
-    if ENV["HOMEBREW_NO_INSECURE_REDIRECT"] &&
+    if Homebrew::EnvConfig.no_insecure_redirect? &&
        url.start_with?("https://") && !resolved_url.start_with?("https://")
       $stderr.puts "HTTPS to HTTP redirect detected & HOMEBREW_NO_INSECURE_REDIRECT is set."
       raise CurlDownloadStrategyError, url
@@ -421,7 +417,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
 
     args += ["--user", meta.fetch(:user)] if meta.key?(:user)
 
-    args += ["--header", meta.fetch(:header)] if meta.key?(:header)
+    args += [meta[:header], meta[:headers]].flatten.compact.flat_map { |h| ["--header", h.strip] }
 
     args
   end
@@ -497,7 +493,7 @@ class NoUnzipCurlDownloadStrategy < CurlDownloadStrategy
   def stage
     UnpackStrategy::Uncompressed.new(cached_location)
                                 .extract(basename: basename,
-                                         verbose:  Homebrew.args.verbose? && !shutup)
+                                         verbose:  verbose? && !quiet?)
   end
 end
 
@@ -552,7 +548,7 @@ class SubversionDownloadStrategy < VCSDownloadStrategy
     # This saves on bandwidth and will have a similar effect to verifying the
     # cache as it will make any changes to get the right revision.
     args = []
-    args << "--quiet" unless Homebrew.args.verbose?
+    args << "--quiet" unless verbose?
 
     if revision
       ohai "Checking out #{@ref}"
@@ -601,7 +597,7 @@ class SubversionDownloadStrategy < VCSDownloadStrategy
 end
 
 class GitDownloadStrategy < VCSDownloadStrategy
-  SHALLOW_CLONE_WHITELIST = [
+  SHALLOW_CLONE_ALLOWLIST = [
     %r{git://},
     %r{https://github\.com},
     %r{http://git\.sv\.gnu\.org},
@@ -612,7 +608,7 @@ class GitDownloadStrategy < VCSDownloadStrategy
     super
     @ref_type ||= :branch
     @ref ||= "master"
-    @shallow = meta.fetch(:shallow) { true }
+    @shallow = meta.fetch(:shallow, true)
   end
 
   def source_modified_time
@@ -652,7 +648,7 @@ class GitDownloadStrategy < VCSDownloadStrategy
   end
 
   def support_depth?
-    @ref_type != :revision && SHALLOW_CLONE_WHITELIST.any? { |regex| @url =~ regex }
+    @ref_type != :revision && SHALLOW_CLONE_ALLOWLIST.any? { |regex| @url =~ regex }
   end
 
   def git_dir
@@ -783,7 +779,7 @@ class GitDownloadStrategy < VCSDownloadStrategy
 
       git_dir = dot_git.read.chomp[/^gitdir: (.*)$/, 1]
       if git_dir.nil?
-        onoe "Failed to parse '#{dot_git}'." if ARGV.homebrew_developer?
+        onoe "Failed to parse '#{dot_git}'." if Homebrew::EnvConfig.developer?
         next
       end
 
@@ -808,7 +804,7 @@ class GitHubGitDownloadStrategy < GitDownloadStrategy
   end
 
   def github_last_commit
-    return if ENV["HOMEBREW_NO_GITHUB_API"]
+    return if Homebrew::EnvConfig.no_github_api?
 
     output, _, status = curl_output(
       "--silent", "--head", "--location",
@@ -818,13 +814,13 @@ class GitHubGitDownloadStrategy < GitDownloadStrategy
 
     return unless status.success?
 
-    commit = output[/^ETag: \"(\h+)\"/, 1]
+    commit = output[/^ETag: "(\h+)"/, 1]
     version.update_commit(commit) if commit
     commit
   end
 
   def multiple_short_commits_exist?(commit)
-    return if ENV["HOMEBREW_NO_GITHUB_API"]
+    return if Homebrew::EnvConfig.no_github_api?
 
     output, _, status = curl_output(
       "--silent", "--head", "--location",
@@ -896,7 +892,7 @@ class CVSDownloadStrategy < VCSDownloadStrategy
   end
 
   def quiet_flag
-    "-Q" unless Homebrew.args.verbose?
+    "-Q" unless verbose?
   end
 
   def clone_repo
@@ -1062,7 +1058,7 @@ end
 
 class DownloadStrategyDetector
   def self.detect(url, using = nil)
-    strategy = if using.nil?
+    if using.nil?
       detect_from_url(url)
     elsif using.is_a?(Class) && using < AbstractDownloadStrategy
       using
@@ -1070,10 +1066,8 @@ class DownloadStrategyDetector
       detect_from_symbol(using)
     else
       raise TypeError,
-            "Unknown download strategy specification #{strategy.inspect}"
+            "Unknown download strategy specification #{using.inspect}"
     end
-
-    strategy
   end
 
   def self.detect_from_url(url)

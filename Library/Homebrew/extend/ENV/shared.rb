@@ -29,8 +29,11 @@ module SharedEnvExtension
   ].freeze
 
   # @private
-  def setup_build_environment(formula = nil)
+  def setup_build_environment(formula: nil, cc: nil, build_bottle: false, bottle_arch: nil)
     @formula = formula
+    @cc = cc
+    @build_bottle = build_bottle
+    @bottle_arch = bottle_arch
     reset
   end
 
@@ -162,7 +165,7 @@ module SharedEnvExtension
   #   ENV.append_to_cflags "-I ./missing/includes"
   # end</pre>
   def compiler
-    @compiler ||= if (cc = ARGV.cc)
+    @compiler ||= if (cc = @cc)
       warn_about_non_apple_gcc($&) if cc =~ GNU_GCC_REGEXP
       fetch_compiler(cc, "--cc")
     elsif (cc = homebrew_cc)
@@ -235,20 +238,6 @@ module SharedEnvExtension
       ohai "Building with an alternative Fortran compiler"
       puts "This is unsupported."
       self["F77"] ||= fc
-
-      if ARGV.include? "--default-fortran-flags"
-        flags = FC_FLAG_VARS.reject { |key| self[key] }
-      elsif values_at(*FC_FLAG_VARS).compact.empty?
-        opoo <<~EOS
-          No Fortran optimization information was provided.  You may want to consider
-          setting FCFLAGS and FFLAGS or pass the `--default-fortran-flags` option to
-          `brew install` if your compiler is compatible with GCC.
-
-          If you like the default optimization level of your compiler, ignore this
-          warning.
-        EOS
-      end
-
     else
       if (gfortran = which("gfortran", (HOMEBREW_PREFIX/"bin").to_s))
         ohai "Using Homebrew-provided Fortran compiler."
@@ -268,8 +257,8 @@ module SharedEnvExtension
 
   # @private
   def effective_arch
-    if ARGV.build_bottle? && ARGV.bottle_arch
-      ARGV.bottle_arch
+    if @build_bottle && @bottle_arch
+      @bottle_arch.to_sym
     else
       Hardware.oldest_cpu
     end

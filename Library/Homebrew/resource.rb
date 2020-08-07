@@ -9,6 +9,7 @@ require "mktemp"
 # primary formula download, along with other declared resources, are instances
 # of this class.
 class Resource
+  include Context
   include FileUtils
 
   attr_reader :mirrors, :specs, :using, :source_modified_time, :patches, :owner
@@ -55,6 +56,10 @@ class Resource
     "#{owner.name}--#{escaped_name}"
   end
 
+  def downloaded?
+    cached_download.exist?
+  end
+
   def cached_download
     downloader.cached_location
   end
@@ -68,16 +73,23 @@ class Resource
   # directory. Subclasses that override stage should implement the tmp
   # dir using {Mktemp} so that works with all subtypes.
   def stage(target = nil, &block)
-    raise ArgumentError, "target directory or block is required" unless target || block
+    raise ArgumentError, "target directory or block is required" if !target && block.blank?
 
-    fetch
     prepare_patches
+    fetch_patches(skip_downloaded: true)
+    fetch unless downloaded?
+
     unpack(target, &block)
   end
 
   def prepare_patches
     patches.grep(DATAPatch) { |p| p.path = owner.owner.path }
-    patches.select(&:external?).each(&:fetch)
+  end
+
+  def fetch_patches(skip_downloaded: false)
+    external_patches = patches.select(&:external?)
+    external_patches.reject!(&:downloaded?) if skip_downloaded
+    external_patches.each(&:fetch)
   end
 
   def apply_patches
@@ -114,6 +126,8 @@ class Resource
   def fetch(verify_download_integrity: true)
     HOMEBREW_CACHE.mkpath
 
+    fetch_patches
+
     begin
       downloader.fetch
     rescue ErrorDuringExecution, CurlDownloadStrategyError => e
@@ -127,7 +141,7 @@ class Resource
 
   def verify_download_integrity(fn)
     if fn.file?
-      ohai "Verifying #{fn.basename} checksum" if Homebrew.args.verbose?
+      ohai "Verifying #{fn.basename} checksum" if verbose?
       fn.verify_checksum(checksum)
     end
   rescue ChecksumMissingError
@@ -164,6 +178,18 @@ class Resource
     p = Patch.create(strip, src, &block)
     patches << p
   end
+
+  # Block only executed on macOS. No-op on Linux.
+  # <pre>on_macos do
+  #   url "mac_only_url"
+  # end</pre>
+  def on_macos(&_block); end
+
+  # Block only executed on Linux. No-op on macOS.
+  # <pre>on_linux do
+  #   url "linux_only_url"
+  # end</pre>
+  def on_linux(&_block); end
 
   protected
 
@@ -239,3 +265,5 @@ class ResourceStageContext
     "<#{self.class}: resource=#{resource} staging=#{staging}>"
   end
 end
+
+require "extend/os/resource"

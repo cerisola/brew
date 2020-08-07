@@ -14,14 +14,11 @@ module Homebrew
         Open <formula> in the editor set by `EDITOR` or `HOMEBREW_EDITOR`, or open the
         Homebrew repository for editing if no formula is provided.
       EOS
-      switch :force
-      switch :verbose
-      switch :debug
     end
   end
 
   def edit
-    edit_args.parse
+    args = edit_args.parse
 
     unless (HOMEBREW_REPOSITORY/".git").directory?
       raise <<~EOS
@@ -31,16 +28,10 @@ module Homebrew
       EOS
     end
 
+    paths = args.formulae_paths.presence
+
     # If no brews are listed, open the project root in an editor.
-    paths = [HOMEBREW_REPOSITORY] if args.no_named?
-
-    # Don't use args.formulae as that will throw if the file doesn't parse
-    paths ||= args.named.map do |name|
-      path = Formulary.path(name)
-      raise FormulaUnavailableError, name if !path.file? && !args.force?
-
-      path
-    end
+    paths ||= [HOMEBREW_REPOSITORY]
 
     exec_editor(*paths)
   end

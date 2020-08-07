@@ -8,10 +8,16 @@ class MacOSRequirement < Requirement
   attr_reader :comparator, :version
 
   def initialize(tags = [], comparator: ">=")
-    if comparator == "==" && tags.first.respond_to?(:map)
-      @version = tags.shift.map { |s| MacOS::Version.from_symbol(s) }
-    else
-      @version = MacOS::Version.from_symbol(tags.shift) unless tags.empty?
+    begin
+      @version = if comparator == "==" && tags.first.respond_to?(:map)
+        tags.shift.map { |s| MacOS::Version.from_symbol(s) }
+      else
+        MacOS::Version.from_symbol(tags.shift) unless tags.empty?
+      end
+    rescue MacOSVersionError => e
+      raise if e.version != :mavericks
+
+      odeprecated "depends_on :macos => :mavericks"
     end
 
     @comparator = comparator
@@ -23,7 +29,7 @@ class MacOSRequirement < Requirement
   end
 
   satisfy(build_env: false) do
-    next [*@version].any? { |v| MacOS.version.public_send(@comparator, v) } if version_specified?
+    next Array(@version).any? { |v| MacOS.version.public_send(@comparator, v) } if version_specified?
     next true if OS.mac?
     next true if @version
 

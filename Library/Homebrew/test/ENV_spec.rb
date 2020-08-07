@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "cli/args"
 require "extend/ENV"
 
 shared_examples EnvActivation do

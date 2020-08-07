@@ -3,6 +3,8 @@
 require "formula"
 
 class FormulaVersions
+  include Context
+
   IGNORED_EXCEPTIONS = [
     ArgumentError, NameError, SyntaxError, TypeError,
     FormulaSpecificationError, FormulaValidationError,
@@ -44,7 +46,7 @@ class FormulaVersions
   rescue *IGNORED_EXCEPTIONS => e
     # We rescue these so that we can skip bad versions and
     # continue walking the history
-    odebug "#{e} in #{name} at revision #{rev}", e.backtrace if ARGV.debug?
+    odebug "#{e} in #{name} at revision #{rev}", e.backtrace if debug?
   rescue FormulaUnavailableError
     nil
   ensure
@@ -64,67 +66,5 @@ class FormulaVersions
       return map if versions_seen > MAX_VERSIONS_DEPTH
     end
     map
-  end
-
-  def previous_version_and_checksum(branch)
-    map = {}
-
-    rev_list(branch) do |rev|
-      formula_at_revision(rev) do |f|
-        [:stable, :devel].each do |spec_sym|
-          next unless spec = f.send(spec_sym)
-
-          map[spec_sym] ||= { version: spec.version, checksum: spec.checksum }
-        end
-      end
-
-      break if map[:stable] || map[:devel]
-    end
-
-    map[:stable] ||= {}
-    map[:devel] ||= {}
-
-    map
-  end
-
-  def version_attributes_map(attributes, branch)
-    attributes_map = {}
-    return attributes_map if attributes.empty?
-
-    attributes.each do |attribute|
-      attributes_map[attribute] ||= {
-        stable: {},
-        devel:  {},
-      }
-    end
-
-    stable_versions_seen = 0
-    rev_list(branch) do |rev|
-      formula_at_revision(rev) do |f|
-        attributes.each do |attribute|
-          map = attributes_map[attribute]
-          set_attribute_map(map, f, attribute)
-
-          stable_keys_length = (map[:stable].keys + [f.version]).uniq.length
-          stable_versions_seen = [stable_versions_seen, stable_keys_length].max
-        end
-      end
-      break if stable_versions_seen > MAX_VERSIONS_DEPTH
-    end
-
-    attributes_map
-  end
-
-  private
-
-  def set_attribute_map(map, f, attribute)
-    if f.stable
-      map[:stable][f.stable.version] ||= []
-      map[:stable][f.stable.version] << f.send(attribute)
-    end
-    return unless f.devel
-
-    map[:devel][f.devel.version] ||= []
-    map[:devel][f.devel.version] << f.send(attribute)
   end
 end

@@ -41,4 +41,38 @@ describe GitHub do
       expect(results.first["title"]).to eq("Shall we run `brew update` automatically?")
     end
   end
+
+  describe "::approved_reviews", :needs_network do
+    it "can get reviews for a pull request" do
+      reviews = subject.approved_reviews("Homebrew", "homebrew-core", 1, commit: "deadbeef")
+      expect(reviews).to eq([])
+    end
+  end
+
+  describe "::sponsors_by_tier", :needs_network do
+    it "errors on an unauthenticated token" do
+      expect {
+        subject.sponsors_by_tier("Homebrew")
+      }.to raise_error(/INSUFFICIENT_SCOPES|FORBIDDEN/)
+    end
+  end
+
+  describe "::get_artifact_url", :needs_network do
+    it "fails to find a nonexistant workflow" do
+      expect {
+        subject.get_artifact_url("Homebrew", "homebrew-core", 1)
+      }.to raise_error(/No matching workflow run found/)
+    end
+
+    it "fails to find artifacts that don't exist" do
+      expect {
+        subject.get_artifact_url("Homebrew", "homebrew-core", 51971, artifact_name: "false_bottles")
+      }.to raise_error(/No artifact .+ was found/)
+    end
+
+    it "gets an artifact link" do
+      url = subject.get_artifact_url("Homebrew", "homebrew-core", 51971, artifact_name: "bottles")
+      expect(url).to eq("https://api.github.com/repos/Homebrew/homebrew-core/actions/artifacts/3557392/zip")
+    end
+  end
 end

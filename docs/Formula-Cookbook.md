@@ -11,7 +11,7 @@ A *formula* is a package definition written in Ruby. It can be created with `bre
 | **opt prefix** | A symlink to the active version of a **Keg**               | `/usr/local/opt/foo `                                           |
 | **Cellar**     | All **Kegs** are installed here                            | `/usr/local/Cellar`                                             |
 | **Tap**        | A Git repository of **Formulae** and/or commands | `/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core`   |
-| **Bottle**     | Pre-built **Keg** used instead of building from source     | `qt-4.8.4.mavericks.bottle.tar.gz`                              |
+| **Bottle**     | Pre-built **Keg** used instead of building from source     | `qt-4.8.4.catalina.bottle.tar.gz`                              |
 | **Cask**       | An [extension of Homebrew](https://github.com/Homebrew/homebrew-cask) to install macOS native apps  | `/Applications/MacDown.app/Contents/SharedSupport/bin/macdown` |
 | **Brew Bundle**| An [extension of Homebrew](https://github.com/Homebrew/homebrew-bundle) to describe dependencies    | `brew 'myservice', restart_service: true` |
 
@@ -21,7 +21,7 @@ Homebrew uses Git for downloading updates and contributing to the project.
 
 Homebrew installs to the `Cellar` and then symlinks some of the installation into `/usr/local` so that other programs can see what's going on. We suggest you `brew ls` a few of the kegs in your Cellar to see how it is all arranged.
 
-Packages are installed according to their formulae, which live in `/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/Formula`. Check out a simple one, e.g. `brew edit etl` (or [`etl`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/etl.rb)) or a more advanced one, e.g. `brew edit git` (or [`git`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/git.rb)).
+Packages are installed according to their formulae, which live in `/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/Formula`. Check out a simple one, e.g. `brew edit etl` (or [`etl`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/etl.rb)) or a more advanced one, e.g. `brew edit git` (or [`git`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/git.rb)).
 
 ## Basic instructions
 
@@ -36,7 +36,7 @@ Before submitting a new formula make sure your package:
 * has a stable, tagged version (i.e. not just a GitHub repository with no versions)
 * passes all `brew audit --new-formula <formula>` tests
 
-Before submitting a new formula make sure you read over our [contribution guidelines](https://github.com/Homebrew/brew/blob/master/CONTRIBUTING.md#contributing-to-homebrew).
+Before submitting a new formula make sure you read over our [contribution guidelines](https://github.com/Homebrew/brew/blob/HEAD/CONTRIBUTING.md#contributing-to-homebrew).
 
 ### Grab the URL
 
@@ -54,6 +54,7 @@ class Foo < Formula
   homepage ""
   url "https://example.com/foo-0.1.tar.gz"
   sha256 "85cc828a96735bdafcf29eb6291ca91bac846579bcef7308536e0c875d6c81d7"
+  license ""
 
   # depends_on "cmake" => :build
 
@@ -86,6 +87,22 @@ An SSL/TLS (https) [`homepage`](https://rubydoc.brew.sh/Formula#homepage%3D-clas
 
 Try to summarise from the [`homepage`](https://rubydoc.brew.sh/Formula#homepage%3D-class_method) what the formula does in the [`desc`](https://rubydoc.brew.sh/Formula#desc%3D-class_method)ription. Note that the [`desc`](https://rubydoc.brew.sh/Formula#desc%3D-class_method)ription is automatically prepended with the formula name.
 
+### Fill in the `license`
+
+**We don’t accept new formulae into Homebrew/homebrew-core without a [`license`](https://rubydoc.brew.sh/Formula#license-class_method)!**
+
+We only accept formulae that use a [Debian Free Software Guidelines license](https://wiki.debian.org/DFSGLicenses) or are released into the public domain following [DFSG Guidelines on Public Domain software](https://wiki.debian.org/DFSGLicenses#Public_Domain).
+
+Use the license identifier from the [SPDX License List](https://spdx.org/licenses/) e.g. `license "BSD-2-Clause"`, or use `license :public_domain` for public domain software.
+
+If the software is available under multiple licenses, you should list them all in an array:
+
+```ruby
+license ["MIT", "GPL-2.0"]
+```
+
+Note: only specify multiple licenses if the formula gives the user a choice between the licenses. Formulae that have different licenses for different parts of their software should specify only the more restrictive license. For help determining which license is more restrictive, take a look [https://choosealicense.com](https://choosealicense.com/licenses/) or the [Comparison of free and open-source software licences Wikipedia page](https://en.wikipedia.org/wiki/Comparison_of_free_and_open-source_software_licences).
+
 ### Check the build system
 
 ```sh
@@ -95,6 +112,8 @@ brew install --interactive foo
 You’re now at a new prompt with the tarball extracted to a temporary sandbox.
 
 Check the package’s `README`. Does the package install with `./configure`, `cmake`, or something else? Delete the commented out `cmake` lines if the package uses `./configure`.
+
+If no compilation is involved and there are no `:build` dependencies, add the line `bottle :unneeded` since bottles are unnecessary in this case. Otherwise, a `bottle` block will be added by Homebrew's CI upon merging the formula's pull-request.
 
 ### Check for dependencies
 
@@ -119,7 +138,7 @@ to avoid conflicting with the system so sometimes formulae need to
 have environment variables set or special configuration flags passed
 to locate our OpenSSL. You can see this mechanism in the
 [`clamav`](https://github.com/Homebrew/homebrew-core/blob/89c4574ef1a6d15e92196637ff315a0a4bb3e289/Formula/clamav.rb#L37)
-formula. Usually this is unnecessary because Homebrew sets up our [build environment](https://github.com/Homebrew/brew/blob/master/Library/Homebrew/extend/ENV/super.rb)
+formula. Usually this is unnecessary because Homebrew sets up our [build environment](https://github.com/Homebrew/brew/blob/HEAD/Library/Homebrew/extend/ENV/super.rb)
 to favour finding [`keg_only`](https://rubydoc.brew.sh/Formula#keg_only-class_method) formulae first.
 
 **Important:** `$(brew --prefix)/bin` is NOT on the `PATH` during formula installation. If you have dependencies at build time, you must specify them and `brew` will add them to the `PATH` or create a [`Requirement`](https://rubydoc.brew.sh/Requirement).
@@ -166,9 +185,9 @@ description can be overridden using the normal option syntax (in this case, the 
 
 Sometimes there’s hard conflict between formulae, and it can’t be avoided or circumvented with [`keg_only`](https://rubydoc.brew.sh/Formula#keg_only-class_method).
 
-A good example formula for minor conflict is [`mbedtls`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/mbedtls.rb), which ships and compiles a "Hello World" executable. This is obviously non-essential to `mbedtls`’s functionality, and conflict with the popular GNU [`hello`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/hello.rb) formula would be overkill, so we just [remove it](https://github.com/Homebrew/homebrew-core/blob/966273060ad507fea490bd931971963de8b1a1dc/Formula/mbedtls.rb#L30-L31) during the installation process.
+A good example formula for minor conflict is [`mbedtls`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/mbedtls.rb), which ships and compiles a "Hello World" executable. This is obviously non-essential to `mbedtls`’s functionality, and conflict with the popular GNU [`hello`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/hello.rb) formula would be overkill, so we just [remove it](https://github.com/Homebrew/homebrew-core/blob/966273060ad507fea490bd931971963de8b1a1dc/Formula/mbedtls.rb#L30-L31) during the installation process.
 
-[`pdftohtml`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/pdftohtml.rb) provides an example of a serious
+[`pdftohtml`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/pdftohtml.rb) provides an example of a serious
 conflict, where both formula ship an identically-named binary that is essential to functionality, so a [`conflicts_with`](https://rubydoc.brew.sh/Formula#conflicts_with-class_method) is preferable.
 
 As a general rule, [`conflicts_with`](https://rubydoc.brew.sh/Formula#conflicts_with-class_method) should be a last-resort option. It’s a fairly blunt instrument.
@@ -233,9 +252,9 @@ class Foo < Formula
 end
 ```
 
-[`jrnl`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/jrnl.rb) is an example of a formula that does this well. The end result means the user doesn't have to use `pip` or Python and can just run `jrnl`.
+[`jrnl`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/jrnl.rb) is an example of a formula that does this well. The end result means the user doesn't have to use `pip` or Python and can just run `jrnl`.
 
-[homebrew-pypi-poet](https://github.com/tdsmith/homebrew-pypi-poet) can help you generate [`resource`](https://rubydoc.brew.sh/Formula#resource-class_method) stanzas for the dependencies of your Python application.
+For Python formulae, running `brew update-python-resources <formula>` will automatically add the necessary [`resource`](https://rubydoc.brew.sh/Formula#resource-class_method) stanzas for the dependencies of your Python application to the formula. Note that `brew update-python-resources` is run automatically by `brew create` if you pass the `--python` flag. If `brew update-python-resources` is unable to determine the correct `resource` stanzas, [homebrew-pypi-poet](https://github.com/tdsmith/homebrew-pypi-poet) is a good third-party alternative that may help.
 
 ### Install the formula
 
@@ -257,9 +276,9 @@ function. The environment variable `HOME` is set to [`testpath`](https://rubydoc
 
 We want tests that don't require any user input and test the basic functionality of the application. For example `foo build-foo input.foo` is a good test and (despite their widespread use) `foo --version` and `foo --help` are bad tests. However, a bad test is better than no test at all.
 
-See [`cmake`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/cmake.rb) for an example of a formula with a good test. The formula writes a basic `CMakeLists.txt` file into the test directory then calls CMake to generate Makefiles. This test checks that CMake doesn't e.g. segfault during basic operation.
+See [`cmake`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/cmake.rb) for an example of a formula with a good test. The formula writes a basic `CMakeLists.txt` file into the test directory then calls CMake to generate Makefiles. This test checks that CMake doesn't e.g. segfault during basic operation.
 
-You can check that the output is as expected with `assert_equal` or `assert_match` on the output of shell_output such as in this example from the [envv formula](https://github.com/Homebrew/homebrew-core/blob/master/Formula/envv.rb):
+You can check that the output is as expected with `assert_equal` or `assert_match` on the output of the [Formula assertions](https://rubydoc.brew.sh/Homebrew/Assertions.html) such as in this example from the [envv formula](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/envv.rb):
 
 ```ruby
 assert_equal "mylist=A:C; export mylist", shell_output("#{bin}/envv del mylist B").strip
@@ -273,9 +292,24 @@ assert_predicate testpath/"output.txt", :exist?
 
 Some advice for specific cases:
 * If the formula is a library, compile and run some simple code that links against it. It could be taken from upstream's documentation / source examples.
-A good example is [`tinyxml2`](https://github.com/Homebrew/homebrew-core/blob/master/Formula/tinyxml2.rb), which writes a small C++ source file into the test directory, compiles and links it against the tinyxml2 library and finally checks that the resulting program runs successfully.
+A good example is [`tinyxml2`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/tinyxml2.rb), which writes a small C++ source file into the test directory, compiles and links it against the tinyxml2 library and finally checks that the resulting program runs successfully.
 * If the formula is for a GUI program, try to find some function that runs as command-line only, like a format conversion, reading or displaying a config file, etc.
-* If the software cannot function without credentials or requires a virtual machine, docker instance, etc. to run, a test could be to try to connect with invalid credentials (or without credentials) and confirm that it fails as expected.
+* If the software cannot function without credentials or requires a virtual machine, docker instance, etc. to run, a test could be to try to connect with invalid credentials (or without credentials) and confirm that it fails as expected. This is prefered over mocking a dependency.
+* Homebrew comes with a number of [standard test fixtures](https://github.com/Homebrew/brew/tree/master/Library/Homebrew/test/support/fixtures), including numerous sample images, sounds, and documents in various formats. You can get the file path to a test fixture with `test_fixtures("test.svg")`.
+* If your test requires a test file that isn't a standard test fixture, you can install it from a source repository during the `test` phase with a resource block, like this:
+
+```ruby
+resource("testdata") do
+  url "https://example.com/input.foo"
+  sha256 "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+end
+
+test do
+  resource("testdata").stage do
+    assert_match "OK", shell_output("#{bin}/foo build-foo input.foo")
+  end
+end
+```
 
 ### Manuals
 
@@ -305,7 +339,7 @@ If you’re not sure about the name, check its homepage, Wikipedia page and [wha
 
 When Homebrew already has a formula called `foo` we typically do not accept requests to replace that formula with something else also named `foo`. This is to avoid both confusing and surprising users’ expectations.
 
-When two formulae share an upstream name, e.g. [AESCrypt](https://github.com/Homebrew/homebrew-core/blob/master/Formula/aescrypt.rb) and [AES Crypt](https://github.com/Homebrew/homebrew-core/blob/master/Formula/aescrypt-packetizer.rb) the newer formula must typically adapt its name to avoid conflict with the current formula.
+When two formulae share an upstream name, e.g. [AESCrypt](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/aescrypt.rb) and [AES Crypt](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/aescrypt-packetizer.rb) the newer formula must typically adapt its name to avoid conflict with the current formula.
 
 If you’re *still* not sure, just commit. We’ll apply some arbitrary rule and make a decision 😉.
 
@@ -394,6 +428,12 @@ system "make", "install"
 
 You’ll see stuff like this in some formulae. This moves the file `foo` into the formula’s `bin` directory (`/usr/local/Cellar/pkg/0.1/bin`) and makes it executable (`chmod 0555 foo`).
 
+You can also rename the file during the installation process. This can be useful for adding a prefix to binaries that would otherwise cause conflicts with another formula, or for removing a file extension. For example, to install `foo.py` into the formula's `bin` directory (`/usr/local/Cellar/pkg/0.1/bin`) as just `foo` instead of `foo.py`:
+
+```ruby
+bin.install "foo.py" => "foo"
+```
+
 ### `inreplace`
 
 [`inreplace`](https://rubydoc.brew.sh/Utils/Inreplace) is a convenience function that can edit files in-place. For example:
@@ -453,7 +493,7 @@ patch :p0 do
 end
 ```
 
-[`patch`](https://rubydoc.brew.sh/Formula#patch-class_method)es can be declared in [`stable`](https://rubydoc.brew.sh/Formula#stable-class_method), [`devel`](https://rubydoc.brew.sh/Formula#devel-class_method), and [`head`](https://rubydoc.brew.sh/Formula#head-class_method) blocks. Always use a block instead of a conditional, i.e. `stable do ... end` instead of `if build.stable? then ... end`.
+[`patch`](https://rubydoc.brew.sh/Formula#patch-class_method)es can be declared in [`stable`](https://rubydoc.brew.sh/Formula#stable-class_method) and [`head`](https://rubydoc.brew.sh/Formula#head-class_method) blocks. Always use a block instead of a conditional, i.e. `stable do ... end` instead of `if build.stable? then ... end`.
 
 ```ruby
 stable do
@@ -509,9 +549,9 @@ Instead of `git diff | pbcopy`, for some editors `git diff >> path/to/your/formu
 
 If anything isn’t clear, you can usually figure it out by `grep`ping the `$(brew --repo homebrew/core)` directory. Please submit a pull request to amend this document if you think it will help!
 
-### Unstable versions (`devel`, `head`)
+### Unstable versions (`head`)
 
-Formulae can specify alternate downloads for the upstream project’s [`head`](https://rubydoc.brew.sh/Formula#head-class_method) (`master`/`trunk`) or [`devel`](https://rubydoc.brew.sh/Formula#devel-class_method) release (unstable but not `master`/`trunk`).
+Formulae can specify an alternate download for the upstream project’s [`head`](https://rubydoc.brew.sh/Formula#head-class_method) (`master`/`trunk`).
 
 #### `head`
 
@@ -535,21 +575,6 @@ class Foo < Formula
                                          #    :revision => "090930930295adslfknsdfsdaffnasd13"
 end
 ```
-
-#### `devel`
-
-The [`devel`](https://rubydoc.brew.sh/Formula#devel-class_method) spec (activated by passing `--devel`) is used for a project’s unstable releases. `devel` specs are not allowed in Homebrew/homebrew-core.
-
-A `devel` spec is specified in a block:
-
-```ruby
-devel do
-  url "https://foo.com/foo-0.1.tar.gz"
-  sha256 "85cc828a96735bdafcf29eb6291ca91bac846579bcef7308536e0c875d6c81d7"
-end
-```
-
-You can test if the [`devel`](https://rubydoc.brew.sh/Formula#devel-class_method) spec is in use with `build.devel?`.
 
 ### Compiler selection
 
@@ -732,15 +757,15 @@ Homebrew provides two formula DSL methods for launchd plist files:
 
 Homebrew has multiple levels of environment variable filtering which affects variables available to formulae.
 
-Firstly, the overall environment in which Homebrew runs is filtered to avoid environment contamination breaking from-source builds (<https://github.com/Homebrew/brew/issues/932>). In particular, this process filters all but the given whitelisted variables, but allows environment variables prefixed with `HOMEBREW_`. The specific implementation can be seen in [`bin/brew`](https://github.com/Homebrew/brew/blob/master/bin/brew).
+Firstly, the overall environment in which Homebrew runs is filtered to avoid environment contamination breaking from-source builds (<https://github.com/Homebrew/brew/issues/932>). In particular, this process filters all but the given whitelisted variables, but allows environment variables prefixed with `HOMEBREW_`. The specific implementation can be seen in [`bin/brew`](https://github.com/Homebrew/brew/blob/HEAD/bin/brew).
 
-The second level of filtering removes sensitive environment variables (such as credentials like keys, passwords or tokens) to avoid malicious subprocesses obtaining them (<https://github.com/Homebrew/brew/pull/2524>). This has the effect of preventing any such variables from reaching a formula's Ruby code as they are filtered before it is called. The specific implementation can be seen in the [`ENV.clear_sensitive_environment!` method](https://github.com/Homebrew/brew/blob/master/Library/Homebrew/extend/ENV.rb).
+The second level of filtering removes sensitive environment variables (such as credentials like keys, passwords or tokens) to avoid malicious subprocesses obtaining them (<https://github.com/Homebrew/brew/pull/2524>). This has the effect of preventing any such variables from reaching a formula's Ruby code as they are filtered before it is called. The specific implementation can be seen in the [`ENV.clear_sensitive_environment!` method](https://github.com/Homebrew/brew/blob/HEAD/Library/Homebrew/extend/ENV.rb).
 
 In summary, environment variables used by a formula need to conform to these filtering rules in order to be available.
 
 ## Updating formulae
 
-Eventually a new version of the software will be released. In this case you should update the [`url`](https://rubydoc.brew.sh/Formula#url-class_method) and [`sha256`](https://rubydoc.brew.sh/Formula#sha256%3D-class_method). If a [`revision`](https://rubydoc.brew.sh/Formula#revision%3D-class_method) line exists outside any `bottle do` block *and* the new release is stable rather than devel, it should be removed.
+Eventually a new version of the software will be released. In this case you should update the [`url`](https://rubydoc.brew.sh/Formula#url-class_method) and [`sha256`](https://rubydoc.brew.sh/Formula#sha256%3D-class_method). If a [`revision`](https://rubydoc.brew.sh/Formula#revision%3D-class_method) line exists outside any `bottle do` block it should be removed.
 
 Leave the `bottle do ... end`  block as-is; our CI system will update it when we pull your change.
 

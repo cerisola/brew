@@ -68,28 +68,38 @@ module ELFShim
     elf_type == :executable
   end
 
-  def with_interpreter?
-    return @with_interpreter if defined? @with_interpreter
+  def rpath
+    return @rpath if defined? @rpath
 
-    @with_interpreter = if binary_executable?
-      true
-    elsif dylib?
-      if which "readelf"
-        Utils.popen_read("readelf", "-l", to_path).include?(" INTERP ")
-      elsif which "file"
-        Utils.popen_read("file", "-L", "-b", to_path).include?(" interpreter ")
-      else
-        raise "Please install either readelf (from binutils) or file."
-      end
+    @rpath = if HOMEBREW_PATCHELF_RB
+      rpath_using_patchelf_rb
     else
-      false
+      rpath_using_patchelf
+    end
+  end
+
+  def interpreter
+    return @interpreter if defined? @interpreter
+
+    @interpreter = if HOMEBREW_PATCHELF_RB
+      patchelf_patcher.interpreter
+    elsif (patchelf = DevelopmentTools.locate "patchelf")
+      interp = Utils.popen_read(patchelf, "--print-interpreter", to_s, err: :out).strip
+      $CHILD_STATUS.success? ? interp : nil
+    elsif (file = DevelopmentTools.locate("file"))
+      output = Utils.popen_read(file, "-L", "-b", to_s, err: :out).strip
+      output[/^ELF.*, interpreter (.+?), /, 1]
+    else
+      raise "Please install either patchelf or file."
     end
   end
 
   def dynamic_elf?
     return @dynamic_elf if defined? @dynamic_elf
 
-    @dynamic_elf = if which "readelf"
+    @dynamic_elf = if HOMEBREW_PATCHELF_RB
+      patchelf_patcher.elf.segment_by_type(:DYNAMIC).present?
+    elsif which "readelf"
       Utils.popen_read("readelf", "-l", to_path).include?(" DYNAMIC ")
     elsif which "file"
       !Utils.popen_read("file", "-L", "-b", to_path)[/dynamic|shared/].nil?
@@ -127,18 +137,27 @@ module ELFShim
     private
 
     def needed_libraries(path)
-      if DevelopmentTools.locate "readelf"
+      return [nil, []] unless path.dynamic_elf?
+
+      if HOMEBREW_PATCHELF_RB
+        needed_libraries_using_patchelf_rb path
+      elsif DevelopmentTools.locate "readelf"
         needed_libraries_using_readelf path
       elsif DevelopmentTools.locate "patchelf"
         needed_libraries_using_patchelf path
       else
+        return [nil, []] if path.basename.to_s == "patchelf"
+
         raise "patchelf must be installed: brew install patchelf"
       end
     end
 
-    def needed_libraries_using_patchelf(path)
-      return [nil, []] unless path.dynamic_elf?
+    def needed_libraries_using_patchelf_rb(path)
+      patcher = path.patchelf_patcher
+      [patcher.soname, patcher.needed]
+    end
 
+    def needed_libraries_using_patchelf(path)
       patchelf = DevelopmentTools.locate "patchelf"
       if path.dylib?
         command = [patchelf, "--print-soname", path.expand_path.to_s]
@@ -168,6 +187,36 @@ module ELFShim
       end
       [soname, needed]
     end
+  end
+
+  def rpath_using_patchelf_rb
+    patchelf_patcher.runpath || patchelf_patcher.rpath
+  end
+
+  def rpath_using_patchelf
+    patchelf = DevelopmentTools.locate "patchelf"
+    odie "Could not locate patchelf, please: brew install patchelf." if patchelf.nil?
+
+    cmd_rpath = [patchelf, "--print-rpath", to_s]
+    rpath = Utils.popen_read(*cmd_rpath, err: :out).strip
+
+    # patchelf requires that the ELF file have a .dynstr section.
+    # Skip ELF files that do not have a .dynstr section.
+    return if ["cannot find section .dynstr", "strange: no string table"].include?(rpath)
+
+    unless $CHILD_STATUS.success?
+      raise ErrorDuringExecution.new(cmd_rpath, status: $CHILD_STATUS, output: [[:stderr, rpath]])
+    end
+
+    rpath unless rpath.blank?
+  end
+
+  def patchelf_patcher
+    return unless HOMEBREW_PATCHELF_RB
+
+    Homebrew.install_bundler_gems!
+    require "patchelf"
+    @patchelf_patcher ||= PatchELF::Patcher.new to_s, on_error: :silent
   end
 
   def metadata

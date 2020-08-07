@@ -3,9 +3,9 @@ on:
   push:
     branches: master
   pull_request: []
-  release:
-    types:
-      - published
+env:
+  HOMEBREW_DEVELOPER: 1
+  HOMEBREW_NO_AUTO_UPDATE: 1
 jobs:
   tests:
     if: github.repository == 'Homebrew/brew'
@@ -14,74 +14,52 @@ jobs:
       matrix:
         os: [ubuntu-latest, macOS-latest]
     steps:
-    - name: Set up Git repository
-      uses: actions/checkout@v1
-
-    - name: Set up Homebrew PATH
-      run: |
-        if [ "$RUNNER_OS" = "macOS" ]; then
-          echo "::add-path::/usr/local/bin:/usr/bin:/bin"
-        else
-          echo "::add-path::/home/linuxbrew/.linuxbrew/bin:/usr/bin:/bin"
-        fi
-
     - name: Set up Homebrew
-      run: |
-        if [ "$RUNNER_OS" = "Linux" ]; then
-          HOMEBREW_REPOSITORY=/home/linuxbrew/.linuxbrew/Homebrew
-          sudo mkdir -p /home/linuxbrew/.linuxbrew
-          cd ..
-          sudo mv "brew" "$HOMEBREW_REPOSITORY"
-          sudo ln -s "$HOMEBREW_REPOSITORY" "brew"
-          cd /home/linuxbrew/.linuxbrew
-          sudo mkdir -p bin etc include lib opt sbin share var/homebrew/linked Cellar
-          sudo ln -s ../Homebrew/bin/brew /home/linuxbrew/.linuxbrew/bin/
-          sudo chown -R "$USER" /home/linuxbrew
+      id: set-up-homebrew
+      uses: Homebrew/actions/setup-homebrew@master
 
-          # Install taps needed for 'brew tests'
-          export HOMEBREW_NO_AUTO_UPDATE=1
-          brew tap homebrew/bundle
-        else
-          HOMEBREW_REPOSITORY="$(brew --repo)"
-          mv "$HOMEBREW_REPOSITORY/Library/Taps" "$PWD/Library"
-          sudo rm -rf "$HOMEBREW_REPOSITORY"
-          sudo ln -s "$PWD" "$HOMEBREW_REPOSITORY"
-          brew update-reset Library/Taps/homebrew/homebrew-core
+    - name: Configure Git user
+      uses: Homebrew/actions/git-user-config@master
+      with:
+        username: BrewTestBot
 
-          # Install taps needed for 'brew tests'
-          export HOMEBREW_NO_AUTO_UPDATE=1
-          brew tap homebrew/cask
-          brew tap homebrew/bundle
-          brew tap homebrew/services
-        fi
+    - name: Run brew test-bot --only-cleanup-before
+      run: brew test-bot --only-cleanup-before
 
     - name: Run brew config
       run: brew config
 
     - name: Run brew doctor
-      run: |
-        if [ "$RUNNER_OS" = "Linux" ]; then
-          # Cleanup some Linux `brew doctor` failures
-          sudo rm -rf /usr/local/include/node/
-        else
-          # Allow Xcode to be outdated
-          export HOMEBREW_GITHUB_ACTIONS=1
-        fi
-        brew doctor
+      run: brew doctor
+
+    - name: Cache Bundler RubyGems
+      id: cache
+      uses: actions/cache@main
+      with:
+        path: ${{ steps.set-up-homebrew.outputs.gems-path }}
+        key: ${{ runner.os }}-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
+        restore-keys: ${{ runner.os }}-rubygems-
 
     - name: Install Bundler RubyGems
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: brew install-bundler-gems
+
+    - name: Check for uncommitted RubyGems
+      run: git diff --stat --exit-code Library/Homebrew/vendor/bundle/ruby
+
+    - name: Set up Homebrew official command taps
       run: |
-        brew install-bundler-gems
+        # Setup taps needed for 'brew tests' and 'brew man'
+        brew tap homebrew/bundle
+        cd "$(brew --repo)"
 
-        # Check for uncommitted gems
-        git -C $(brew --repo) diff --stat --exit-code Library/Homebrew/vendor/bundle/ruby
-
-        if [ "$RUNNER_OS" = "Linux" ]; then
-          # Fix permissions for 'brew tests'
-          sudo chmod -R g-w,o-w /home/linuxbrew /home/runner /opt
+        if [ "$RUNNER_OS" = "macOS" ]; then
+          brew update-reset Library/Taps/homebrew/homebrew-cask Library/Taps/homebrew/homebrew-services
+        else
+          brew update-reset Library/Taps/homebrew/homebrew-services
         fi
 
-    - name: Run brew style
+    - name: Run brew style on Homebrew/brew
       run: brew style --display-cop-names
 
     - name: Run brew man
@@ -90,12 +68,9 @@ jobs:
     - name: Run brew tests
       run: |
         # brew tests doesn't like world writable directories
-        umask 022
-
-        # set variables for coverage reporting
-        export HOMEBREW_CI_BUILD_NUMBER="$GITHUB_REF"
-        export HOMEBREW_CI_BRANCH="$HEAD_GITHUB_REF"
-        export HOMEBREW_GITHUB_REPOSITORY="$GITHUB_REPOSITORY"
+        if [[ "$RUNNER_OS" = "Linux" ]]; then
+            sudo chmod -R g-w,o-w /home/linuxbrew/.linuxbrew/Homebrew
+        fi
 
         # don't bother running all tests on both platforms (for speed)
         if [ "$RUNNER_OS" = "Linux" ]; then
@@ -109,56 +84,68 @@ jobs:
         HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
         # set variables for coverage reporting
-        HOMEBREW_GITHUB_ACTIONS: 1
-        HOMEBREW_CI_NAME: github-actions
-        HOMEBREW_COVERALLS_REPO_TOKEN: 3F6U6ZqctoNJwKyREremsqMgpU3qYgxFk
+        HOMEBREW_CODECOV_TOKEN: 3ea0364c-80ce-47a3-9fba-93a940d4b5d7
 
         # These cannot be queried at the macOS level on GitHub Actions.
         HOMEBREW_LANGUAGES: en-GB
 
     - name: Run brew update-tests
       run: |
-        git config --global user.name "BrewTestBot"
-        git config --global user.email "homebrew-test-bot@lists.sfconservancy.org"
         brew update-test
         brew update-test --to-tag
         brew update-test --commit=HEAD
       if: github.event_name == 'pull_request'
 
-    - name: Run brew readall
+    - name: Run brew readall on all taps
       run: brew readall --aliases
+
+    - name: Run brew style on homebrew-core
+      if: matrix.os == 'macOS-latest'
+      run: brew style --display-cop-names homebrew/core
+
+    - name: Run brew style on linuxbrew-core
+      if: matrix.os == 'ubuntu-latest'
+      run: brew style --display-cop-names homebrew/core
+
+    - name: Run brew style on official taps
+      run: brew style --display-cop-names homebrew/bundle homebrew/services homebrew/test-bot
+
+    - name: Run brew cask style on all taps
+      if: matrix.os == 'macOS-latest'
+      run: brew cask style
+
+    - name: Run brew audit --skip-style on all taps
+      run: brew audit --skip-style
 
     - name: Run vale for docs linting
       run: |
         brew install vale
-        vale $(brew --repo)/docs/
+        vale docs/
+
+    - name: Lint Dockerfile
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        brew install hadolint
+        hadolint Dockerfile
 
     - name: Build Docker image
       if: matrix.os == 'ubuntu-latest'
-      run: |
-        docker pull homebrew/brew
-        docker-compose -f Dockerfile.yml build sut
+      run: docker build -t brew --build-arg=version=16.04 .
 
-    - name: Run brew test-bot
+    - name: Run brew test-bot --only-formulae --test-default-formula
       run: |
         if [ "$RUNNER_OS" = "Linux" ]; then
-          docker-compose -f Dockerfile.yml run --rm -v $GITHUB_WORKSPACE:/tmp/test-bot sut
-          docker tag homebrew_sut brew
+          docker run --rm brew brew test-bot --only-formulae --test-default-formula
         else
-          brew test-bot
+          brew test-bot --only-formulae --test-default-formula
         fi
 
-    - name: Deploy the latest Docker image
+    - name: Deploy the Docker image to GitHub and Docker Hub
       if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/master'
       run: |
         docker login docker.pkg.github.com -u BrewTestBot -p ${{secrets.GITHUB_TOKEN}}
-        docker tag brew docker.pkg.github.com/homebrew/brew/brew
-        docker push docker.pkg.github.com/homebrew/brew/brew
-
-    - name: Deploy the tagged Docker image
-      if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/')
-      run: |
-        docker login docker.pkg.github.com -u BrewTestBot -p ${{secrets.GITHUB_TOKEN}}
-        v=${GITHUB_REF:10}
-        docker tag brew "docker.pkg.github.com/homebrew/brew/brew:$v"
-        docker push "docker.pkg.github.com/homebrew/brew/brew:$v"
+        docker tag brew "docker.pkg.github.com/homebrew/brew/ubuntu16.04:master"
+        docker push "docker.pkg.github.com/homebrew/brew/ubuntu16.04:master"
+        docker login -u brewtestbot -p ${{secrets.DOCKER_TOKEN}}
+        docker tag brew "homebrew/ubuntu16.04:master"
+        docker push "homebrew/ubuntu16.04:master"

@@ -3,9 +3,14 @@
 require "formula_installer"
 require "development_tools"
 require "messages"
+require "install"
 require "reinstall"
 require "cli/parser"
 require "cleanup"
+require "cask/cmd"
+require "cask/utils"
+require "cask/macos"
+require "upgrade"
 
 module Homebrew
   module_function
@@ -21,7 +26,7 @@ module Homebrew
         Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for the
         reinstalled formulae or, every 30 days, for all formulae.
       EOS
-      switch :debug,
+      switch "-d", "--debug",
              description: "If brewing fails, open an interactive debugging session with access to IRB "\
                           "or a shell inside the temporary build directory."
       switch "-s", "--build-from-source",
@@ -35,10 +40,10 @@ module Homebrew
                           "macOS, even if it would not normally be used for installation."
       switch "--keep-tmp",
              description: "Retain the temporary files created during installation."
-      switch :force,
+      switch "-f", "--force",
              description: "Install without checking for previously installed keg-only or "\
                           "non-migrated versions."
-      switch :verbose,
+      switch "-v", "--verbose",
              description: "Print the verification and postinstall steps."
       switch "--display-times",
              env:         :display_install_times,
@@ -50,21 +55,37 @@ module Homebrew
   end
 
   def reinstall
-    reinstall_args.parse
+    args = reinstall_args.parse
 
-    FormulaInstaller.prevent_build_flags unless DevelopmentTools.installed?
+    FormulaInstaller.prevent_build_flags(args)
 
     Install.perform_preinstall_checks
 
-    args.resolved_formulae.each do |f|
+    resolved_formulae, casks = args.resolved_formulae_casks
+    resolved_formulae.each do |f|
       if f.pinned?
         onoe "#{f.full_name} is pinned. You must unpin it to reinstall."
         next
       end
-      Migrator.migrate_if_needed(f)
-      reinstall_formula(f)
+      Migrator.migrate_if_needed(f, force: args.force?)
+      reinstall_formula(f, args: args)
       Cleanup.install_formula_clean!(f)
     end
-    Homebrew.messages.display_messages
+
+    check_installed_dependents(args: args)
+
+    Homebrew.messages.display_messages(display_times: args.display_times?)
+
+    return if casks.blank?
+
+    Cask::Cmd::Reinstall.reinstall_casks(
+      *casks,
+      binaries:       args.binaries?,
+      verbose:        args.verbose?,
+      force:          args.force?,
+      require_sha:    args.require_sha?,
+      skip_cask_deps: args.skip_cask_deps?,
+      quarantine:     args.quarantine?,
+    )
   end
 end

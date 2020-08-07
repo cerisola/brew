@@ -8,37 +8,22 @@ require "formula"
 require "formulary"
 require "version"
 require "pkg_version"
-require "bottle_publisher"
 require "formula_info"
-
-module GitHub
-  module_function
-
-  # Return the corresponding test-bot user name for the given GitHub organization.
-  def test_bot_user(user, test_bot)
-    return test_bot if test_bot
-    return "BrewTestBot" if user.casecmp("homebrew").zero?
-
-    "#{user.capitalize}TestBot"
-  end
-end
 
 module Homebrew
   module_function
 
   def pull_args
     Homebrew::CLI::Parser.new do
+      hide_from_man_page!
       usage_banner <<~EOS
         `pull` [<options>] <patch>
 
         Get a patch from a GitHub commit or pull request and apply it to Homebrew.
-        Optionally, publish updated bottles for any formulae changed by the patch.
 
-        Each <patch> may be the number of a pull request in `homebrew/core`, the URL of any pull request
-        or commit on GitHub or a "https://jenkins.brew.sh/job/..." testing job URL.
+        Each <patch> may be the number of a pull request in `homebrew/core`
+        or the URL of any pull request or commit on GitHub.
       EOS
-      switch "--bottle",
-             description: "Handle bottles, pulling the bottle-update commit and publishing files on Bintray."
       switch "--bump",
              description: "For one-formula PRs, automatically reword commit message to our preferred format."
       switch "--clean",
@@ -52,28 +37,20 @@ module Homebrew
              description: "Do not warn if pulling to a branch besides master (useful for testing)."
       switch "--no-pbcopy",
              description: "Do not copy anything to the system clipboard."
-      switch "--no-publish",
-             description: "Do not publish bottles to Bintray."
-      switch "--warn-on-publish-failure",
-             description: "Do not exit if there's a failure publishing bottles on Bintray."
-      flag   "--bintray-org=",
-             description: "Publish bottles to the specified Bintray <organisation>."
-      flag   "--test-bot-user=",
-             description: "Pull the bottle block commit from the specified <user> on GitHub."
-      switch :verbose
-      switch :debug
+
       min_named 1
     end
   end
 
   def pull
+    odeprecated "brew pull", "hub checkout"
+
     odie "You meant `git pull --rebase`." if ARGV[0] == "--rebase"
 
-    pull_args.parse
+    args = pull_args.parse
 
     # Passthrough Git environment variables for e.g. git am
-    ENV["GIT_COMMITTER_NAME"] = ENV["HOMEBREW_GIT_NAME"] if ENV["HOMEBREW_GIT_NAME"]
-    ENV["GIT_COMMITTER_EMAIL"] = ENV["HOMEBREW_GIT_EMAIL"] if ENV["HOMEBREW_GIT_EMAIL"]
+    Utils.set_git_name_email!(author: false, committer: true)
 
     # Depending on user configuration, git may try to invoke gpg.
     if Utils.popen_read("git config --get --bool commit.gpgsign").chomp == "true"
@@ -81,7 +58,7 @@ module Homebrew
         gnupg = Formula["gnupg"]
       rescue FormulaUnavailableError # rubocop:disable Lint/SuppressedException
       else
-        if gnupg.installed?
+        if gnupg.any_version_installed?
           path = PATH.new(ENV.fetch("PATH"))
           path.prepend(gnupg.installed_prefix/"bin")
           ENV["PATH"] = path
@@ -95,19 +72,7 @@ module Homebrew
 
     args.named.each do |arg|
       arg = "#{CoreTap.instance.default_remote}/pull/#{arg}" if arg.to_i.positive?
-      if (testing_match = arg.match %r{/job/Homebrew.*Testing/(\d+)})
-        tap = ARGV.value("tap")
-        tap = if tap&.start_with?("homebrew/")
-          Tap.fetch("homebrew", tap.delete_prefix("homebrew/"))
-        elsif tap
-          odie "Tap option did not start with \"homebrew/\": #{tap}"
-        else
-          CoreTap.instance
-        end
-        _, testing_job = *testing_match
-        url = "https://github.com/cerisola/homebrew-#{tap.repo}/compare/master...BrewTestBot:testing-#{testing_job}"
-        odie "--bottle is required for testing job URLs!" unless args.bottle?
-      elsif (api_match = arg.match HOMEBREW_PULL_API_REGEX)
+      if (api_match = arg.match HOMEBREW_PULL_API_REGEX)
         _, user, repo, issue = *api_match
         url = "https://github.com/#{user}/#{repo}/pull/#{issue}"
         tap = Tap.fetch(user, repo) if repo.match?(HOMEBREW_OFFICIAL_REPO_PREFIXES_REGEX)
@@ -118,7 +83,7 @@ module Homebrew
         odie "Not a GitHub pull request or commit: #{arg}"
       end
 
-      odie "No pull request detected!" if !testing_job && args.bottle? && issue.nil?
+      odie "No pull request detected!" if issue.blank?
 
       if tap
         tap.install unless tap.installed?
@@ -131,7 +96,6 @@ module Homebrew
       HOMEBREW_CACHE.mkpath
 
       # Store current revision and branch
-      merge_commit = merge_commit?(url)
       orig_revision = `git rev-parse --short HEAD`.strip
       branch = `git symbolic-ref --short HEAD`.strip
 
@@ -139,18 +103,16 @@ module Homebrew
         opoo "Current branch is #{branch}: do you need to pull inside master?"
       end
 
-      unless merge_commit
-        patch_puller = PatchPuller.new(url, args)
-        patch_puller.fetch_patch
-        patch_changes = files_changed_in_patch(patch_puller.patchpath, tap)
+      patch_puller = PatchPuller.new(url, args)
+      patch_puller.fetch_patch
+      patch_changes = files_changed_in_patch(patch_puller.patchpath, tap)
 
-        is_bumpable = patch_changes[:formulae].length == 1 && patch_changes[:others].empty?
-        check_bumps(patch_changes) if do_bump
-        old_versions = current_versions_from_info_external(patch_changes[:formulae].first) if is_bumpable
-        patch_puller.apply_patch
-      end
+      is_bumpable = patch_changes[:formulae].length == 1 && patch_changes[:others].empty?
+      check_bumps(patch_changes) if do_bump
+      old_versions = current_versions_from_info_external(patch_changes[:formulae].first) if is_bumpable
+      patch_puller.apply_patch
 
-      end_revision = head_revision(url, merge_commit)
+      end_revision = `git rev-parse --short HEAD`.strip
 
       changed_formulae_names = []
 
@@ -166,9 +128,8 @@ module Homebrew
         end
       end
 
-      fetch_bottles = false
       changed_formulae_names.each do |name|
-        next if ENV["HOMEBREW_DISABLE_LOAD_FORMULA"]
+        next if Homebrew::EnvConfig.disable_load_formula?
 
         begin
           f = Formula[name]
@@ -177,25 +138,11 @@ module Homebrew
           next
         end
 
-        if f.stable
-          stable_urls = [f.stable.url] + f.stable.mirrors
-          stable_urls.grep(%r{^https://dl.bintray.com/homebrew/mirror/}) do |mirror_url|
-            check_bintray_mirror(f.full_name, mirror_url)
-          end
-        end
+        next unless f.stable
 
-        if args.bottle?
-          if f.bottle_unneeded?
-            ohai "#{f}: skipping unneeded bottle."
-          elsif f.bottle_disabled?
-            ohai "#{f}: skipping disabled bottle: #{f.bottle_disable_reason}"
-          else
-            fetch_bottles = true
-          end
-        else
-          next unless f.bottle_defined?
-
-          opoo "#{f.full_name} has a bottle: do you need to update it with --bottle?"
+        stable_urls = [f.stable.url] + f.stable.mirrors
+        stable_urls.grep(%r{^https://dl.bintray.com/homebrew/mirror/}) do |mirror_url|
+          check_bintray_mirror(f.full_name, mirror_url)
         end
       end
 
@@ -213,7 +160,7 @@ module Homebrew
       end
 
       is_bumpable = false if args.clean?
-      is_bumpable = false if ENV["HOMEBREW_DISABLE_LOAD_FORMULA"]
+      is_bumpable = false if Homebrew::EnvConfig.disable_load_formula?
 
       if is_bumpable
         formula = Formula[changed_formulae_names.first]
@@ -237,34 +184,6 @@ module Homebrew
         safe_system "git", "commit", "--amend", "--signoff", "--allow-empty", "-q", "-m", message
       end
 
-      if fetch_bottles
-        bottle_commit_url = if testing_job
-          bottle_branch = "testing-bottle-#{testing_job}"
-          url
-        else
-          bottle_branch = "pull-bottle-#{issue}"
-          bot_username = GitHub.test_bot_user(user, args.test_bot_user)
-          "https://github.com/#{bot_username}/homebrew-#{tap.repo}/compare/#{user}:master...pr-#{issue}"
-        end
-
-        curl "--silent", "--fail", "--output", "/dev/null", "--head", bottle_commit_url
-
-        if merge_commit
-          fetch_merge_patch(bottle_commit_url, args, issue)
-        else
-          fetch_bottles_patch(bottle_commit_url, args, bottle_branch, branch, orig_revision)
-        end
-        BottlePublisher.new(
-          tap,
-          changed_formulae_names,
-          args.bintray_org,
-          args.no_publish?,
-          args.warn_on_publish_failure?,
-        ).publish_and_check_bottles
-      elsif merge_commit
-        fetch_merge_patch(url, args, issue)
-      end
-
       ohai "Patch changed:"
       safe_system "git", "diff-tree", "-r", "--stat", orig_revision, end_revision
     end
@@ -280,35 +199,8 @@ module Homebrew
     end
   end
 
-  def merge_commit?(url)
-    pr_number = url[%r{/pull\/([0-9]+)}, 1]
-    return false unless pr_number
-
-    safe_system "git", "fetch", "--quiet", "origin", "pull/#{pr_number}/head"
-    Utils.popen_read("git", "rev-list", "--parents", "-n1", "FETCH_HEAD").count(" ") > 1
-  end
-
-  def head_revision(_url, fetched)
-    Utils.popen_read("git", "rev-parse", fetched ? "FETCH_HEAD" : "HEAD").strip
-  end
-
-  def fetch_bottles_patch(bottle_commit_url, args, bottle_branch, branch, orig_revision)
-    safe_system "git", "checkout", "--quiet", "-B", bottle_branch, orig_revision
-    PatchPuller.new(bottle_commit_url, args, "bottle commit").pull_patch
-    safe_system "git", "rebase", "--quiet", branch
-    safe_system "git", "checkout", "--quiet", branch
-    safe_system "git", "merge", "--quiet", "--ff-only", "--no-edit", bottle_branch
-    safe_system "git", "branch", "--quiet", "-D", bottle_branch
-  end
-
-  def fetch_merge_patch(url, args, issue)
-    PatchPuller.new(url, args, "merge commit").pull_merge_commit(issue)
-  end
-
   class PatchPuller
-    attr_reader :base_url
-    attr_reader :patch_url
-    attr_reader :patchpath
+    attr_reader :base_url, :patch_url, :patchpath
 
     def initialize(url, args, description = nil)
       @base_url = url
@@ -317,26 +209,6 @@ module Homebrew
       @patchpath = HOMEBREW_CACHE + File.basename(patch_url)
       @description = description
       @args = args
-    end
-
-    def pull_patch
-      fetch_patch
-      apply_patch
-    end
-
-    def pull_merge_commit(issue)
-      # Used by forks of homebrew-core that use merge-commits (for example linuxbrew)
-      ohai "Fast-forwarding to the merge commit"
-      test_bot_origin = patch_url[%r{(https://github\.com/[\w-]+/[\w-]+)/compare/}, 1]
-      safe_system "git", "fetch", "--quiet", test_bot_origin, "pr-#{issue}" if test_bot_origin
-      safe_system "git", "merge", "--quiet", "--ff-only", "--no-edit", "FETCH_HEAD"
-      return if $CHILD_STATUS.success?
-
-      safe_system "git", "reset", "--hard", "FETCH_HEAD"
-      odie <<~EOS
-        Not possible to fast-forward.
-        Maybe somebody pushed commits to origin/master between the merge commit creation and now.
-      EOS
     end
 
     def fetch_patch
@@ -461,7 +333,7 @@ module Homebrew
 
   def check_bintray_mirror(name, url)
     headers, = curl_output("--connect-timeout", "15", "--location", "--head", url)
-    status_code = headers.scan(%r{^HTTP\/.* (\d+)}).last.first
+    status_code = headers.scan(%r{^HTTP/.* (\d+)}).last.first
     return if status_code.start_with?("2")
 
     opoo "The Bintray mirror #{url} is not reachable (HTTP status code #{status_code})."

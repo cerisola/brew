@@ -36,10 +36,10 @@ module Homebrew
         If no <text> is provided, list all locally available formulae (including tapped ones).
         No online search is performed.
       EOS
-      switch "--formulae",
+      switch "--formula", "--formulae",
              description: "Without <text>, list all locally available formulae (no online search is performed). " \
                           "With <text>, search online and locally for formulae."
-      switch "--casks",
+      switch "--cask", "--casks",
              description: "Without <text>, list all locally available casks (including tapped ones, no online " \
                           "search is performed). With <text>, search online and locally for casks."
       switch "--desc",
@@ -51,14 +51,13 @@ module Homebrew
         switch s,
                description: "Search for <text> in the given package manager's list."
       end
-      switch :verbose
-      switch :debug
+
       conflicts(*package_manager_switches)
     end
   end
 
   def search
-    search_args.parse
+    args = search_args.parse
 
     if package_manager = PACKAGE_MANAGERS.find { |name,| args[:"#{name}?"] }
       _, url = package_manager
@@ -67,8 +66,8 @@ module Homebrew
     end
 
     if args.no_named?
-      if args.casks?
-        raise UsageError, "specifying both --formulae and --casks requires <text>" if args.formulae?
+      if args.cask?
+        raise UsageError, "specifying both --formula and --cask requires <text>" if args.formula?
 
         puts Formatter.columns(Cask::Cask.to_a.map(&:full_name).sort)
       else
@@ -93,8 +92,8 @@ module Homebrew
       local_casks = search_casks(string_or_regex)
       remote_casks = remote_results[:casks]
       all_casks = local_casks + remote_casks
-      print_formulae = args.formulae?
-      print_casks = args.casks?
+      print_formulae = args.formula?
+      print_casks = args.cask?
       print_formulae = print_casks = true if !print_formulae && !print_casks
 
       if print_formulae && all_formulae.any?
@@ -103,7 +102,7 @@ module Homebrew
       end
 
       if print_casks && all_casks.any?
-        puts if args.formulae? && all_formulae.any?
+        puts if args.formula? && all_formulae.any?
         ohai "Casks"
         puts Formatter.columns(all_casks)
       end

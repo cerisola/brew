@@ -3,18 +3,12 @@
 module Hardware
   class CPU
     class << self
-      native_arch = (ENV["HOMEBREW_ARCH"] || "native").freeze
-      OPTIMIZATION_FLAGS_LINUX = {
-        native:  "-march=#{native_arch}",
-        nehalem: "-march=nehalem",
-        core2:   "-march=core2",
-        core:    "-march=prescott",
-        armv6:   "-march=armv6",
-        armv8:   "-march=armv8-a",
-      }.freeze
-
       def optimization_flags
-        OPTIMIZATION_FLAGS_LINUX
+        @optimization_flags ||= begin
+          flags = generic_optimization_flags.dup
+          flags[:native] = arch_flag(Homebrew::EnvConfig.arch)
+          flags
+        end
       end
 
       def cpuinfo
@@ -27,7 +21,7 @@ module Hardware
         return :dunno unless intel?
 
         # See https://software.intel.com/en-us/articles/intel-architecture-and-processor-identification-with-cpuid-model-and-family-numbers
-        # and https://github.com/llvm-mirror/llvm/blob/master/lib/Support/Host.cpp
+        # and https://github.com/llvm-mirror/llvm/blob/HEAD/lib/Support/Host.cpp
         # and https://en.wikipedia.org/wiki/List_of_Intel_CPU_microarchitectures#Roadmap
         cpu_family = cpuinfo[/^cpu family\s*: ([0-9]+)/, 1].to_i
         cpu_model = cpuinfo[/^model\s*: ([0-9]+)/, 1].to_i
@@ -86,7 +80,7 @@ module Hardware
       # Compatibility with Mac method, which returns lowercase symbols
       # instead of strings
       def features
-        @features ||= flags[1..-1].map(&:intern)
+        @features ||= flags[1..].map(&:intern)
       end
 
       %w[aes altivec avx avx2 lm ssse3 sse4_2].each do |flag|

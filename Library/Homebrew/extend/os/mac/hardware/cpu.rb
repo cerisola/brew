@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "macho"
+
 module Hardware
   class CPU
     class << self
@@ -9,8 +11,10 @@ module Hardware
       # Look in <mach/machine.h> for decoding info.
       def type
         case sysctl_int("hw.cputype")
-        when 7
+        when MachO::Headers::CPU_TYPE_I386
           :intel
+        when MachO::Headers::CPU_TYPE_ARM64
+          :arm
         else
           :dunno
         end
@@ -40,6 +44,10 @@ module Hardware
           :skylake
         when 0x0f817246 # Kaby Lake
           :kabylake
+        when 0x38435547 # Ice Lake
+          :icelake
+        when 0x07d34b9f # ARMv8.3-A (Vortex, Tempest)
+          :arm_vortex_tempest
         else
           :dunno
         end

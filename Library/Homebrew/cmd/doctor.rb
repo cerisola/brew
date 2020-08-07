@@ -2,6 +2,7 @@
 
 require "diagnostic"
 require "cli/parser"
+require "cask/caskroom"
 
 module Homebrew
   module_function
@@ -22,21 +23,19 @@ module Homebrew
                           "if provided as arguments."
       switch "-D", "--audit-debug",
              description: "Enable debugging and profiling of audit methods."
-      switch :verbose
-      switch :debug
     end
   end
 
   def doctor
-    doctor_args.parse
+    args = doctor_args.parse
 
     inject_dump_stats!(Diagnostic::Checks, /^check_*/) if args.audit_debug?
 
-    checks = Diagnostic::Checks.new
+    checks = Diagnostic::Checks.new args.verbose?
 
     if args.list_checks?
       puts checks.all.sort
-      exit
+      return
     end
 
     if args.no_named?
@@ -45,6 +44,7 @@ module Homebrew
         check_missing_deps
       ]
       methods = (checks.all.sort - slow_checks) + slow_checks
+      methods -= checks.cask_checks if Cask::Caskroom.casks.blank?
     else
       methods = args.named
     end

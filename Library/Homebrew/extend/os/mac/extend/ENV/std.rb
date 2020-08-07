@@ -32,8 +32,8 @@ module Stdenv
     append "CFLAGS", "-I#{MacOS::X11.include}" unless MacOS::CLT.installed?
   end
 
-  def setup_build_environment(formula = nil)
-    generic_setup_build_environment formula
+  def setup_build_environment(**options)
+    generic_setup_build_environment(**options)
 
     # sed is strict, and errors out when it encounters files with
     # mixed character sets
@@ -41,7 +41,7 @@ module Stdenv
     self["LC_CTYPE"] = "C"
 
     # Add lib and include etc. from the current macosxsdk to compiler flags:
-    macosxsdk MacOS.version
+    macosxsdk(formula: @formula)
 
     return unless MacOS::Xcode.without_clt?
 
@@ -49,20 +49,20 @@ module Stdenv
     append_path "PATH", "#{MacOS::Xcode.toolchain_path}/usr/bin"
   end
 
-  def remove_macosxsdk(version = MacOS.version)
+  def remove_macosxsdk(version = nil)
     # Clear all lib and include dirs from CFLAGS, CPPFLAGS, LDFLAGS that were
     # previously added by macosxsdk
-    version = version.to_s
-    remove_from_cflags(/ ?-mmacosx-version-min=10\.\d+/)
+    remove_from_cflags(/ ?-mmacosx-version-min=\d+\.\d+/)
     delete("CPATH")
     remove "LDFLAGS", "-L#{HOMEBREW_PREFIX}/lib"
 
-    return unless (sdk = MacOS.sdk_path_if_needed(version))
+    sdk = self["SDKROOT"] || MacOS.sdk_path_if_needed(version)
+    return unless sdk
 
     delete("SDKROOT")
-    remove_from_cflags "-isysroot #{sdk}"
-    remove "CPPFLAGS", "-isysroot #{sdk}"
-    remove "LDFLAGS", "-isysroot #{sdk}"
+    remove_from_cflags "-isysroot#{sdk}"
+    remove "CPPFLAGS", "-isysroot#{sdk}"
+    remove "LDFLAGS", "-isysroot#{sdk}"
     if HOMEBREW_PREFIX.to_s == "/usr/local"
       delete("CMAKE_PREFIX_PATH")
     else
@@ -72,37 +72,42 @@ module Stdenv
     remove "CMAKE_FRAMEWORK_PATH", "#{sdk}/System/Library/Frameworks"
   end
 
-  def macosxsdk(version = MacOS.version)
+  def macosxsdk(version = nil, formula: nil)
     # Sets all needed lib and include dirs to CFLAGS, CPPFLAGS, LDFLAGS.
     remove_macosxsdk
-    version = version.to_s
-    append_to_cflags("-mmacosx-version-min=#{version}")
+    min_version = version || MacOS.version
+    append_to_cflags("-mmacosx-version-min=#{min_version}")
     self["CPATH"] = "#{HOMEBREW_PREFIX}/include"
     prepend "LDFLAGS", "-L#{HOMEBREW_PREFIX}/lib"
 
-    return unless (sdk = MacOS.sdk_path_if_needed(version))
+    sdk = formula ? MacOS.sdk_for_formula(formula, version) : MacOS.sdk(version)
+    return if !MacOS.sdk_root_needed? && sdk&.source != :xcode
+
+    sdk = sdk.path
 
     # Extra setup to support Xcode 4.3+ without CLT.
     self["SDKROOT"] = sdk
     # Tell clang/gcc where system include's are:
     append_path "CPATH", "#{sdk}/usr/include"
     # The -isysroot is needed, too, because of the Frameworks
-    append_to_cflags "-isysroot #{sdk}"
-    append "CPPFLAGS", "-isysroot #{sdk}"
+    append_to_cflags "-isysroot#{sdk}"
+    append "CPPFLAGS", "-isysroot#{sdk}"
     # And the linker needs to find sdk/usr/lib
-    append "LDFLAGS", "-isysroot #{sdk}"
+    append "LDFLAGS", "-isysroot#{sdk}"
     # Needed to build cmake itself and perhaps some cmake projects:
     append_path "CMAKE_PREFIX_PATH", "#{sdk}/usr"
     append_path "CMAKE_FRAMEWORK_PATH", "#{sdk}/System/Library/Frameworks"
   end
 
   # Some configure scripts won't find libxml2 without help
+  # This is a no-op with macOS SDK 10.15.4 and later
   def libxml2
-    if !MacOS.sdk_path_if_needed
+    sdk = self["SDKROOT"] || MacOS.sdk_path_if_needed
+    if !sdk
       append "CPPFLAGS", "-I/usr/include/libxml2"
-    else
+    elsif !Pathname("#{sdk}/usr/include/libxml").directory?
       # Use the includes form the sdk
-      append "CPPFLAGS", "-I#{MacOS.sdk_path}/usr/include/libxml2"
+      append "CPPFLAGS", "-I#{sdk}/usr/include/libxml2"
     end
   end
 

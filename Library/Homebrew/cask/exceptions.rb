@@ -17,8 +17,7 @@ module Cask
   end
 
   class AbstractCaskErrorWithToken < CaskError
-    attr_reader :token
-    attr_reader :reason
+    attr_reader :token, :reason
 
     def initialize(token, reason = nil)
       @token = token
@@ -151,7 +150,7 @@ module Cask
             File: #{path}
         To retry an incomplete download, remove the file above.
         If the issue persists, visit:
-          #{Formatter.url("https://github.com/cerisola/homebrew-cask/blob/master/doc/reporting_bugs/checksum_does_not_match_error.md")}
+          #{Formatter.url("https://github.com/cerisola/homebrew-cask/blob/HEAD/doc/reporting_bugs/checksum_does_not_match_error.md")}
       EOS
     end
   end

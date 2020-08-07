@@ -224,7 +224,7 @@ class Pathname
     return archive_ext if archive_ext
 
     # Don't treat version numbers as extname.
-    return "" if basename.match?(/\b\d+\.\d+[^\.]*\Z/) && !basename.end_with?(".7z")
+    return "" if basename.match?(/\b\d+\.\d+[^.]*\Z/) && !basename.end_with?(".7z")
 
     File.extname(basename)
   end
@@ -346,13 +346,17 @@ class Pathname
   end
 
   # Writes an exec script that sets environment variables
-  def write_env_script(target, env)
+  def write_env_script(target, args, env = nil)
+    unless env
+      env = args
+      args = nil
+    end
     env_export = +""
     env.each { |key, value| env_export << "#{key}=\"#{value}\" " }
     dirname.mkpath
     write <<~SH
       #!/bin/bash
-      #{env_export}exec "#{target}" "$@"
+      #{env_export}exec "#{target}" #{args} "$@"
     SH
   end
 
@@ -370,12 +374,11 @@ class Pathname
 
   # Writes an exec script that invokes a Java jar
   def write_jar_script(target_jar, script_name, java_opts = "", java_version: nil)
-    mkpath
-    java_home = ("JAVA_HOME=\"#{Language::Java.java_home_shell(java_version)}\" " if java_version)
-    join(script_name).write <<~SH
+    (self/script_name).write <<~EOS
       #!/bin/bash
-      #{java_home}exec java #{java_opts} -jar #{target_jar} "$@"
-    SH
+      export JAVA_HOME="#{Language::Java.overridable_java_home_env(java_version)[:JAVA_HOME]}"
+      exec "${JAVA_HOME}/bin/java" #{java_opts} -jar "#{target_jar}" "$@"
+    EOS
   end
 
   def install_metafiles(from = Pathname.pwd)
@@ -398,15 +401,6 @@ class Pathname
     basename.to_s == ".DS_Store"
   end
 
-  # https://bugs.ruby-lang.org/issues/9915
-  if RUBY_VERSION == "2.0.0"
-    prepend Module.new {
-      def inspect
-        super.force_encoding(@path.encoding)
-      end
-    }
-  end
-
   def binary_executable?
     false
   end
@@ -425,6 +419,8 @@ require "extend/os/pathname"
 # @private
 module ObserverPathnameExtension
   class << self
+    include Context
+
     attr_accessor :n, :d
 
     def reset_counts!
@@ -443,8 +439,8 @@ module ObserverPathnameExtension
     MAXIMUM_VERBOSE_OUTPUT = 100
 
     def verbose?
-      return Homebrew.args.verbose? unless ENV["CI"]
-      return false unless Homebrew.args.verbose?
+      return super unless ENV["CI"]
+      return false unless super
 
       if total < MAXIMUM_VERBOSE_OUTPUT
         true

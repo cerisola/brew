@@ -37,7 +37,7 @@ module RuboCop
           # https://wiki.freedesktop.org/project_name.
           # "Software" is redirected to https://wiki.freedesktop.org/www/Software/project_name
           when %r{^http://((?:www|nice|libopenraw|liboil|telepathy|xorg)\.)?freedesktop\.org/(?:wiki/)?}
-            if homepage =~ /Software/
+            if homepage.include?("Software")
               problem "#{homepage} should be styled `https://wiki.freedesktop.org/www/Software/project_name`"
             else
               problem "#{homepage} should be styled `https://wiki.freedesktop.org/project_name`"
@@ -57,6 +57,14 @@ module RuboCop
 
           when %r{^http://([^/]*)\.(sf|sourceforge)\.net(/|$)}
             problem "#{homepage} should be `https://#{Regexp.last_match(1)}.sourceforge.io/`"
+
+          when /readthedocs\.org/
+            offending_node(parameters(homepage_node).first)
+            problem "#{homepage} should be `#{homepage.sub("readthedocs.org", "readthedocs.io")}`"
+
+          when %r{^https://github.com.*\.git}
+            offending_node(parameters(homepage_node).first)
+            problem "GitHub homepages (`#{homepage}`) should not end with .git"
 
           # There's an auto-redirect here, but this mistake is incredibly common too.
           # Only applies to the homepage and subdomains for now, not the FTP URLs.
@@ -78,6 +86,17 @@ module RuboCop
                %r{^http://bitbucket\.org/},
                %r{^http://(?:[^/]*\.)?archive\.org}
             problem "Please use https:// for #{homepage}"
+          end
+        end
+
+        def autocorrect(node)
+          lambda do |corrector|
+            return if node.nil?
+
+            homepage = string_content(node)
+            homepage.sub!("readthedocs.org", "readthedocs.io")
+            homepage.delete_suffix!(".git") if homepage.start_with?("https://github.com")
+            corrector.replace(node.source_range, "\"#{homepage}\"")
           end
         end
       end

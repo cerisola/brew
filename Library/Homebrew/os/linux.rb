@@ -27,7 +27,7 @@ module OS
 
     # rubocop:disable Naming/ConstantName
     # rubocop:disable Style/MutableConstant
-    ::MacOS = self
+    ::MacOS = OS::Mac
     # rubocop:enable Naming/ConstantName
     # rubocop:enable Style/MutableConstant
 
@@ -42,15 +42,15 @@ module OS
     end
 
     def languages
-      @languages ||= [
-        *ARGV.value("language")&.split(","),
-        *ENV["HOMEBREW_LANGUAGES"]&.split(","),
-        *ENV["LANG"]&.slice(/[a-z]+/),
-      ].uniq
+      @languages ||= Array(ENV["LANG"]&.slice(/[a-z]+/)).uniq
     end
 
     def language
       languages.first
+    end
+
+    def sdk_root_needed?
+      false
     end
 
     def sdk_path_if_needed(_v = nil)
@@ -58,6 +58,14 @@ module OS
     end
 
     module Xcode
+      module_function
+
+      def version
+        Version::NULL
+      end
+    end
+
+    module CLT
       module_function
 
       def version

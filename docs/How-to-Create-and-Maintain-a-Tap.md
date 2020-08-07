@@ -16,17 +16,18 @@ See the [manpage](Manpage.md) for more information on repository naming.
 The `brew tap-new` command can be used to create a new tap along with some
 template files.
 
-Tap formulae follow the same format as the core’s ones, and can be added at the
-repository’s root, or under `Formula` or `HomebrewFormula` subdirectories. We
-recommend the latter options because it makes the repository organisation
-easier to grasp, and top-level files are not mixed with formulae.
+Tap formulae follow the same format as the core’s ones, and can be added under
+either the `Formula` subdirectory, the `HomebrewFormula` subdirectory or the
+repository’s root. The first available directory is used, other locations will
+be ignored. We recommend use of subdirectories because it makes the repository
+organisation easier to grasp, and top-level files are not mixed with formulae.
 
 See [homebrew/core](https://github.com/Homebrew/homebrew-core) for an example of
 a tap with a `Formula` subdirectory.
 
 ## Naming your formulae to avoid clashes
 
-If your formulae have the same name as Homebrew/homebrew-core formulae they cannot be installed side-by-side. If you wish to create a different version of a formula that's in Homebrew/homebrew-core (e.g. with `option`s) consider giving it a different name e.g. `nginx-full` for more fully-featured `nginx` formula. This will allow both `nginx` and `nginx-full` to be installed at the same time (but not linked if there are conflicts and one of them is not declared to be `keg_only`).
+If your formulae have the same name as Homebrew/homebrew-core formulae they cannot be installed side-by-side. If you wish to create a different version of a formula that's in Homebrew/homebrew-core (e.g. with `option`s) consider giving it a different name e.g. `nginx-full` for more fully-featured `nginx` formula. This will allow both `nginx` and `nginx-full` to be installed at the same time (assuming one is `keg_only` or the linked files do not clash).
 
 ### Installing
 
@@ -72,7 +73,7 @@ See [homebrew/cask](https://github.com/Homebrew/homebrew-cask) for an example of
 ### Naming
 
 Unlike formulae, casks must have globally unique names to avoid clashes.
-This can be achieved by e.g. prepending the cask name with you github username: `username-formula-name`.
+This can be achieved by e.g. prepending the cask name with your github username: `username-formula-name`.
 
 ## External commands
 
@@ -81,3 +82,11 @@ You can provide your tap users with custom `brew` commands by adding them in a
 
 See [homebrew/aliases](https://github.com/Homebrew/homebrew-aliases) for an
 example of a tap with external commands.
+
+## Official Vendor Taps
+
+Some upstream software providers like to package their software in their own Homebrew tap. When their software is [eligible for Homebrew/homebrew-core](Acceptable-Formulae.md) we prefer to maintain software there for ease of updates, improved discoverability and use of tools such as [formulae.brew.sh](https://formulae.brew.sh).
+
+We are not willing to remove software packaged in Homebrew/homebrew-core in favour of an upstream tap. We are not willing to instruct users in our formulae to use your formulae instead. If upstream projects have issues with how Homebrew packages your software: please file issues (or, ideally, pull requests) to address these problems.
+
+There’s an increasing desire in commercial open source about “maintaining control” e.g. defining exactly what binaries are shipping to users. Not supporting users (or even software distributions) to build-from-source is antithetical to the values of open source. If you think Homebrew's perspective is annoying on this: try and see how Debian responds to requests to ship your binaries.

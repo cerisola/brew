@@ -7,7 +7,6 @@ require "cask/cask_loader"
 require "set"
 
 CLEANUP_DEFAULT_DAYS = 30
-CLEANUP_MAX_AGE_DAYS = 120
 
 module CleanupRefinement
   refine Pathname do
@@ -16,13 +15,21 @@ module CleanupRefinement
     end
 
     def nested_cache?
-      directory? && %w[cargo_cache go_cache glide_home java_cache npm_cache gclient_cache].include?(basename.to_s)
+      directory? && %w[
+        cargo_cache
+        go_cache
+        go_mod_cache
+        glide_home
+        java_cache
+        npm_cache
+        gclient_cache
+      ].include?(basename.to_s)
     end
 
     def go_cache_directory?
       # Go makes its cache contents read-only to ensure cache integrity,
       # which makes sense but is something we need to undo for cleanup.
-      directory? && %w[go_cache].include?(basename.to_s)
+      directory? && %w[go_cache go_mod_cache].include?(basename.to_s)
     end
 
     def prune?(days)
@@ -57,14 +64,14 @@ module CleanupRefinement
         end
       end
 
-      version ||= basename.to_s[/\A.*(?:\-\-.*?)*\-\-(.*?)#{Regexp.escape(extname)}\Z/, 1]
-      version ||= basename.to_s[/\A.*\-\-?(.*?)#{Regexp.escape(extname)}\Z/, 1]
+      version ||= basename.to_s[/\A.*(?:--.*?)*--(.*?)#{Regexp.escape(extname)}\Z/, 1]
+      version ||= basename.to_s[/\A.*--?(.*?)#{Regexp.escape(extname)}\Z/, 1]
 
       return false unless version
 
       version = Version.new(version)
 
-      return false unless formula_name = basename.to_s[/\A(.*?)(?:\-\-.*?)*\-\-?(?:#{Regexp.escape(version)})/, 1]
+      return false unless formula_name = basename.to_s[/\A(.*?)(?:--.*?)*--?(?:#{Regexp.escape(version)})/, 1]
 
       formula = begin
         Formulary.from_rack(HOMEBREW_CELLAR/formula_name)
@@ -72,7 +79,7 @@ module CleanupRefinement
         return false
       end
 
-      resource_name = basename.to_s[/\A.*?\-\-(.*?)\-\-?(?:#{Regexp.escape(version)})/, 1]
+      resource_name = basename.to_s[/\A.*?--(.*?)--?(?:#{Regexp.escape(version)})/, 1]
 
       if resource_name == "patch"
         patch_hashes = formula.stable&.patches&.select(&:external?)&.map(&:resource)&.map(&:version)
@@ -85,7 +92,7 @@ module CleanupRefinement
         return true
       end
 
-      return true if scrub && !formula.installed?
+      return true if scrub && !formula.latest_version_installed?
 
       return true if Utils::Bottles.file_outdated?(formula, self)
 
@@ -93,7 +100,7 @@ module CleanupRefinement
     end
 
     def stale_cask?(scrub)
-      return false unless name = basename.to_s[/\A(.*?)\-\-/, 1]
+      return false unless name = basename.to_s[/\A(.*?)--/, 1]
 
       cask = begin
         Cask::CaskLoader.load(name)
@@ -101,7 +108,7 @@ module CleanupRefinement
         return false
       end
 
-      return true unless basename.to_s.match?(/\A#{Regexp.escape(name)}\-\-#{Regexp.escape(cask.version)}\b/)
+      return true unless basename.to_s.match?(/\A#{Regexp.escape(name)}--#{Regexp.escape(cask.version)}\b/)
 
       return true if scrub && !cask.versions.include?(cask.version)
 
@@ -124,33 +131,36 @@ module Homebrew
     PERIODIC_CLEAN_FILE = (HOMEBREW_CACHE/".cleaned").freeze
 
     attr_predicate :dry_run?, :scrub?
-    attr_reader :args, :days, :cache
-    attr_reader :disk_cleanup_size
+    attr_reader :args, :days, :cache, :disk_cleanup_size
 
     def initialize(*args, dry_run: false, scrub: false, days: nil, cache: HOMEBREW_CACHE)
       @disk_cleanup_size = 0
       @args = args
       @dry_run = dry_run
       @scrub = scrub
-      @days = days || CLEANUP_MAX_AGE_DAYS
+      @days = days || Homebrew::EnvConfig.cleanup_max_age_days.to_i
       @cache = cache
       @cleaned_up_paths = Set.new
     end
 
     def self.install_formula_clean!(f)
-      return if ENV["HOMEBREW_NO_INSTALL_CLEANUP"]
+      return if Homebrew::EnvConfig.no_install_cleanup?
 
       cleanup = Cleanup.new
       if cleanup.periodic_clean_due?
         cleanup.periodic_clean!
-      elsif f.installed?
+      elsif f.latest_version_installed?
         cleanup.cleanup_formula(f)
       end
     end
 
     def periodic_clean_due?
-      return false if ENV["HOMEBREW_NO_INSTALL_CLEANUP"]
-      return true unless PERIODIC_CLEAN_FILE.exist?
+      return false if Homebrew::EnvConfig.no_install_cleanup?
+
+      unless PERIODIC_CLEAN_FILE.exist?
+        FileUtils.touch PERIODIC_CLEAN_FILE
+        return false
+      end
 
       PERIODIC_CLEAN_FILE.mtime < CLEANUP_DEFAULT_DAYS.days.ago
     end
@@ -300,6 +310,7 @@ module Homebrew
     end
 
     def cleanup_path(path)
+      return unless path.exist?
       return unless @cleaned_up_paths.add?(path)
 
       disk_usage = path.disk_usage
@@ -337,7 +348,7 @@ module Homebrew
              .chomp
       use_system_ruby = (
         Gem::Version.new(system_ruby_version) >= Gem::Version.new(RUBY_VERSION)
-      ) && ENV["HOMEBREW_FORCE_VENDOR_RUBY"].nil?
+      ) && !Homebrew::EnvConfig.force_vendor_ruby?
       vendor_path = HOMEBREW_LIBRARY/"Homebrew/vendor"
       portable_ruby_version_file = vendor_path/"portable-ruby-version"
       portable_ruby_version = if portable_ruby_version_file.exist?

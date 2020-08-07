@@ -17,6 +17,7 @@ module RuboCop
       include RangeHelp
 
       attr_accessor :file_path
+
       @registry = Cop.registry
 
       # This method is called by RuboCop and is the main entry point
@@ -34,7 +35,7 @@ module RuboCop
       # Checks for regex match of pattern in the node and
       # sets the appropriate instance variables to report the match
       def regex_match_group(node, pattern)
-        string_repr = string_content(node)
+        string_repr = string_content(node).encode("UTF-8", invalid: :replace)
         match_object = string_repr.match(pattern)
         return unless match_object
 
@@ -494,7 +495,15 @@ module RuboCop
         when :str
           node.str_content
         when :dstr
-          node.each_child_node(:str).map(&:str_content).join
+          content = ""
+          node.each_child_node(:str, :begin) do |child|
+            content += if child.begin_type?
+              child.source
+            else
+              child.str_content
+            end
+          end
+          content
         when :const
           node.const_name
         when :sym
