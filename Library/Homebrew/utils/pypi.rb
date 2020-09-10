@@ -1,18 +1,28 @@
 # frozen_string_literal: true
 
+# Helper functions for updating PyPi resources.
+#
+# @api private
 module PyPI
   module_function
 
   PYTHONHOSTED_URL_PREFIX = "https://files.pythonhosted.org/packages/"
+  private_constant :PYTHONHOSTED_URL_PREFIX
 
   AUTOMATIC_RESOURCE_UPDATE_BLOCKLIST = %w[
     ansible
     ansible@2.8
+    cdk8s
     cloudformation-cli
     diffoscope
     dxpy
+    ipython
     molecule
+    pulumi
+    salt
+    xonsh
   ].freeze
+  private_constant :AUTOMATIC_RESOURCE_UPDATE_BLOCKLIST
 
   @pipgrip_installed = nil
 
@@ -30,7 +40,7 @@ module PyPI
     url
   end
 
-  # Get name, url and sha256 for a given pypi package
+  # Get name, URL and SHA-256 checksum for a given PyPi package.
   def get_pypi_info(package, version)
     metadata_url = "https://pypi.org/pypi/#{package}/#{version}/json"
     out, _, status = curl_output metadata_url, "--location"
@@ -82,7 +92,7 @@ module PyPI
     @pipgrip_installed ||= Formula["pipgrip"].any_version_installed?
     odie '"pipgrip" must be installed (`brew install pipgrip`)' unless @pipgrip_installed
 
-    ohai "Retrieving PyPI dependencies for \"#{pypi_name}==#{version}\"" if !print_only && !silent
+    ohai "Retrieving PyPI dependencies for \"#{pypi_name}==#{version}\"..." if !print_only && !silent
     pipgrip_output = Utils.popen_read Formula["pipgrip"].bin/"pipgrip", "--json", "--no-cache-dir",
                                       "#{pypi_name}==#{version}"
     unless $CHILD_STATUS.success?
@@ -96,13 +106,14 @@ module PyPI
     packages = JSON.parse(pipgrip_output).sort.to_h
 
     # Remove extra packages that may be included in pipgrip output
-    exclude_list = %W[#{pypi_name} argparse pip setuptools wheel wsgiref]
+    exclude_list = %W[#{pypi_name.downcase} argparse pip setuptools wheel wsgiref]
     packages.delete_if do |package|
       exclude_list.include? package
     end
 
     new_resource_blocks = ""
     packages.each do |package, package_version|
+      ohai "Getting PyPI info for \"#{package}==#{package_version}\"" if !print_only && !silent
       name, url, checksum = get_pypi_info package, package_version
       # Fail if unable to find name, url or checksum for any resource
       if name.blank?

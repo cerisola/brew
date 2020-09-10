@@ -2,6 +2,9 @@
 
 require "cask/cmd"
 
+# Helper functions for commands.
+#
+# @api private
 module Commands
   module_function
 
@@ -103,10 +106,10 @@ module Commands
     find_commands HOMEBREW_DEV_CMD_PATH
   end
 
-  def official_external_commands_paths
+  def official_external_commands_paths(quiet:)
     %w[bundle services test-bot].map do |cmd|
       tap = Tap.fetch("Homebrew/#{cmd}")
-      tap.install unless tap.installed?
+      tap.install(quiet: quiet) unless tap.installed?
       external_ruby_v2_cmd_path(cmd)
     end
   end
@@ -179,7 +182,7 @@ module Commands
     cmds = internal_commands + internal_developer_commands + internal_commands_aliases
 
     file = HOMEBREW_REPOSITORY/"completions/internal_commands_list.txt"
-    file.atomic_write(cmds.sort.join("\n") + "\n")
+    file.atomic_write("#{cmds.sort.join("\n")}\n")
   end
 
   def rebuild_commands_completion_list
@@ -187,6 +190,6 @@ module Commands
     HOMEBREW_CACHE.mkpath
 
     file = HOMEBREW_CACHE/"all_commands_list.txt"
-    file.atomic_write(commands(aliases: true).sort.join("\n") + "\n")
+    file.atomic_write("#{commands(aliases: true).sort.join("\n")}\n")
   end
 end

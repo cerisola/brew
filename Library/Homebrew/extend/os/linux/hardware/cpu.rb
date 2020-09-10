@@ -11,10 +11,6 @@ module Hardware
         end
       end
 
-      def cpuinfo
-        @cpuinfo ||= File.read("/proc/cpuinfo")
-      end
-
       def family
         return :arm if arm?
         return :ppc if ppc?
@@ -84,7 +80,7 @@ module Hardware
       end
 
       %w[aes altivec avx avx2 lm ssse3 sse4_2].each do |flag|
-        define_method(flag + "?") { flags.include? flag }
+        define_method("#{flag}?") { flags.include? flag }
       end
 
       def sse3?
@@ -93,6 +89,12 @@ module Hardware
 
       def sse4?
         flags.include? "sse4_1"
+      end
+
+      private
+
+      def cpuinfo
+        @cpuinfo ||= File.read("/proc/cpuinfo")
       end
     end
   end

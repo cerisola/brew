@@ -88,7 +88,7 @@ module Homebrew
     return merge(args: args) if args.merge?
 
     ensure_relocation_formulae_installed! unless args.skip_relocation?
-    args.resolved_formulae.each do |f|
+    args.named.to_resolved_formulae.each do |f|
       bottle_formula f, args: args
     end
   end
@@ -187,12 +187,10 @@ module Homebrew
       absolute_symlinks_start_with_string << pn if link.to_s.start_with?(string)
     end
 
-    if args.verbose?
-      unless absolute_symlinks_start_with_string.empty?
-        opoo "Absolute symlink starting with #{string}:"
-        absolute_symlinks_start_with_string.each do |pn|
-          puts "  #{pn} -> #{pn.resolved_path}"
-        end
+    if args.verbose? && absolute_symlinks_start_with_string.present?
+      opoo "Absolute symlink starting with #{string}:"
+      absolute_symlinks_start_with_string.each do |pn|
+        puts "  #{pn} -> #{pn.resolved_path}"
       end
     end
 
@@ -280,10 +278,7 @@ module Homebrew
 
         keg.find do |file|
           if file.symlink?
-            # Ruby does not support `File.lutime` yet.
-            # Shellout using `touch` to change modified time of symlink itself.
-            system "/usr/bin/touch", "-h",
-                   "-t", tab.source_modified_time.strftime("%Y%m%d%H%M.%S"), file
+            File.lutime(tab.source_modified_time, tab.source_modified_time, file)
           else
             file.utime(tab.source_modified_time, tab.source_modified_time)
           end
@@ -544,13 +539,13 @@ module Homebrew
                 )\n+                                                              # multiple empty lines
                )+
              /mx
-            string = s.sub!(pattern, '\0' + output + "\n")
+            string = s.sub!(pattern, "\\0#{output}\n")
             odie "Bottle block addition failed!" unless string
           end
         end
 
         unless args.no_commit?
-          Utils.set_git_name_email!
+          Utils::Git.set_name_email!
 
           short_name = formula_name.split("/", -1).last
           pkg_version = bottle_hash["formula"]["pkg_version"]

@@ -44,10 +44,9 @@ module Homebrew
   def outdated
     args = outdated_args.parse
 
-    case json_version(args.json)
+    case (j = json_version(args.json))
     when :v1, :default
-      # TODO: enable for next major/minor release
-      # odeprecated "brew outdated --json#{json_version == :v1 ? "=v1" : ""}", "brew outdated --json=v2"
+      odeprecated "brew outdated --json#{j == :v1 ? "=v1" : ""}", "brew outdated --json=v2"
 
       outdated = if args.formula? || !args.cask?
         outdated_formulae args: args
@@ -170,7 +169,7 @@ module Homebrew
   end
 
   def outdated_formulae(args:)
-    select_outdated((args.resolved_formulae.presence || Formula.installed), args: args).sort
+    select_outdated((args.named.to_resolved_formulae.presence || Formula.installed), args: args).sort
   end
 
   def outdated_casks(args:)
@@ -182,7 +181,7 @@ module Homebrew
   end
 
   def outdated_formulae_casks(args:)
-    formulae, casks = args.resolved_formulae_casks
+    formulae, casks = args.named.to_resolved_formulae_to_casks
 
     if formulae.blank? && casks.blank?
       formulae = Formula.installed
@@ -197,7 +196,7 @@ module Homebrew
       if formula_or_cask.is_a?(Formula)
         formula_or_cask.outdated?(fetch_head: args.fetch_HEAD?)
       else
-        formula_or_cask.outdated?(args.greedy?)
+        formula_or_cask.outdated?(greedy: args.greedy?)
       end
     end
   end

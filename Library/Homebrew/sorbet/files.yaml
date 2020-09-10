@@ -82,6 +82,7 @@ false:
   - ./cleanup.rb
   - ./cli/parser.rb
   - ./cmd/--cache.rb
+  - ./cmd/--caskroom.rb
   - ./cmd/--cellar.rb
   - ./cmd/--env.rb
   - ./cmd/--prefix.rb
@@ -448,7 +449,6 @@ false:
 false:
   - ./PATH.rb
   - ./build_environment.rb
-  - ./cask/cmd/options.rb
   - ./cask/config.rb
   - ./cask/dsl/appcast.rb
   - ./cask/dsl/container.rb
@@ -489,9 +489,12 @@ false:
   - ./rubocops/cask/homepage_matches_url.rb
   - ./rubocops/cask/homepage_url_trailing_slash.rb
   - ./rubocops/cask/mixin/cask_help.rb
+  - ./rubocops/cask/mixin/on_desc_stanza.rb
   - ./rubocops/cask/mixin/on_homepage_stanza.rb
   - ./rubocops/cask/no_dsl_version.rb
   - ./rubocops/cask/stanza_order.rb
+  - ./rubocops/shared/desc_helper.rb
+  - ./rubocops/shared/helper_functions.rb
   - ./searchable.rb
   - ./test/PATH_spec.rb
   - ./test/bash_spec.rb
@@ -501,7 +504,6 @@ false:
   - ./test/cache_store_spec.rb
   - ./test/cask/cask_loader/from_content_loader_spec.rb
   - ./test/cask/cask_loader/from_uri_loader_spec.rb
-  - ./test/cask/cmd/options_spec.rb
   - ./test/cask/cmd/shared_examples/invalid_option.rb
   - ./test/cask/config_spec.rb
   - ./test/cask/denylist_spec.rb
@@ -512,6 +514,7 @@ false:
   - ./test/checksum_spec.rb
   - ./test/cleaner_spec.rb
   - ./test/cmd/--cache_spec.rb
+  - ./test/cmd/--caskroom_spec.rb
   - ./test/cmd/--cellar_spec.rb
   - ./test/cmd/--env_spec.rb
   - ./test/cmd/--prefix_spec.rb
@@ -555,6 +558,7 @@ false:
   - ./test/compiler_failure_spec.rb
   - ./test/cxxstdlib_spec.rb
   - ./test/dependable_spec.rb
+  - ./test/dependencies_helpers_spec.rb
   - ./test/descriptions_spec.rb
   - ./test/dev-cmd/bottle_spec.rb
   - ./test/dev-cmd/bump-formula-pr_spec.rb
@@ -617,6 +621,7 @@ false:
   - ./test/requirements/osxfuse_requirement_spec.rb
   - ./test/requirements_spec.rb
   - ./test/rubocop_spec.rb
+  - ./test/rubocops/cask/desc_spec.rb
   - ./test/rubocops/cask/homepage_matches_url_spec.rb
   - ./test/rubocops/cask/homepage_url_trailing_slash_spec.rb
   - ./test/rubocops/cask/no_dsl_version_spec.rb
@@ -818,6 +823,7 @@ false:
   - ./test/utils/github_spec.rb
   - ./test/utils/popen_spec.rb
   - ./test/utils/shell_spec.rb
+  - ./test/utils/spdx_spec.rb
   - ./test/utils/svn_spec.rb
   - ./test/utils/tty_spec.rb
   - ./test/version_spec.rb
@@ -837,13 +843,17 @@ true:
   - ./checksum.rb
   - ./cleaner.rb
   - ./cli/args.rb
+  - ./compat/cli/parser.rb
+  - ./compat/dependencies_helpers.rb
   - ./compat/extend/nil.rb
   - ./compat/extend/string.rb
   - ./compat/formula.rb
   - ./compat/os/mac.rb
   - ./compilers.rb
   - ./config.rb
+  - ./context.rb
   - ./dependable.rb
+  - ./dependencies_helpers.rb
   - ./dependency_collector.rb
   - ./description_cache_store.rb
   - ./descriptions.rb
@@ -883,6 +893,7 @@ true:
   - ./rubocops/cask/ast/cask_header.rb
   - ./rubocops/cask/ast/stanza.rb
   - ./rubocops/cask/constants/stanza.rb
+  - ./rubocops/cask/desc.rb
   - ./rubocops/cask/extend/string.rb
   - ./rubocops/deprecate.rb
   - ./tap_constants.rb
@@ -891,16 +902,17 @@ true:
   - ./utils/bottles.rb
   - ./utils/inreplace.rb
   - ./utils/link.rb
-  - ./utils/notability.rb
+  - ./utils/shared_audits.rb
   - ./utils/shebang.rb
   - ./utils/shell.rb
+  - ./utils/spdx.rb
   - ./utils/svn.rb
   - ./utils/tty.rb
   - ./utils/user.rb
   - ./version/null.rb
 
 strict:
-  - ./cask/all.rb
+  - ./cask.rb
   - ./cask/artifact.rb
   - ./cask/dsl/uninstall_postflight.rb
   - ./compat.rb
@@ -939,9 +951,7 @@ strict:
   - ./extend/os/tap.rb
   - ./extend/os/utils/analytics.rb
   - ./language/haskell.rb
-  - ./language/python_virtualenv_constants.rb
   - ./os/global.rb
-  - ./os/linux/diagnostic.rb
   - ./requirements.rb
   - ./requirements/osxfuse_requirement.rb
   - ./rubocops.rb

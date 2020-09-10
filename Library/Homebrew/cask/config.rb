@@ -9,15 +9,18 @@ require "extend/hash_validator"
 using HashValidator
 
 module Cask
+  # Configuration for installing casks.
+  #
+  # @api private
   class Config
     DEFAULT_DIRS = {
       appdir:               "/Applications",
+      colorpickerdir:       "~/Library/ColorPickers",
       prefpanedir:          "~/Library/PreferencePanes",
       qlplugindir:          "~/Library/QuickLook",
       mdimporterdir:        "~/Library/Spotlight",
       dictionarydir:        "~/Library/Dictionaries",
       fontdir:              "~/Library/Fonts",
-      colorpickerdir:       "~/Library/ColorPickers",
       servicedir:           "~/Library/Services",
       input_methoddir:      "~/Library/Input Methods",
       internet_plugindir:   "~/Library/Internet Plug-Ins",

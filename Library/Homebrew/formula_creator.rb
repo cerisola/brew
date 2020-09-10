@@ -4,6 +4,9 @@ require "digest"
 require "erb"
 
 module Homebrew
+  # Class for generating a formula from a template.
+  #
+  # @api private
   class FormulaCreator
     attr_reader :args, :url, :sha256, :desc, :homepage
     attr_accessor :name, :version, :tap, :path, :mode, :license
@@ -34,7 +37,7 @@ module Homebrew
       @version = if @version
         Version.create(@version)
       else
-        Version.detect(url, {})
+        Version.detect(url)
       end
     end
 
@@ -72,6 +75,7 @@ module Homebrew
             metadata = GitHub.repository(@user, @name)
             @desc = metadata["description"]
             @homepage = metadata["homepage"]
+            @license = metadata["license"]["spdx_id"] if metadata["license"]
           rescue GitHub::HTTPNotFoundError
             # If there was no repository found assume the network connection is at
             # fault rather than the input URL.

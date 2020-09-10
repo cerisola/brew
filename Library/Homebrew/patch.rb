@@ -3,6 +3,9 @@
 require "resource"
 require "erb"
 
+# Helper module for creating patches.
+#
+# @api private
 module Patch
   def self.create(strip, src, &block)
     case strip
@@ -52,6 +55,9 @@ module Patch
   end
 end
 
+# An abstract class representing a patch embedded into a formula.
+#
+# @api private
 class EmbeddedPatch
   attr_writer :owner
   attr_reader :strip
@@ -77,6 +83,9 @@ class EmbeddedPatch
   end
 end
 
+# A patch at the `__END__` of a formula file.
+#
+# @api private
 class DATAPatch < EmbeddedPatch
   attr_accessor :path
 
@@ -100,6 +109,9 @@ class DATAPatch < EmbeddedPatch
   end
 end
 
+# A string containing a patch.
+#
+# @api private
 class StringPatch < EmbeddedPatch
   def initialize(strip, str)
     super(strip)
@@ -111,6 +123,9 @@ class StringPatch < EmbeddedPatch
   end
 end
 
+# A string containing a patch.
+#
+# @api private
 class ExternalPatch
   extend Forwardable
 
@@ -170,27 +185,14 @@ class ExternalPatch
   end
 end
 
+# A legacy patch.
+#
 # Legacy patches have no checksum and are not cached.
+#
+# @api private
 class LegacyPatch < ExternalPatch
-  def initialize(strip, url)
-    odeprecated "legacy patches", "'patch do' blocks"
+  def initialize(strip, _url)
+    odisabled "legacy patches", "'patch do' blocks"
     super(strip)
-    resource.url(url)
-    resource.download_strategy = CurlDownloadStrategy
-  end
-
-  def fetch
-    clear_cache
-    super
-  end
-
-  def verify_download_integrity(_fn)
-    # no-op
-  end
-
-  def apply
-    super
-  ensure
-    clear_cache
   end
 end

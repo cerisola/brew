@@ -54,7 +54,7 @@ module Homebrew
     elsif args.no_named?
       raise FormulaUnspecifiedError
     else
-      puts_options args.formulae, args: args
+      puts_options args.named.to_formulae, args: args
     end
   end
 
@@ -80,7 +80,7 @@ module Homebrew
         puts f.options.as_flags.sort * " "
       else
         puts f.full_name if formulae.length > 1
-        dump_options_for_formula f
+        Options.dump_for_formula f
         puts
       end
     end

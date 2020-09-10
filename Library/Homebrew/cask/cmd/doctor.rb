@@ -1,26 +1,25 @@
 # frozen_string_literal: true
 
-require "system_config"
-require "diagnostic"
-
 module Cask
   class Cmd
+    # Implementation of the `brew cask doctor` command.
+    #
+    # @api private
     class Doctor < AbstractCommand
-      def initialize(*)
-        super
-        return if args.empty?
-
-        raise ArgumentError, "#{self.class.command_name} does not take arguments."
+      def self.max_named
+        0
       end
 
-      def summary_header
-        "Cask's Doctor Checkup"
+      def self.description
+        "Checks for configuration issues."
       end
 
       def run
+        require "diagnostic"
+
         success = true
 
-        checks = Homebrew::Diagnostic::Checks.new true
+        checks = Homebrew::Diagnostic::Checks.new(verbose: true)
         checks.cask_checks.each do |check|
           out = checks.send(check)
 
@@ -31,10 +30,6 @@ module Cask
         end
 
         raise CaskError, "There are some problems with your setup." unless success
-      end
-
-      def self.help
-        "checks for configuration issues"
       end
     end
   end

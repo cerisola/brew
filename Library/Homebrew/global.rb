@@ -6,15 +6,21 @@ require "json/add/exception"
 require "pathname"
 require "ostruct"
 require "pp"
+require "forwardable"
 
 require_relative "load_path"
 
 require "rubygems"
+# Only require "core_ext" here to ensure we're only requiring the minimum of
+# what we need.
 require "active_support/core_ext/object/blank"
 require "active_support/core_ext/numeric/time"
+require "active_support/core_ext/object/try"
 require "active_support/core_ext/array/access"
-require "active_support/i18n"
-require "active_support/inflector/inflections"
+require "active_support/core_ext/string/inflections"
+require "active_support/core_ext/array/conversions"
+require "active_support/core_ext/hash/deep_merge"
+require "active_support/core_ext/file/atomic"
 
 I18n.backend.available_locales # Initialize locales so they can be overwritten.
 I18n.backend.store_translations :en, support: { array: { last_word_connector: " and " } }
@@ -31,10 +37,15 @@ HOMEBREW_CORE_DEFAULT_GIT_REMOTE = ENV["HOMEBREW_CORE_DEFAULT_GIT_REMOTE"]
 HOMEBREW_DEFAULT_CACHE = ENV["HOMEBREW_DEFAULT_CACHE"]
 HOMEBREW_DEFAULT_LOGS = ENV["HOMEBREW_DEFAULT_LOGS"]
 HOMEBREW_DEFAULT_TEMP = ENV["HOMEBREW_DEFAULT_TEMP"]
+HOMEBREW_REQUIRED_RUBY_VERSION = ENV["HOMEBREW_REQUIRED_RUBY_VERSION"]
 require "env_config"
 
 require "config"
 require "os"
+require "context"
+require "extend/pathname"
+require "extend/predicable"
+require "extend/module"
 require "cli/args"
 require "messages"
 
@@ -58,7 +69,6 @@ HOMEBREW_DEFAULT_PREFIX = "/usr/local"
 LINUXBREW_DEFAULT_PREFIX = "/home/linuxbrew/.linuxbrew"
 
 require "fileutils"
-require "os"
 require "os/global"
 
 module Homebrew
@@ -103,7 +113,6 @@ HOMEBREW_PULL_API_REGEX =
 HOMEBREW_PULL_OR_COMMIT_URL_REGEX =
   %r[https://github\.com/([\w-]+)/([\w-]+)?/(?:pull/(\d+)|commit/[0-9a-fA-F]{4,40})].freeze
 
-require "forwardable"
 require "PATH"
 
 ENV["HOMEBREW_PATH"] ||= ENV["PATH"]
@@ -115,15 +124,7 @@ end.compact.freeze
 
 require "set"
 
-require "context"
-require "extend/pathname"
-
-require "extend/module"
-require "extend/predicable"
 require "extend/string"
-require "active_support/core_ext/object/blank"
-require "active_support/core_ext/hash/deep_merge"
-require "active_support/core_ext/file/atomic"
 
 require "system_command"
 require "exceptions"

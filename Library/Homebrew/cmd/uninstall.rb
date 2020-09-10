@@ -5,7 +5,6 @@ require "formula"
 require "diagnostic"
 require "migrator"
 require "cli/parser"
-require "cask/all"
 require "cask/cmd"
 require "cask/cask_loader"
 
@@ -50,7 +49,7 @@ module Homebrew
         end
       end
     else
-      all_kegs, casks = args.kegs_casks
+      all_kegs, casks = args.named.to_kegs_to_casks
       kegs_by_rack = all_kegs.group_by(&:rack)
     end
 
@@ -129,13 +128,12 @@ module Homebrew
 
     Cask::Cmd::Uninstall.uninstall_casks(
       *casks,
-      binaries: args.binaries?,
+      binaries: EnvConfig.cask_opts_binaries?,
       verbose:  args.verbose?,
       force:    args.force?,
     )
   rescue MultipleVersionsInstalledError => e
     ofail e
-    puts "Run `brew uninstall --force #{e.name}` to remove all versions."
   ensure
     # If we delete Cellar/newname, then Cellar/oldname symlink
     # can become broken and we have to remove it.

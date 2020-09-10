@@ -1,7 +1,12 @@
 # frozen_string_literal: true
 
+require "cask/utils"
+
 module Cask
   class DSL
+    # Superclass for all stanzas which take a block.
+    #
+    # @api private
     class Base
       extend Forwardable
 
@@ -16,6 +21,8 @@ module Cask
         @command.run!(executable, **options)
       end
 
+      # No need to define it as its the default/superclass implementation.
+      # rubocop:disable Style/MissingRespondToMissing
       def method_missing(method, *)
         if method
           underscored_class = self.class.name.gsub(/([[:lower:]])([[:upper:]][[:lower:]])/, '\1_\2').downcase
@@ -26,10 +33,7 @@ module Cask
           super
         end
       end
-
-      def respond_to_missing?(*)
-        true
-      end
+      # rubocop:enable Style/MissingRespondToMissing
     end
   end
 end

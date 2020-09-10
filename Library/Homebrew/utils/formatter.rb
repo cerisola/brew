@@ -2,6 +2,9 @@
 
 require "utils/tty"
 
+# Helper module for formatting output.
+#
+# @api private
 module Formatter
   module_function
 
@@ -47,8 +50,8 @@ module Formatter
     indent = width - desc
     s.gsub(/(?<=\S) *\n(?=\S)/, " ")
      .gsub(/([`>)\]]:) /, "\\1\n    ")
-     .gsub(/^( +-.+  +(?=\S.{#{desc}}))(.{1,#{desc}})( +|$)\n?/, "\\1\\2\n" + " " * indent)
-     .gsub(/^( {#{indent}}(?=\S.{#{desc}}))(.{1,#{desc}})( +|$)\n?/, "\\1\\2\n" + " " * indent)
+     .gsub(/^( +-.+  +(?=\S.{#{desc}}))(.{1,#{desc}})( +|$)\n?/, "\\1\\2\n#{" " * indent}")
+     .gsub(/^( {#{indent}}(?=\S.{#{desc}}))(.{1,#{desc}})( +|$)\n?/, "\\1\\2\n#{" " * indent}")
      .gsub(/(.{1,#{width}})( +|$)\n?/, "\\1\n")
   end
 

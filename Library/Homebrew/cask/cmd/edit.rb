@@ -2,11 +2,26 @@
 
 module Cask
   class Cmd
+    # Implementation of the `brew cask edit` command.
+    #
+    # @api private
     class Edit < AbstractCommand
+      def self.min_named
+        :cask
+      end
+
+      def self.max_named
+        1
+      end
+
+      def self.description
+        "Open the given <cask> for editing."
+      end
+
       def initialize(*)
         super
-        raise CaskUnspecifiedError if args.empty?
-        raise ArgumentError, "Only one Cask can be edited at a time." if args.count > 1
+      rescue Homebrew::CLI::MaxNamedArgumentsError
+        raise UsageError, "Only one cask can be edited at a time."
       end
 
       def run
@@ -24,10 +39,6 @@ module Cask
         return path if path.file?
 
         raise
-      end
-
-      def self.help
-        "edits the given Cask"
       end
     end
   end

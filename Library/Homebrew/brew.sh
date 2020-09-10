@@ -5,13 +5,24 @@ case "$HOMEBREW_SYSTEM" in
   Linux)  HOMEBREW_LINUX="1" ;;
 esac
 
+# Colorize output on GitHub Actions.
+if [[ -n "$GITHUB_ACTIONS" ]]; then
+  export HOMEBREW_COLOR="1"
+fi
+
 # Force UTF-8 to avoid encoding issues for users with broken locale settings.
-if [[ "$(locale charmap 2>/dev/null)" != "UTF-8" ]]
+if [[ -n "$HOMEBREW_MACOS" ]]
 then
-  if [[ -n "$HOMEBREW_MACOS" ]]
+  if [[ "$(locale charmap)" != "UTF-8" ]]
   then
     export LC_ALL="en_US.UTF-8"
-  else
+  fi
+else
+  if ! command -v locale >/dev/null
+  then
+    export LC_ALL=C
+  elif [[ "$(locale charmap)" != "UTF-8" ]]
+  then
     locales=$(locale -a)
     c_utf_regex='\bC\.(utf8|UTF-8)\b'
     en_us_regex='\ben_US\.(utf8|UTF-8)\b'
@@ -95,14 +106,6 @@ numeric() {
   printf "%01d%02d%02d%03d" ${1//[.rc]/ } 2>/dev/null
 }
 
-HOMEBREW_VERSION="$(git -C "$HOMEBREW_REPOSITORY" describe --tags --dirty --abbrev=7 2>/dev/null)"
-HOMEBREW_USER_AGENT_VERSION="$HOMEBREW_VERSION"
-if [[ -z "$HOMEBREW_VERSION" ]]
-then
-  HOMEBREW_VERSION=">=2.2.0 (shallow or no git repository)"
-  HOMEBREW_USER_AGENT_VERSION="2.X.Y"
-fi
-
 if [[ "$HOMEBREW_PREFIX" = "/" || "$HOMEBREW_PREFIX" = "/usr" ]]
 then
   # it may work, but I only see pain this route and don't want to support it
@@ -131,6 +134,14 @@ then
   HOMEBREW_GIT="$HOMEBREW_GIT_PATH"
 else
   HOMEBREW_GIT="git"
+fi
+
+HOMEBREW_VERSION="$("$HOMEBREW_GIT" -C "$HOMEBREW_REPOSITORY" describe --tags --dirty --abbrev=7 2>/dev/null)"
+HOMEBREW_USER_AGENT_VERSION="$HOMEBREW_VERSION"
+if [[ -z "$HOMEBREW_VERSION" ]]
+then
+  HOMEBREW_VERSION=">=2.5.0 (shallow or no git repository)"
+  HOMEBREW_USER_AGENT_VERSION="2.X.Y"
 fi
 
 if [[ -n "$HOMEBREW_MACOS" ]]
@@ -284,11 +295,6 @@ export HOMEBREW_USER_AGENT
 export HOMEBREW_USER_AGENT_CURL
 export HOMEBREW_BOTTLE_DEFAULT_DOMAIN
 
-if [[ -n "$HOMEBREW_DEVELOPER" ]] && [[ -z "$HOMEBREW_NO_PATCHELF_RB" ]]
-then
-  export HOMEBREW_PATCHELF_RB="1"
-fi
-
 if [[ -n "$HOMEBREW_MACOS" && -x "/usr/bin/xcode-select" ]]
 then
   XCODE_SELECT_PATH=$('/usr/bin/xcode-select' --print-path 2>/dev/null)
@@ -375,11 +381,6 @@ then
   case "$HOMEBREW_CASK_COMMAND" in
     instal) HOMEBREW_CASK_COMMAND="install" ;; # gem does the same
   esac
-fi
-
-if [[ "$HOMEBREW_COMMAND" = "audit" || "$HOMEBREW_COMMAND" = "style" ]]
-then
-  export HOMEBREW_INSTALL_BUNDLER_GEMS_FIRST="1"
 fi
 
 # Set HOMEBREW_DEV_CMD_RUN for users who have run a development command.

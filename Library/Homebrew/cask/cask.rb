@@ -7,6 +7,9 @@ require "cask/metadata"
 require "searchable"
 
 module Cask
+  # An instance of a cask.
+  #
+  # @api private
   class Cask
     extend Enumerable
     extend Forwardable
@@ -98,11 +101,11 @@ module Cask
       @caskroom_path ||= Caskroom.path.join(token)
     end
 
-    def outdated?(greedy = false)
-      !outdated_versions(greedy).empty?
+    def outdated?(greedy: false)
+      !outdated_versions(greedy: greedy).empty?
     end
 
-    def outdated_versions(greedy = false)
+    def outdated_versions(greedy: false)
       # special case: tap version is not available
       return [] if version.nil?
 
@@ -125,7 +128,7 @@ module Cask
     def outdated_info(greedy, verbose, json)
       return token if !verbose && !json
 
-      installed_versions = outdated_versions(greedy).join(", ")
+      installed_versions = outdated_versions(greedy: greedy).join(", ")
 
       if json
         {
@@ -155,6 +158,7 @@ module Cask
       {
         "token"          => token,
         "name"           => name,
+        "desc"           => desc,
         "homepage"       => homepage,
         "url"            => url,
         "appcast"        => appcast,

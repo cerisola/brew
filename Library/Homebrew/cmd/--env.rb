@@ -30,7 +30,7 @@ module Homebrew
     args = __env_args.parse
 
     ENV.activate_extensions!(env: args.env)
-    ENV.deps = args.formulae if superenv?(args.env)
+    ENV.deps = args.named.to_formulae if superenv?(args.env)
     ENV.setup_build_environment
 
     shell = if args.plain?
@@ -43,9 +43,9 @@ module Homebrew
       Utils::Shell.from_path(args.shell)
     end
 
-    env_keys = build_env_keys(ENV)
+    env_keys = BuildEnvironment.keys(ENV)
     if shell.nil?
-      dump_build_env ENV
+      BuildEnvironment.dump ENV
     else
       env_keys.each do |key|
         puts Utils::Shell.export_value(key, ENV[key], shell)

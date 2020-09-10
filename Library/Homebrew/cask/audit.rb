@@ -5,28 +5,41 @@ require "cask/download"
 require "digest"
 require "utils/curl"
 require "utils/git"
-require "utils/notability"
+require "utils/shared_audits"
 
 module Cask
+  # Audit a cask for various problems.
+  #
+  # @api private
   class Audit
     extend Predicable
 
-    attr_reader :cask, :commit_range, :download
+    attr_reader :cask, :download
 
-    attr_predicate :appcast?
+    attr_predicate :appcast?, :new_cask?, :strict?, :online?, :token_conflicts?
 
-    def initialize(cask, appcast: false, download: false, quarantine: nil,
-                   token_conflicts: false, online: false, strict: false,
-                   new_cask: false, commit_range: nil, command: SystemCommand)
+    def initialize(cask, appcast: nil, download: nil, quarantine: nil,
+                   token_conflicts: nil, online: nil, strict: nil,
+                   new_cask: nil)
+
+      # `new_cask` implies `online` and `strict`
+      online = new_cask if online.nil?
+      strict = new_cask if strict.nil?
+
+      # `online` implies `appcast` and `download`
+      appcast = online if appcast.nil?
+      download = online if download.nil?
+
+      # `strict` implies `token_conflicts`
+      token_conflicts = strict if token_conflicts.nil?
+
       @cask = cask
       @appcast = appcast
       @download = Download.new(cask, quarantine: quarantine) if download
       @online = online
       @strict = strict
       @new_cask = new_cask
-      @commit_range = commit_range
       @token_conflicts = token_conflicts
-      @command = command
     end
 
     def run!
@@ -34,6 +47,7 @@ module Cask
       check_required_stanzas
       check_version
       check_sha256
+      check_desc
       check_url
       check_generic_artifacts
       check_token_valid
@@ -50,8 +64,12 @@ module Cask
       check_latest_with_auto_updates
       check_stanza_requires_uninstall
       check_appcast_contains_version
-      check_github_repository
       check_gitlab_repository
+      check_gitlab_repository_archived
+      check_gitlab_prerelease_version
+      check_github_repository
+      check_github_repository_archived
+      check_github_prerelease_version
       check_bitbucket_repository
       self
     rescue => e
@@ -279,6 +297,14 @@ module Cask
       end
     end
 
+    def check_desc
+      return unless new_cask?
+
+      return if cask.desc.present?
+
+      add_warning "Cask should have a description. Please add a `desc` stanza."
+    end
+
     def check_url
       return unless cask.url
 
@@ -321,25 +347,22 @@ module Cask
     end
 
     def check_languages
-      invalid = []
       @cask.languages.each do |language|
-        invalid << language.to_s unless language.match?(/^[a-z]{2}$/) || language.match?(/^[a-z]{2}-[A-Z]{2}$/)
+        Locale.parse(language)
+      rescue Locale::ParserError
+        add_error "Locale '#{language}' is invalid."
       end
-
-      return if invalid.empty?
-
-      add_error "locale #{invalid.join(", ")} are invalid"
     end
 
     def check_token_conflicts
-      return unless @token_conflicts
+      return unless token_conflicts?
       return unless core_formula_names.include?(cask.token)
 
       add_warning "possible duplicate, cask token conflicts with Homebrew core formula: #{core_formula_url}"
     end
 
     def check_token_valid
-      return unless @strict
+      return unless strict?
 
       add_warning "cask token is not lowercase" if cask.token.downcase!
 
@@ -365,14 +388,16 @@ module Cask
     end
 
     def check_token_bad_words
-      return unless @strict
+      return unless strict?
 
       token = cask.token
 
       add_warning "cask token contains .app" if token.end_with? ".app"
 
-      if cask.token.end_with? "alpha", "beta", "release candidate"
-        add_warning "cask token contains version designation"
+      if /-(?<designation>alpha|beta|rc|release-candidate)$/ =~ cask.token &&
+         cask.tap&.official? &&
+         cask.tap != "homebrew/cask-versions"
+        add_warning "cask token contains version designation '#{designation}'"
       end
 
       add_warning "cask token mentions launcher" if token.end_with? "launcher"
@@ -436,7 +461,60 @@ module Cask
                   " the version number '#{adjusted_version_stanza}':\n#{appcast_contents}"
     end
 
+    def check_github_prerelease_version
+      return if cask.tap == "homebrew/cask-versions"
+
+      odebug "Auditing GitHub prerelease"
+      user, repo = get_repo_data(%r{https?://github\.com/([^/]+)/([^/]+)/?.*}) if @online
+      return if user.nil?
+
+      tag = SharedAudits.github_tag_from_url(cask.url)
+      tag ||= cask.version
+      error = SharedAudits.github_release(user, repo, tag, cask: cask)
+      add_error error if error
+    end
+
+    def check_gitlab_prerelease_version
+      return if cask.tap == "homebrew/cask-versions"
+
+      user, repo = get_repo_data(%r{https?://gitlab\.com/([^/]+)/([^/]+)/?.*}) if @online
+      return if user.nil?
+
+      odebug "Auditing GitLab prerelease"
+
+      tag = SharedAudits.gitlab_tag_from_url(cask.url)
+      tag ||= cask.version
+      error = SharedAudits.gitlab_release(user, repo, tag)
+      add_error error if error
+    end
+
+    def check_github_repository_archived
+      user, repo = get_repo_data(%r{https?://github\.com/([^/]+)/([^/]+)/?.*}) if @online
+      return if user.nil?
+
+      odebug "Auditing GitHub repo archived"
+
+      metadata = SharedAudits.github_repo_data(user, repo)
+      return if metadata.nil?
+
+      add_error "GitHub repo is archived" if metadata["archived"]
+    end
+
+    def check_gitlab_repository_archived
+      user, repo = get_repo_data(%r{https?://gitlab\.com/([^/]+)/([^/]+)/?.*}) if @online
+      return if user.nil?
+
+      odebug "Auditing GitLab repo archived"
+
+      metadata = SharedAudits.gitlab_repo_data(user, repo)
+      return if metadata.nil?
+
+      add_error "GitLab repo is archived" if metadata["archived"]
+    end
+
     def check_github_repository
+      return unless @new_cask
+
       user, repo = get_repo_data(%r{https?://github\.com/([^/]+)/([^/]+)/?.*})
       return if user.nil?
 
@@ -447,6 +525,8 @@ module Cask
     end
 
     def check_gitlab_repository
+      return unless new_cask?
+
       user, repo = get_repo_data(%r{https?://gitlab\.com/([^/]+)/([^/]+)/?.*})
       return if user.nil?
 
@@ -457,6 +537,8 @@ module Cask
     end
 
     def check_bitbucket_repository
+      return unless @new_cask
+
       user, repo = get_repo_data(%r{https?://bitbucket\.org/([^/]+)/([^/]+)/?.*})
       return if user.nil?
 
@@ -467,8 +549,7 @@ module Cask
     end
 
     def get_repo_data(regex)
-      return unless @online
-      return unless @new_cask
+      return unless online?
 
       _, user, repo = *regex.match(cask.url.to_s)
       _, user, repo = *regex.match(cask.homepage) unless user
@@ -481,7 +562,7 @@ module Cask
     end
 
     def check_denylist
-      return if cask.tap&.user != "Homebrew"
+      return unless cask.tap&.official?
       return unless reason = Denylist.reason(cask.token)
 
       add_error "#{cask.token} is not allowed: #{reason}"
@@ -490,15 +571,15 @@ module Cask
     def check_https_availability
       return unless download
 
-      if !cask.url.blank? && !cask.url.using
-        check_url_for_https_availability(cask.url, user_agents: [cask.url.user_agent])
-      end
-      check_url_for_https_availability(cask.appcast) unless cask.appcast.blank?
-      check_url_for_https_availability(cask.homepage, user_agents: [:browser]) unless cask.homepage.blank?
+      check_url_for_https_availability(cask.url, user_agents: [cask.url.user_agent]) if cask.url && !cask.url.using
+
+      check_url_for_https_availability(cask.appcast, check_content: true) if cask.appcast && appcast?
+
+      check_url_for_https_availability(cask.homepage, check_content: true, user_agents: [:browser]) if cask.homepage
     end
 
-    def check_url_for_https_availability(url_to_check, user_agents: [:default])
-      problem = curl_check_http_content(url_to_check.to_s, user_agents: user_agents)
+    def check_url_for_https_availability(url_to_check, **options)
+      problem = curl_check_http_content(url_to_check.to_s, **options)
       add_error problem if problem
     end
   end

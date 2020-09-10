@@ -60,7 +60,7 @@ fi
 
 HOMEBREW_LIBRARY="$HOMEBREW_REPOSITORY/Library"
 
-# Whitelist and copy to HOMEBREW_* all variables previously mentioned in
+# Copy and export all HOMEBREW_* variables previously mentioned in
 # manpage or used elsewhere by Homebrew.
 for VAR in BROWSER DISPLAY EDITOR NO_COLOR PATH
 do
@@ -79,9 +79,9 @@ then
   export HOMEBREW_EDITOR="$VISUAL"
 fi
 
-# Set CI variable for GitHub Actions, Azure Pipelines, Jenkins
+# Set CI variable for Azure Pipelines and Jenkins
 # (Set by default on Circle and Travis CI)
-if [[ -n "$GITHUB_ACTIONS" || -n "$TF_BUILD" || -n "$JENKINS_HOME" ]]
+if [[ -z "$CI" ]] && [[ -n "$TF_BUILD" || -n "$JENKINS_HOME" ]]
 then
   export CI="1"
 fi
@@ -94,7 +94,8 @@ then
   # Filter all but the specific variables.
   for VAR in HOME SHELL PATH TERM TERMINFO COLUMNS DISPLAY LOGNAME USER CI SSH_AUTH_SOCK SUDO_ASKPASS \
              http_proxy https_proxy ftp_proxy no_proxy all_proxy HTTPS_PROXY FTP_PROXY ALL_PROXY \
-             GITHUB_ACTIONS GITHUB_REPOSITORY GITHUB_RUN_ID GITHUB_SHA GITHUB_HEAD_REF GITHUB_BASE_REF GITHUB_REF \
+             GITHUB_ACTIONS GITHUB_WORKSPACE GITHUB_ACTIONS_HOMEBREW_SELF_HOSTED \
+             GITHUB_REPOSITORY GITHUB_RUN_ID GITHUB_SHA GITHUB_HEAD_REF GITHUB_BASE_REF GITHUB_REF \
              "${!HOMEBREW_@}"
   do
     # Skip if variable value is empty.

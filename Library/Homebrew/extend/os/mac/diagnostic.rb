@@ -2,6 +2,44 @@
 
 module Homebrew
   module Diagnostic
+    class Volumes
+      def initialize
+        @volumes = get_mounts
+      end
+
+      def which(path)
+        vols = get_mounts path
+
+        # no volume found
+        return -1 if vols.empty?
+
+        vol_index = @volumes.index(vols[0])
+        # volume not found in volume list
+        return -1 if vol_index.nil?
+
+        vol_index
+      end
+
+      def get_mounts(path = nil)
+        vols = []
+        # get the volume of path, if path is nil returns all volumes
+
+        args = %w[/bin/df -P]
+        args << path if path
+
+        Utils.popen_read(*args) do |io|
+          io.each_line do |line|
+            case line.chomp
+              # regex matches: /dev/disk0s2   489562928 440803616  48247312    91%    /
+            when /^.+\s+[0-9]+\s+[0-9]+\s+[0-9]+\s+[0-9]{1,3}%\s+(.+)/
+              vols << Regexp.last_match(1)
+            end
+          end
+        end
+        vols
+      end
+    end
+
     class Checks
       undef fatal_build_from_source_checks, supported_configuration_checks,
             build_from_source_checks
@@ -140,13 +178,12 @@ module Homebrew
       end
 
       def check_ruby_version
-        ruby_version = "2.6.3"
-        return if RUBY_VERSION == ruby_version
+        return if RUBY_VERSION == HOMEBREW_REQUIRED_RUBY_VERSION
         return if Homebrew::EnvConfig.developer? && OS::Mac.prerelease?
 
         <<~EOS
           Ruby version #{RUBY_VERSION} is unsupported on #{MacOS.version}. Homebrew
-          is developed and tested on Ruby #{ruby_version}, and may not work correctly
+          is developed and tested on Ruby #{HOMEBREW_REQUIRED_RUBY_VERSION}, and may not work correctly
           on other Rubies. Patches are accepted as long as they don't cause breakage
           on supported Rubies.
         EOS
@@ -208,7 +245,7 @@ module Homebrew
           Your XQuartz (#{MacOS::XQuartz.version}) is outdated.
           Please install XQuartz #{MacOS::XQuartz.latest_version} (or delete the current version).
           XQuartz can be updated using Homebrew Cask by running:
-            brew cask reinstall xquartz
+            brew reinstall xquartz
         EOS
       end
 

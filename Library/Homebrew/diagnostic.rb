@@ -12,6 +12,9 @@ require "cask/caskroom"
 require "cask/quarantine"
 
 module Homebrew
+  # Module containing diagnostic checks.
+  #
+  # @api private
   module Diagnostic
     def self.missing_deps(ff, hide = nil)
       missing = {}
@@ -25,46 +28,9 @@ module Homebrew
       missing
     end
 
-    class Volumes
-      def initialize
-        @volumes = get_mounts
-      end
-
-      def which(path)
-        vols = get_mounts path
-
-        # no volume found
-        return -1 if vols.empty?
-
-        vol_index = @volumes.index(vols[0])
-        # volume not found in volume list
-        return -1 if vol_index.nil?
-
-        vol_index
-      end
-
-      def get_mounts(path = nil)
-        vols = []
-        # get the volume of path, if path is nil returns all volumes
-
-        args = %w[/bin/df -P]
-        args << path if path
-
-        Utils.popen_read(*args) do |io|
-          io.each_line do |line|
-            case line.chomp
-              # regex matches: /dev/disk0s2   489562928 440803616  48247312    91%    /
-            when /^.+\s+[0-9]+\s+[0-9]+\s+[0-9]+\s+[0-9]{1,3}%\s+(.+)/
-              vols << Regexp.last_match(1)
-            end
-          end
-        end
-        vols
-      end
-    end
-
+    # Diagnostic checks.
     class Checks
-      def initialize(verbose = true)
+      def initialize(verbose: true)
         @verbose = verbose
       end
 
@@ -130,7 +96,7 @@ module Homebrew
       end
 
       def examine_git_origin(repository_path, desired_origin)
-        return if !Utils.git_available? || !repository_path.git?
+        return if !Utils::Git.available? || !repository_path.git?
 
         current_origin = repository_path.git_origin
 
@@ -346,6 +312,7 @@ module Homebrew
           Please execute `sudo chmod +t #{HOMEBREW_TEMP}` in your Terminal.
         EOS
       end
+      alias generic_check_tmpdir_sticky_bit check_tmpdir_sticky_bit
 
       def check_exist_directories
         not_exist_dirs = Keg::MUST_EXIST_DIRECTORIES.reject(&:exist?)
@@ -516,13 +483,13 @@ module Homebrew
 
       def check_git_version
         minimum_version = ENV["HOMEBREW_MINIMUM_GIT_VERSION"]
-        return unless Utils.git_available?
-        return if Version.create(Utils.git_version) >= Version.create(minimum_version)
+        return unless Utils::Git.available?
+        return if Version.create(Utils::Git.version) >= Version.create(minimum_version)
 
         git = Formula["git"]
         git_upgrade_cmd = git.any_version_installed? ? "upgrade" : "install"
         <<~EOS
-          An outdated version (#{Utils.git_version}) of Git was detected in your PATH.
+          An outdated version (#{Utils::Git.version}) of Git was detected in your PATH.
           Git #{minimum_version} or newer is required for Homebrew.
           Please upgrade:
             brew #{git_upgrade_cmd} git
@@ -530,7 +497,7 @@ module Homebrew
       end
 
       def check_for_git
-        return if Utils.git_available?
+        return if Utils::Git.available?
 
         <<~EOS
           Git could not be found in your PATH.
@@ -541,7 +508,7 @@ module Homebrew
       end
 
       def check_git_newline_settings
-        return unless Utils.git_available?
+        return unless Utils::Git.available?
 
         autocrlf = HOMEBREW_REPOSITORY.cd { `git config --get core.autocrlf`.chomp }
         return unless autocrlf == "true"
@@ -577,7 +544,7 @@ module Homebrew
         return if ENV["CI"]
 
         coretap_path = CoreTap.instance.path
-        return if !Utils.git_available? || !(coretap_path/".git").exist?
+        return if !Utils::Git.available? || !(coretap_path/".git").exist?
 
         branch = coretap_path.git_branch
         return if branch.blank? || branch.include?("master")
@@ -676,7 +643,7 @@ module Homebrew
       end
 
       def check_git_status
-        return unless Utils.git_available?
+        return unless Utils::Git.available?
 
         message = nil
 
@@ -688,11 +655,6 @@ module Homebrew
             `git status --untracked-files=all --porcelain 2>/dev/null`
           end
           next if status.blank?
-
-          # these will result in uncommitted gems.
-          if path == HOMEBREW_REPOSITORY
-            next if ENV["HOMEBREW_SORBET"] || ENV["HOMEBREW_PATCHELF_RB"]
-          end
 
           message ||= ""
           message += "\n" unless message.empty?

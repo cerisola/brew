@@ -19,9 +19,13 @@ require "messages"
 require "cask/cask_loader"
 require "cmd/install"
 require "find"
+require "utils/spdx"
+require "deprecate_disable"
 
+# Installer for a formula.
+#
+# @api private
 class FormulaInstaller
-  include Homebrew::Install
   include FormulaCellarChecks
   extend Predicable
 
@@ -112,7 +116,7 @@ class FormulaInstaller
 
     return if build_flags.empty?
 
-    all_bottled = args.formulae.all?(&:bottled?)
+    all_bottled = args.named.to_formulae.all?(&:bottled?)
     raise BuildFlagsError.new(build_flags, bottled: all_bottled)
   end
 
@@ -200,10 +204,23 @@ class FormulaInstaller
   def check_install_sanity
     raise FormulaInstallationAlreadyAttemptedError, formula if self.class.attempted.include?(formula)
 
-    if formula.deprecated?
-      opoo "#{formula.full_name} has been deprecated!"
-    elsif formula.disabled?
-      odie "#{formula.full_name} has been disabled!"
+    type, reason = DeprecateDisable.deprecate_disable_info formula
+
+    if type.present?
+      case type
+      when :deprecated
+        if reason.present?
+          opoo "#{formula.full_name} has been deprecated because it #{reason}!"
+        else
+          opoo "#{formula.full_name} has been deprecated!"
+        end
+      when :disabled
+        if reason.present?
+          odie "#{formula.full_name} has been disabled because it #{reason}!"
+        else
+          odie "#{formula.full_name} has been disabled!"
+        end
+      end
     end
 
     return if ignore_deps?
@@ -262,7 +279,9 @@ class FormulaInstaller
     lock
 
     start_time = Time.now
-    perform_build_from_source_checks if !formula.bottle_unneeded? && !pour_bottle? && DevelopmentTools.installed?
+    if !formula.bottle_unneeded? && !pour_bottle? && DevelopmentTools.installed?
+      Homebrew::Install.perform_build_from_source_checks
+    end
 
     # not in initialize so upgrade can unlink the active keg before calling this
     # function but after instantiating this class so that it can avoid having to
@@ -570,8 +589,6 @@ class FormulaInstaller
   def display_options(formula)
     options = if formula.head?
       ["--HEAD"]
-    elsif formula.devel?
-      ["--devel"]
     else
       []
     end
@@ -721,8 +738,8 @@ class FormulaInstaller
     tab.runtime_dependencies = Tab.runtime_deps_hash(f_runtime_deps)
     tab.write
 
-    # let's reset Utils.git_available? if we just installed git
-    Utils.clear_git_available_cache if formula.name == "git"
+    # let's reset Utils::Git.available? if we just installed git
+    Utils::Git.clear_available_cache if formula.name == "git"
 
     # use installed curl when it's needed and available
     if formula.name == "curl" &&
@@ -774,11 +791,7 @@ class FormulaInstaller
       args << "--env=std"
     end
 
-    if formula.head?
-      args << "--HEAD"
-    elsif formula.devel?
-      args << "--devel"
-    end
+    args << "--HEAD" if formula.head?
 
     args
   end
@@ -797,7 +810,7 @@ class FormulaInstaller
     #    the easiest way to do this
     args = %W[
       nice #{RUBY_PATH}
-      -W0
+      #{ENV["HOMEBREW_RUBY_WARNINGS"]}
       -I #{$LOAD_PATH.join(File::PATH_SEPARATOR)}
       --
       #{HOMEBREW_LIBRARY_PATH}/build.rb
@@ -965,7 +978,7 @@ class FormulaInstaller
   def post_install
     args = %W[
       nice #{RUBY_PATH}
-      -W0
+      #{ENV["HOMEBREW_RUBY_WARNINGS"]}
       -I #{$LOAD_PATH.join(File::PATH_SEPARATOR)}
       --
       #{HOMEBREW_LIBRARY_PATH}/postinstall.rb
@@ -1130,24 +1143,29 @@ class FormulaInstaller
                                             .to_s
                                             .sub("Public Domain", "public_domain")
                                             .split(" ")
+                                            .to_h do |license|
+      [license, SPDX.license_version_info(license)]
+    end
+
     return if forbidden_licenses.blank?
 
     compute_dependencies.each do |dep, _|
       next if @ignore_deps
 
       dep_f = dep.to_formula
-      next unless dep_f.license.all? { |license| forbidden_licenses.include?(license.to_s) }
+      next unless SPDX.licenses_forbid_installation? dep_f.license, forbidden_licenses
 
       raise CannotInstallFormulaError, <<~EOS
-        The installation of #{formula.name} has a dependency on #{dep.name} where all its licenses are forbidden: #{dep_f.license}.
+        The installation of #{formula.name} has a dependency on #{dep.name} where all its licenses are forbidden:
+          #{SPDX.license_expression_to_string dep_f.license}.
       EOS
     end
     return if @only_deps
 
-    return unless formula.license.all? { |license| forbidden_licenses.include?(license.to_s) }
+    return unless SPDX.licenses_forbid_installation? formula.license, forbidden_licenses
 
     raise CannotInstallFormulaError, <<~EOS
-      #{formula.name}'s licenses are all forbidden: #{formula.license}.
+      #{formula.name}'s licenses are all forbidden: #{SPDX.license_expression_to_string formula.license}.
     EOS
   end
 end

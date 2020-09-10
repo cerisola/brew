@@ -9,7 +9,9 @@ require "utils/git"
 require "utils/github"
 require "utils/inreplace"
 require "utils/link"
+require "utils/livecheck_formula"
 require "utils/popen"
+require "utils/repology"
 require "utils/svn"
 require "utils/tty"
 require "tap_constants"
@@ -266,16 +268,12 @@ module Kernel
     raise $CHILD_STATUS.inspect
   end
 
-  def with_homebrew_path
-    with_env(PATH: PATH.new(ENV["HOMEBREW_PATH"])) do
-      yield
-    end
+  def with_homebrew_path(&block)
+    with_env(PATH: PATH.new(ENV["HOMEBREW_PATH"]), &block)
   end
 
-  def with_custom_locale(locale)
-    with_env(LC_ALL: locale) do
-      yield
-    end
+  def with_custom_locale(locale, &block)
+    with_env(LC_ALL: locale, &block)
   end
 
   # Kernel.system but with exceptions
@@ -511,13 +509,6 @@ module Kernel
         a <=> b
       end
     end
-  end
-
-  def command_help_lines(path)
-    path.read
-        .lines
-        .grep(/^#:/)
-        .map { |line| line.slice(2..-1).delete_prefix("  ") }
   end
 
   def redact_secrets(input, secrets)

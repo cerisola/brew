@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 module Language
+  # Helper functions for Java formulae.
+  #
+  # @api public
   module Java
     def self.find_openjdk_formula(version = nil)
       can_be_newer = version&.end_with?("+")
@@ -11,7 +14,7 @@ module Language
         next false unless f.any_version_installed?
 
         unless version.zero?
-          major = f.version.to_s[/\d+/].to_i
+          major = f.any_installed_version.major
           next false if major < version
           next false if major > version && !can_be_newer
         end

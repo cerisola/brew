@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 class Version
+  # Represents the absence of a version.
   NULL = Class.new do
     include Comparable
 
@@ -36,6 +37,26 @@ class Version
     alias_method :requires_sse41?, :requires_nehalem_cpu?
     alias_method :requires_sse42?, :requires_nehalem_cpu?
     alias_method :requires_popcnt?, :requires_nehalem_cpu?
+
+    def major
+      NULL_TOKEN
+    end
+
+    def minor
+      NULL_TOKEN
+    end
+
+    def patch
+      NULL_TOKEN
+    end
+
+    def major_minor
+      self
+    end
+
+    def major_minor_patch
+      self
+    end
 
     def to_f
       Float::NAN

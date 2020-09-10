@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "cask/audit"
+
 describe Cask::Audit, :cask do
   def include_msg?(messages, msg)
     if msg.is_a?(Regexp)
@@ -28,16 +30,51 @@ describe Cask::Audit, :cask do
   end
 
   let(:cask) { instance_double(Cask::Cask) }
-  let(:download) { false }
-  let(:token_conflicts) { false }
-  let(:strict) { false }
-  let(:fake_system_command) { class_double(SystemCommand) }
+  let(:new_cask) { nil }
+  let(:online) { nil }
+  let(:strict) { nil }
+  let(:token_conflicts) { nil }
   let(:audit) {
-    described_class.new(cask, download:        download,
-                              token_conflicts: token_conflicts,
-                              command:         fake_system_command,
-                              strict:          strict)
+    described_class.new(cask, online:          online,
+
+                              strict:          strict,
+                              new_cask:        new_cask,
+                              token_conflicts: token_conflicts)
   }
+
+  describe "#new" do
+    context "when `new_cask` is specified" do
+      let(:new_cask) { true }
+
+      it "implies `online`" do
+        expect(audit).to be_online
+      end
+
+      it "implies `strict`" do
+        expect(audit).to be_strict
+      end
+    end
+
+    context "when `online` is specified" do
+      let(:online) { true }
+
+      it "implies `appcast`" do
+        expect(audit.appcast?).to be true
+      end
+
+      it "implies `download`" do
+        expect(audit.download).to be_truthy
+      end
+    end
+
+    context "when `strict` is specified" do
+      let(:strict) { true }
+
+      it "implies `token_conflicts`" do
+        expect(audit.token_conflicts?).to be true
+      end
+    end
+  end
 
   describe "#result" do
     subject { audit.result }
@@ -208,11 +245,19 @@ describe Cask::Audit, :cask do
         end
       end
 
-      context "when cask token contains version" do
+      context "when cask token contains version designation" do
         let(:cask_token) { "token-beta" }
 
-        it "warns about version in token" do
-          expect(subject).to warn_with(/token contains version/)
+        it "warns about version in token if the cask is from an official tap" do
+          allow(cask).to receive(:tap).and_return(Tap.fetch("homebrew/cask"))
+
+          expect(subject).to warn_with(/token contains version designation/)
+        end
+
+        it "does not warn about version in token if the cask is from the `cask-versions` tap" do
+          allow(cask).to receive(:tap).and_return(Tap.fetch("homebrew/cask-versions"))
+
+          expect(subject).not_to warn_with(/token contains version designation/)
         end
       end
 
@@ -266,7 +311,6 @@ describe Cask::Audit, :cask do
     end
 
     describe "locale validation" do
-      let(:strict) { true }
       let(:cask) do
         tmp_cask "locale-cask-test", <<~RUBY
           cask 'locale-cask-test' do
@@ -306,7 +350,9 @@ describe Cask::Audit, :cask do
 
       context "when cask locale is invalid" do
         it "error with invalid locale" do
-          expect(subject).to fail_with(/locale ZH-CN, zh-, zh-cn are invalid/)
+          expect(subject).to fail_with(/Locale 'ZH-CN' is invalid\./)
+          expect(subject).to fail_with(/Locale 'zh-' is invalid\./)
+          expect(subject).to fail_with(/Locale 'zh-cn' is invalid\./)
         end
       end
     end
@@ -786,6 +832,59 @@ describe Cask::Audit, :cask do
       it "fails the audit" do
         expect(cask).to receive(:tap).and_raise(StandardError.new)
         expect(subject).to fail_with(/exception while auditing/)
+      end
+    end
+
+    describe "without description" do
+      let(:cask_token) { "without-description" }
+      let(:cask) do
+        tmp_cask cask_token.to_s, <<~RUBY
+          cask '#{cask_token}' do
+            version '1.0'
+            sha256 '8dd95daa037ac02455435446ec7bc737b34567afe9156af7d20b2a83805c1d8a'
+            url "https://brew.sh/"
+            name 'Audit'
+            homepage 'https://brew.sh/'
+            app 'Audit.app'
+          end
+        RUBY
+      end
+
+      context "when `new_cask` is true" do
+        let(:new_cask) { true }
+
+        it "warns" do
+          expect(subject).to warn_with(/should have a description/)
+        end
+      end
+
+      context "when `new_cask` is true" do
+        let(:new_cask) { false }
+
+        it "does not warn" do
+          expect(subject).not_to warn_with(/should have a description/)
+        end
+      end
+    end
+
+    context "with description" do
+      let(:cask_token) { "with-description" }
+      let(:cask) do
+        tmp_cask cask_token.to_s, <<~RUBY
+          cask '#{cask_token}' do
+            version '1.0'
+            sha256 '8dd95daa037ac02455435446ec7bc737b34567afe9156af7d20b2a83805c1d8a'
+            url "https://brew.sh/"
+            name 'Audit'
+            desc 'Cask Auditor'
+            homepage 'https://brew.sh/'
+            app 'Audit.app'
+          end
+        RUBY
+      end
+
+      it "does not warn" do
+        expect(subject).not_to warn_with(/should have a description/)
       end
     end
   end

@@ -8,6 +8,8 @@ require "formula"
 require "keg"
 require "tab"
 require "json"
+require "utils/spdx"
+require "deprecate_disable"
 
 module Homebrew
   module_function
@@ -62,8 +64,8 @@ module Homebrew
   def info
     args = info_args.parse
 
-    if args.days.present?
-      raise UsageError, "--days must be one of #{VALID_DAYS.join(", ")}" unless VALID_DAYS.include?(args.days)
+    if args.days.present? && !VALID_DAYS.include?(args.days)
+      raise UsageError, "--days must be one of #{VALID_DAYS.join(", ")}"
     end
 
     if args.category.present?
@@ -78,16 +80,13 @@ module Homebrew
 
     if args.json
       raise UsageError, "invalid JSON version: #{args.json}" unless ["v1", true].include? args.json
-
-      if !(args.all? || args.installed?) && args.no_named?
-        raise FormulaUnspecifiedError if args.no_named?
-      end
+      raise FormulaUnspecifiedError if !(args.all? || args.installed?) && args.no_named?
 
       print_json(args: args)
     elsif args.github?
       raise FormulaUnspecifiedError if args.no_named?
 
-      exec_browser(*args.formulae.map { |f| github_info(f) })
+      exec_browser(*args.named.to_formulae.map { |f| github_info(f) })
     else
       print_info(args: args)
     end
@@ -132,7 +131,7 @@ module Homebrew
     elsif args.installed?
       Formula.installed.sort
     else
-      args.formulae
+      args.named.to_formulae
     end
     json = ff.map(&:to_hash)
     puts JSON.generate(json)
@@ -168,10 +167,6 @@ module Homebrew
       specs << s
     end
 
-    if devel = f.devel
-      specs << "devel #{devel.version}"
-    end
-
     specs << "HEAD" if f.head
 
     attrs = []
@@ -181,6 +176,15 @@ module Homebrew
     puts "#{f.full_name}: #{specs * ", "}#{" [#{attrs * ", "}]" unless attrs.empty?}"
     puts f.desc if f.desc
     puts Formatter.url(f.homepage) if f.homepage
+
+    deprecate_disable_type, deprecate_disable_reason = DeprecateDisable.deprecate_disable_info f
+    if deprecate_disable_type.present?
+      if deprecate_disable_reason.present?
+        puts "#{deprecate_disable_type.capitalize} because it #{deprecate_disable_reason}!"
+      else
+        puts "#{deprecate_disable_type.capitalize}!"
+      end
+    end
 
     conflicts = f.conflicts.map do |c|
       reason = " (because #{c.reason})" if c.reason
@@ -211,13 +215,7 @@ module Homebrew
 
     puts "From: #{Formatter.url(github_info(f))}"
 
-    if f.license.present?
-      licenses = f.license
-                  .map(&:to_s)
-                  .join(", ")
-                  .sub("public_domain", "Public Domain")
-      puts "License: #{licenses}"
-    end
+    puts "License: #{SPDX.license_expression_to_string f.license}" if f.license.present?
 
     unless f.deps.empty?
       ohai "Dependencies"
@@ -237,9 +235,9 @@ module Homebrew
       end
     end
 
-    if !f.options.empty? || f.head || f.devel
+    if !f.options.empty? || f.head
       ohai "Options"
-      Homebrew.dump_options_for_formula f
+      Options.dump_for_formula f
     end
 
     caveats = Caveats.new(f)

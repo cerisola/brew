@@ -21,7 +21,7 @@ RSpec/InstanceVariable:
     - 'utils/git_spec.rb'
     - 'version_spec.rb'
 
-# Offense count: 75
+# Offense count: 76
 RSpec/MultipleDescribes:
   Exclude:
     - 'ENV_spec.rb'
@@ -75,6 +75,7 @@ RSpec/MultipleDescribes:
     - 'dev-cmd/formula_spec.rb'
     - 'dev-cmd/irb_spec.rb'
     - 'dev-cmd/linkage_spec.rb'
+    - 'dev-cmd/livecheck_spec.rb'
     - 'dev-cmd/pull_spec.rb'
     - 'dev-cmd/ruby_spec.rb'
     - 'dev-cmd/sh_spec.rb'
@@ -92,6 +93,7 @@ RSpec/MultipleDescribes:
     - 'patch_spec.rb'
     - 'rubocops/checksum_spec.rb'
     - 'rubocops/class_spec.rb'
+    - 'rubocops/deprecate_disable_spec.rb'
     - 'rubocops/formula_desc_spec.rb'
     - 'rubocops/lines_spec.rb'
     - 'rubocops/text_spec.rb'
@@ -200,6 +202,7 @@ RSpec/VerifiedDoubles:
     - 'formula_spec.rb'
     - 'language/python_spec.rb'
     - 'linkage_cache_store_spec.rb'
+    - 'livecheck/livecheck_spec.rb'
     - 'resource_spec.rb'
     - 'software_spec_spec.rb'
     - 'support/helper/formula.rb'

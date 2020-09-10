@@ -89,9 +89,9 @@ module Homebrew
         safe_system "ls", *ls_args, HOMEBREW_CELLAR
       end
     elsif args.verbose? || !$stdout.tty?
-      system_command! "find", args: args.kegs.map(&:to_s) + %w[-not -type d -print], print_stdout: true
+      system_command! "find", args: args.named.to_kegs.map(&:to_s) + %w[-not -type d -print], print_stdout: true
     else
-      args.kegs.each { |keg| PrettyListing.new keg }
+      args.named.to_kegs.each { |keg| PrettyListing.new keg }
     end
   end
 
@@ -111,7 +111,6 @@ module Homebrew
     lib/ruby/site_ruby/[12].*
     lib/ruby/vendor_ruby/[12].*
     manpages/brew.1
-    manpages/brew-cask.1
     share/pypy/*
     share/pypy3/*
     share/info/dir
@@ -168,11 +167,12 @@ module Homebrew
   end
 
   def list_casks(args:)
-    cask_list = Cask::Cmd::List.new args.named
-    cask_list.one = args.public_send(:'1?')
-    cask_list.versions = args.versions?
-    cask_list.full_name = args.full_name?
-    cask_list.run
+    Cask::Cmd::List.list_casks(
+      *args.named.to_casks,
+      one:       args.public_send(:'1?'),
+      full_name: args.full_name?,
+      versions:  args.versions?,
+    )
   end
 end
 

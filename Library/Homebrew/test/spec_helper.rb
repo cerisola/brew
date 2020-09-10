@@ -36,6 +36,8 @@ $LOAD_PATH.push(File.expand_path("#{ENV["HOMEBREW_LIBRARY"]}/Homebrew/test/suppo
 require_relative "../global"
 
 require "test/support/no_seed_progress_formatter"
+require "test/support/github_formatter"
+require "test/support/helper/cask"
 require "test/support/helper/fixtures"
 require "test/support/helper/formula"
 require "test/support/helper/mktmpdir"
@@ -86,25 +88,22 @@ RSpec.configure do |config|
 
   config.include(RuboCop::RSpec::ExpectOffense)
 
+  config.include(Test::Helper::Cask)
   config.include(Test::Helper::Fixtures)
   config.include(Test::Helper::Formula)
   config.include(Test::Helper::MkTmpDir)
   config.include(Test::Helper::OutputAsTTY)
 
   config.before(:each, :needs_compat) do
-    skip "Requires compatibility layer." if ENV["HOMEBREW_NO_COMPAT"]
-  end
-
-  config.before(:each, :needs_official_cmd_taps) do
-    skip "Needs official command Taps." unless ENV["HOMEBREW_TEST_OFFICIAL_CMD_TAPS"]
+    skip "Requires the compatibility layer." if ENV["HOMEBREW_NO_COMPAT"]
   end
 
   config.before(:each, :needs_linux) do
-    skip "Not on Linux." unless OS.linux?
+    skip "Not running on Linux." unless OS.linux?
   end
 
   config.before(:each, :needs_macos) do
-    skip "Not on macOS." unless OS.mac?
+    skip "Not running on macOS." unless OS.mac?
   end
 
   config.before(:each, :needs_java) do
@@ -114,11 +113,11 @@ RSpec.configure do |config|
     else
       which("java")
     end
-    skip "Java not installed." unless java_installed
+    skip "Java is not installed." unless java_installed
   end
 
   config.before(:each, :needs_python) do
-    skip "Python not installed." unless which("python")
+    skip "Python is not installed." unless which("python")
   end
 
   config.before(:each, :needs_network) do
@@ -126,7 +125,7 @@ RSpec.configure do |config|
   end
 
   config.before(:each, :needs_svn) do
-    skip "subversion not installed." unless quiet_system "#{HOMEBREW_SHIMS_PATH}/scm/svn", "--version"
+    skip "Subversion is not installed." unless quiet_system "#{HOMEBREW_SHIMS_PATH}/scm/svn", "--version"
 
     svn_paths = PATH.new(ENV["PATH"])
     if OS.mac?
@@ -136,7 +135,7 @@ RSpec.configure do |config|
 
     svn = which("svn", svn_paths)
     svnadmin = which("svnadmin", svn_paths)
-    skip "subversion not installed." if !svn || !svnadmin
+    skip "Subversion is not installed." if !svn || !svnadmin
 
     ENV["PATH"] = PATH.new(ENV["PATH"])
                       .append(svn.dirname)
@@ -144,7 +143,7 @@ RSpec.configure do |config|
   end
 
   config.before(:each, :needs_unzip) do
-    skip "unzip not installed." unless which("unzip")
+    skip "UnZip is not installed." unless which("unzip")
   end
 
   config.around do |example|
@@ -183,7 +182,7 @@ RSpec.configure do |config|
       end
 
       begin
-        timeout = example.metadata.fetch(:timeout, 60)
+        timeout = example.metadata.fetch(:timeout, 120)
         inner_timeout = nil
         Timeout.timeout(timeout) do
           example.run
@@ -257,5 +256,12 @@ RSpec::Matchers.define :a_json_string do
     true
   rescue JSON::ParserError
     false
+  end
+end
+
+# Match consecutive elements in an array.
+RSpec::Matchers.define :array_including_cons do |*cons|
+  match do |actual|
+    expect(actual.each_cons(cons.size)).to include(cons)
   end
 end

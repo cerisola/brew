@@ -14,6 +14,7 @@ OFFICIAL_CMD_TAPS = {
 DEPRECATED_OFFICIAL_TAPS = %w[
   apache
   binary
+  cask-eid
   completions
   devel-only
   dupes
@@ -22,6 +23,7 @@ DEPRECATED_OFFICIAL_TAPS = %w[
   games
   gui
   head-only
+  livecheck
   nginx
   php
   python

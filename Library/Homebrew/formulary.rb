@@ -2,10 +2,12 @@
 
 require "digest/md5"
 require "extend/cachable"
+require "tab"
 
 # The Formulary is responsible for creating instances of {Formula}.
 # It is not meant to be used directly from formulae.
-
+#
+# @api private
 module Formulary
   extend Cachable
 
@@ -30,6 +32,8 @@ module Formulary
   def self.load_formula(name, path, contents, namespace, flags:)
     raise "Formula loading disabled by HOMEBREW_DISABLE_LOAD_FORMULA!" if Homebrew::EnvConfig.disable_load_formula?
 
+    require "formula"
+
     mod = Module.new
     const_set(namespace, mod)
 
@@ -38,7 +42,7 @@ module Formulary
       # access them from within the formula's class scope.
       mod.const_set(:BUILD_FLAGS, flags)
       mod.module_eval(contents, path)
-    rescue NameError, ArgumentError, ScriptError => e
+    rescue NameError, ArgumentError, ScriptError, MethodDeprecatedError => e
       $stderr.puts e.backtrace if Homebrew::EnvConfig.developer?
       raise FormulaUnreadableError.new(name, e)
     end
@@ -147,7 +151,7 @@ module Formulary
     end
   end
 
-  # Loads formulae from bottles.
+  # Loads a formula from a bottle.
   class BottleLoader < FormulaLoader
     def initialize(bottle_name)
       case bottle_name
@@ -171,7 +175,7 @@ module Formulary
     def get_formula(spec, force_bottle: false, flags: [], **)
       contents = Utils::Bottles.formula_contents @bottle_filename, name: name
       formula = begin
-        Formulary.from_contents(name, @bottle_filename, contents, spec, force_bottle: force_bottle, flags: flags)
+        Formulary.from_contents(name, path, contents, spec, force_bottle: force_bottle, flags: flags)
       rescue FormulaUnreadableError => e
         opoo <<~EOS
           Unreadable formula in #{@bottle_filename}:
@@ -184,6 +188,7 @@ module Formulary
     end
   end
 
+  # Loads a formula from a path to an alias.
   class AliasLoader < FormulaLoader
     def initialize(alias_path)
       path = alias_path.resolved_path
@@ -215,12 +220,12 @@ module Formulary
     def load_file(flags:)
       if url =~ %r{githubusercontent.com/[\w-]+/[\w-]+/[a-f0-9]{40}(/Formula)?/([\w+-.@]+).rb}
         formula_name = Regexp.last_match(2)
-        odeprecated "Installation of #{formula_name} from a GitHub commit URL",
-                    "'brew extract #{formula_name}' to stable tap on GitHub"
+        odisabled "Installation of #{formula_name} from a GitHub commit URL",
+                  "'brew extract #{formula_name}' to stable tap on GitHub"
       elsif url.match?(%r{^(https?|ftp)://})
-        odeprecated "Non-checksummed download of #{name} formula file from an arbitrary URL",
-                    "'brew extract' or 'brew create' and 'brew tap-new' to create a "\
-                    "formula file in a tap on GitHub"
+        odisabled "Non-checksummed download of #{name} formula file from an arbitrary URL",
+                  "'brew extract' or 'brew create' and 'brew tap-new' to create a "\
+                  "formula file in a tap on GitHub"
       end
       HOMEBREW_CACHE_FORMULA.mkpath
       FileUtils.rm_f(path)
@@ -295,6 +300,7 @@ module Formulary
     end
   end
 
+  # Pseudo-loader which will raise a `FormulaUnavailableError` when trying to load the corresponding formula.
   class NullLoader < FormulaLoader
     def initialize(name)
       super name, Formulary.core_path(name)

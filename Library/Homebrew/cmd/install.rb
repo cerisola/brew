@@ -54,8 +54,6 @@ module Homebrew
                           "macOS, even if it would not normally be used for installation."
       switch "--include-test",
              description: "Install testing dependencies required to run `brew test` <formula>."
-      switch "--devel",
-             description: "If <formula> defines it, install the development version."
       switch "--HEAD",
              description: "If <formula> defines it, install the HEAD version, aka. master, trunk, unstable."
       switch "--fetch-HEAD",
@@ -115,13 +113,13 @@ module Homebrew
 
     formulae = []
 
-    unless args.casks.empty?
+    unless args.named.homebrew_tap_cask_names.empty?
       cask_args = []
       cask_args << "--force" if args.force?
       cask_args << "--debug" if args.debug?
       cask_args << "--verbose" if args.verbose?
 
-      args.casks.each do |c|
+      args.named.homebrew_tap_cask_names.each do |c|
         ohai "brew cask install #{c} #{cask_args.join " "}"
         system("#{HOMEBREW_PREFIX}/bin/brew", "cask", "install", c, *cask_args)
       end
@@ -131,32 +129,17 @@ module Homebrew
     # developer tools are available, we need to stop them early on
     FormulaInstaller.prevent_build_flags(args)
 
-    args.formulae.each do |f|
+    args.named.to_formulae.each do |f|
       # head-only without --HEAD is an error
-      if !args.HEAD? && f.stable.nil? && f.devel.nil?
+      if !args.HEAD? && f.stable.nil?
         raise <<~EOS
           #{f.full_name} is a head-only formula
           Install with `brew install --HEAD #{f.full_name}`
         EOS
       end
 
-      # devel-only without --devel is an error
-      if !args.devel? && f.stable.nil? && f.head.nil?
-        raise <<~EOS
-          #{f.full_name} is a devel-only formula
-          Install with `brew install --devel #{f.full_name}`
-        EOS
-      end
-
-      if !(args.HEAD? || args.devel?) && f.stable.nil?
-        raise "#{f.full_name} has no stable download, please choose --devel or --HEAD"
-      end
-
       # --HEAD, fail with no head defined
       raise "No head is defined for #{f.full_name}" if args.HEAD? && f.head.nil?
-
-      # --devel, fail with no devel defined
-      raise "No devel block is defined for #{f.full_name}" if args.devel? && f.devel.nil?
 
       installed_head_version = f.latest_head_version
       if installed_head_version &&
@@ -219,7 +202,7 @@ module Homebrew
         end
         opoo msg if msg
       elsif !f.any_version_installed? && old_formula = f.old_installed_formulae.first
-        msg = "#{old_formula.full_name} #{old_formula.installed_version} already installed"
+        msg = "#{old_formula.full_name} #{old_formula.any_installed_version} already installed"
         if !old_formula.linked? && !old_formula.keg_only?
           msg = <<~EOS
             #{msg}, it's just not linked.
@@ -263,7 +246,7 @@ module Homebrew
       Cleanup.install_formula_clean!(f)
     end
 
-    check_installed_dependents(args: args)
+    Upgrade.check_installed_dependents(args: args)
 
     Homebrew.messages.display_messages(display_times: args.display_times?)
   rescue FormulaUnreadableError, FormulaClassUnavailableError,

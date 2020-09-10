@@ -2,6 +2,9 @@
 
 require "language/python"
 
+# A formula's caveats.
+#
+# @api private
 class Caveats
   extend Forwardable
 
@@ -17,7 +20,7 @@ class Caveats
       build = f.build
       f.build = Tab.for_formula(f)
       s = f.caveats.to_s
-      caveats << s.chomp + "\n" unless s.empty?
+      caveats << "#{s.chomp}\n" unless s.empty?
     ensure
       f.build = build
     end

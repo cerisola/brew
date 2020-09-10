@@ -13,6 +13,8 @@ abv
 analytics
 audit
 bottle
+bump
+bump-cask-pr
 bump-formula-pr
 bump-revision
 cask
@@ -46,6 +48,7 @@ leaves
 link
 linkage
 list
+livecheck
 ln
 log
 ls
@@ -80,6 +83,7 @@ tap-info
 tap-new
 test
 tests
+typecheck
 uninstal
 uninstall
 unlink

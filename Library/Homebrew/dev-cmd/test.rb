@@ -39,7 +39,7 @@ module Homebrew
     require "formula_assertions"
     require "formula_free_port"
 
-    args.resolved_formulae.each do |f|
+    args.named.to_resolved_formulae.each do |f|
       # Cannot test uninstalled formulae
       unless f.latest_version_installed?
         ofail "Testing requires the latest version of #{f.full_name}"
@@ -78,18 +78,14 @@ module Homebrew
       begin
         exec_args = %W[
           #{RUBY_PATH}
-          -W0
+          #{ENV["HOMEBREW_RUBY_WARNINGS"]}
           -I #{$LOAD_PATH.join(File::PATH_SEPARATOR)}
           --
           #{HOMEBREW_LIBRARY_PATH}/test.rb
           #{f.path}
         ].concat(args.options_only)
 
-        if f.head?
-          exec_args << "--HEAD"
-        elsif f.devel?
-          exec_args << "--devel"
-        end
+        exec_args << "--HEAD" if f.head?
 
         Utils.safe_fork do
           if Sandbox.available?

@@ -3,7 +3,6 @@
 require "tempfile"
 require "utils/shell"
 require "hardware"
-require "os/linux/diagnostic"
 require "os/linux/glibc"
 require "os/linux/kernel"
 
@@ -38,7 +37,7 @@ module Homebrew
         f.close
         return if system f.path
 
-        <<~EOS.undent
+        <<~EOS
           The directory #{HOMEBREW_TEMP} does not permit executing
           programs. It is likely mounted as "noexec". Please set HOMEBREW_TEMP
           in your #{shell_profile} to a different directory, for example:
@@ -100,7 +99,7 @@ module Homebrew
         return unless OS::Linux::Kernel.below_minimum_version?
 
         <<~EOS
-          Your Linux kernel #{OS::Linux::Kernel.version} is too old.
+          Your Linux kernel #{OS.kernel_version} is too old.
           We only support kernel #{OS::Linux::Kernel.minimum_version} or later.
           You will be unable to use binary packages (bottles).
           #{please_create_pull_requests}

@@ -15,6 +15,9 @@ require "fcntl"
 require "socket"
 require "cmd/install"
 
+# A formula build.
+#
+# @api private
 class Build
   attr_reader :formula, :deps, :reqs, :args
 
@@ -220,7 +223,7 @@ begin
 
   trap("INT", old_trap)
 
-  formula = args.formulae.first
+  formula = args.named.to_formulae.first
   options = Options.create(args.flags_only)
   build   = Build.new(formula, options, args: args)
   build.install

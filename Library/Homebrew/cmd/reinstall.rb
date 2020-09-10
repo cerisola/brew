@@ -61,7 +61,7 @@ module Homebrew
 
     Install.perform_preinstall_checks
 
-    resolved_formulae, casks = args.resolved_formulae_casks
+    resolved_formulae, casks = args.named.to_resolved_formulae_to_casks
     resolved_formulae.each do |f|
       if f.pinned?
         onoe "#{f.full_name} is pinned. You must unpin it to reinstall."
@@ -72,7 +72,7 @@ module Homebrew
       Cleanup.install_formula_clean!(f)
     end
 
-    check_installed_dependents(args: args)
+    Upgrade.check_installed_dependents(args: args)
 
     Homebrew.messages.display_messages(display_times: args.display_times?)
 
@@ -80,12 +80,12 @@ module Homebrew
 
     Cask::Cmd::Reinstall.reinstall_casks(
       *casks,
-      binaries:       args.binaries?,
+      binaries:       EnvConfig.cask_opts_binaries?,
       verbose:        args.verbose?,
       force:          args.force?,
-      require_sha:    args.require_sha?,
+      require_sha:    EnvConfig.cask_opts_require_sha?,
       skip_cask_deps: args.skip_cask_deps?,
-      quarantine:     args.quarantine?,
+      quarantine:     EnvConfig.cask_opts_quarantine?,
     )
   end
 end

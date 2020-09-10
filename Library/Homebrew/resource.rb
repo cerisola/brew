@@ -8,6 +8,8 @@ require "mktemp"
 # Resource is the fundamental representation of an external resource. The
 # primary formula download, along with other declared resources, are instances
 # of this class.
+#
+# @api private
 class Resource
   include Context
   include FileUtils
@@ -69,9 +71,11 @@ class Resource
   end
 
   # Verifies download and unpacks it.
-  # The block may call `|resource,staging| staging.retain!` to retain the staging
+  # The block may call `|resource, staging| staging.retain!` to retain the staging
   # directory. Subclasses that override stage should implement the tmp
   # dir using {Mktemp} so that works with all subtypes.
+  #
+  # @api public
   def stage(target = nil, &block)
     raise ArgumentError, "target directory or block is required" if !target && block.blank?
 
@@ -193,10 +197,8 @@ class Resource
 
   protected
 
-  def mktemp(prefix)
-    Mktemp.new(prefix).run do |staging|
-      yield staging
-    end
+  def mktemp(prefix, &block)
+    Mktemp.new(prefix).run(&block)
   end
 
   private
@@ -205,7 +207,7 @@ class Resource
     return Version::NULL if val.nil? && url.nil?
 
     case val
-    when nil     then Version.detect(url, specs)
+    when nil     then Version.detect(url, **specs)
     when String  then Version.create(val)
     when Version then val
     else
@@ -213,12 +215,14 @@ class Resource
     end
   end
 
+  # A resource containing a Go package.
   class Go < Resource
     def stage(target)
       super(target/name)
     end
   end
 
+  # A resource containing a patch.
   class PatchResource < Resource
     attr_reader :patch_files
 
@@ -245,6 +249,8 @@ end
 # The context in which a {Resource.stage} occurs. Supports access to both
 # the {Resource} and associated {Mktemp} in a single block argument. The interface
 # is back-compatible with {Resource} itself as used in that context.
+#
+# @api private
 class ResourceStageContext
   extend Forwardable
 

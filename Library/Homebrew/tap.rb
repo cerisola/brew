@@ -2,7 +2,6 @@
 
 require "commands"
 require "extend/cachable"
-require "readall"
 require "description_cache_store"
 
 # A {Tap} is used to extend the formulae provided by Homebrew core.
@@ -232,11 +231,13 @@ class Tap
   # @param quiet [Boolean] If set, suppress all output.
   def install(full_clone: true, quiet: false, clone_target: nil, force_auto_update: nil)
     require "descriptions"
+    require "readall"
 
     if official? && DEPRECATED_OFFICIAL_TAPS.include?(repo)
-      odie "#{name} was deprecated. This tap is now empty as all its formulae were migrated."
+      odie "#{name} was deprecated. This tap is now empty and all its contents were either deleted or migrated."
     elsif user == "caskroom"
-      odie "#{name} was moved. Tap homebrew/cask-#{repo} instead."
+      new_repo = repo == "cask" ? "cask" : "cask-#{repo}"
+      odie "#{name} was moved. Tap homebrew/#{new_repo} instead."
     end
 
     requested_remote = clone_target || default_remote
@@ -247,7 +248,7 @@ class Tap
     end
 
     # ensure git is installed
-    Utils.ensure_git_installed!
+    Utils::Git.ensure_installed!
 
     if installed?
       unless force_auto_update.nil?
@@ -271,8 +272,8 @@ class Tap
 
     begin
       safe_system "git", *args
-      unless Readall.valid_tap?(self, aliases: true)
-        raise "Cannot tap #{name}: invalid syntax in tap!" unless Homebrew::EnvConfig.developer?
+      if !Readall.valid_tap?(self, aliases: true) && !Homebrew::EnvConfig.developer?
+        raise "Cannot tap #{name}: invalid syntax in tap!"
       end
     rescue Interrupt, RuntimeError
       ignore_interrupts do
@@ -706,7 +707,7 @@ class TapConfig
 
   def [](key)
     return unless tap.git?
-    return unless Utils.git_available?
+    return unless Utils::Git.available?
 
     tap.path.cd do
       Utils.popen_read("git", "config", "--get", "homebrew.#{key}").chomp.presence
@@ -715,7 +716,7 @@ class TapConfig
 
   def []=(key, value)
     return unless tap.git?
-    return unless Utils.git_available?
+    return unless Utils::Git.available?
 
     tap.path.cd do
       safe_system "git", "config", "--replace-all", "homebrew.#{key}", value.to_s

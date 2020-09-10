@@ -1,20 +1,26 @@
 # frozen_string_literal: true
 
 require "json"
-require "rexml/document"
 require "time"
 require "unpack_strategy"
 require "lazy_object"
 require "cgi"
+require "lock_file"
 
 require "mechanize/version"
 require "mechanize/http/content_disposition_parser"
 
+# @abstract Abstract superclass for all download strategies.
+#
+# @api private
 class AbstractDownloadStrategy
   extend Forwardable
   include FileUtils
   include Context
 
+  # Extension for bottle downloads.
+  #
+  # @api private
   module Pourable
     def stage
       ohai "Pouring #{basename}"
@@ -35,20 +41,25 @@ class AbstractDownloadStrategy
     extend Pourable if meta[:bottle]
   end
 
-  # Download and cache the resource as {#cached_location}.
+  # Download and cache the resource at {#cached_location}.
+  #
+  # @api public
   def fetch; end
 
-  def puts(*args)
-    super(*args) unless quiet?
-  end
-
-  def ohai(*args)
-    super(*args) unless quiet?
+  # Disable any output during downloading.
+  #
+  # TODO: Deprecate once we have an explicitly documented alternative.
+  #
+  # @api public
+  def shutup!
+    @quiet = true
   end
 
   # Unpack {#cached_location} into the current working directory, and possibly
   # chdir into the newly-unpacked directory.
   # Unlike {Resource#stage}, this does not take a block.
+  #
+  # @api public
   def stage
     UnpackStrategy.detect(cached_location,
                           prioritise_extension: true,
@@ -74,12 +85,16 @@ class AbstractDownloadStrategy
 
   # @!attribute [r] source_modified_time
   # Returns the most recent modified time for all files in the current working directory after stage.
+  #
+  # @api public
   def source_modified_time
     Pathname.pwd.to_enum(:find).select(&:file?).map(&:mtime).max
   end
 
   # Remove {#cached_location} and any other files associated with the resource
   # from the cache.
+  #
+  # @api public
   def clear_cache
     rm_rf(cached_location)
   end
@@ -89,6 +104,14 @@ class AbstractDownloadStrategy
   end
 
   private
+
+  def puts(*args)
+    super(*args) unless quiet?
+  end
+
+  def ohai(*args)
+    super(*args) unless quiet?
+  end
 
   def system_command(*args, **options)
     super(*args, print_stderr: false, env: env, **options)
@@ -110,6 +133,9 @@ class AbstractDownloadStrategy
   end
 end
 
+# @abstract Abstract superclass for all download strategies downloading from a version control system.
+#
+# @api private
 class VCSDownloadStrategy < AbstractDownloadStrategy
   REF_TYPES = [:tag, :branch, :revisions, :revision].freeze
 
@@ -120,6 +146,9 @@ class VCSDownloadStrategy < AbstractDownloadStrategy
     @cached_location = @cache/"#{name}--#{cache_tag}"
   end
 
+  # Download and cache the repository at {#cached_location}.
+  #
+  # @api public
   def fetch
     ohai "Cloning #{url}"
 
@@ -162,6 +191,8 @@ class VCSDownloadStrategy < AbstractDownloadStrategy
 
   # Return last commit's unique identifier for the repository.
   # Return most recent modified timestamp unless overridden.
+  #
+  # @api public
   def last_commit
     source_modified_time.to_i.to_s
   end
@@ -188,11 +219,21 @@ class VCSDownloadStrategy < AbstractDownloadStrategy
   end
 end
 
+# @abstract Abstract superclass for all download strategies downloading a single file.
+#
+# @api private
 class AbstractFileDownloadStrategy < AbstractDownloadStrategy
+  # Path for storing an incomplete download while the download is still in progress.
+  #
+  # @api public
   def temporary_path
     @temporary_path ||= Pathname.new("#{cached_location}.incomplete")
   end
 
+  # Path of the symlink (whose name includes the resource name, version and extension)
+  # pointing to {#cached_location}.
+  #
+  # @api public
   def symlink_location
     return @symlink_location if defined?(@symlink_location)
 
@@ -200,6 +241,9 @@ class AbstractFileDownloadStrategy < AbstractDownloadStrategy
     @symlink_location = @cache/"#{name}--#{version}#{ext}"
   end
 
+  # Path for storing the completed download .
+  #
+  # @api public
   def cached_location
     return @cached_location if defined?(@cached_location)
 
@@ -268,6 +312,9 @@ class AbstractFileDownloadStrategy < AbstractDownloadStrategy
   end
 end
 
+# Strategy for downloading files using `curl`.
+#
+# @api public
 class CurlDownloadStrategy < AbstractFileDownloadStrategy
   attr_reader :mirrors
 
@@ -276,6 +323,9 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
     @mirrors = meta.fetch(:mirrors, [])
   end
 
+  # Download and cache the file at {#cached_location}.
+  #
+  # @api public
   def fetch
     download_lock = LockFile.new(temporary_path.basename)
     download_lock.lock
@@ -341,7 +391,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
     return @resolved_info_cache[url] if @resolved_info_cache.include?(url)
 
     if (domain = Homebrew::EnvConfig.artifact_domain)
-      url = url.sub(%r{^((ht|f)tps?://)?}, domain.chomp("/") + "/")
+      url = url.sub(%r{^((ht|f)tps?://)?}, "#{domain.chomp("/")}/")
     end
 
     out, _, status= curl_output("--location", "--silent", "--head", "--request", "GET", url.to_s)
@@ -438,7 +488,9 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
   end
 end
 
-# Detect and download from Apache Mirror.
+# Strategy for downloading a file from an Apache Mirror URL.
+#
+# @api public
 class CurlApacheMirrorDownloadStrategy < CurlDownloadStrategy
   def mirrors
     return @combined_mirrors if defined?(@combined_mirrors)
@@ -469,8 +521,10 @@ class CurlApacheMirrorDownloadStrategy < CurlDownloadStrategy
   end
 end
 
-# Download via an HTTP POST.
+# Strategy for downloading via an HTTP POST request using `curl`.
 # Query parameters on the URL are converted into POST parameters.
+#
+# @api public
 class CurlPostDownloadStrategy < CurlDownloadStrategy
   private
 
@@ -487,8 +541,10 @@ class CurlPostDownloadStrategy < CurlDownloadStrategy
   end
 end
 
-# Use this strategy to download but not unzip a file.
-# Useful for installing jars.
+# Strategy for downloading archives without automatically extracting them.
+# (Useful for downloading `.jar` files.)
+#
+# @api public
 class NoUnzipCurlDownloadStrategy < CurlDownloadStrategy
   def stage
     UnpackStrategy::Uncompressed.new(cached_location)
@@ -497,19 +553,27 @@ class NoUnzipCurlDownloadStrategy < CurlDownloadStrategy
   end
 end
 
-# This strategy extracts local binary packages.
+# Strategy for extracting local binary packages.
+#
+# @api private
 class LocalBottleDownloadStrategy < AbstractFileDownloadStrategy
-  def initialize(path)
+  def initialize(path) # rubocop:disable Lint/MissingSuper
     @cached_location = path
   end
 end
 
+# Strategy for downloading a Subversion repository.
+#
+# @api public
 class SubversionDownloadStrategy < VCSDownloadStrategy
   def initialize(url, name, version, **meta)
     super
     @url = @url.sub("svn+http://", "")
   end
 
+  # Download and cache the repository at {#cached_location}.
+  #
+  # @api public
   def fetch
     if @url.chomp("/") != repo_url || !system_command("svn", args: ["switch", @url, cached_location]).success?
       clear_cache
@@ -517,12 +581,19 @@ class SubversionDownloadStrategy < VCSDownloadStrategy
     super
   end
 
+  # (see AbstractDownloadStrategy#source_modified_time)
   def source_modified_time
-    out, = system_command("svn", args: ["info", "--xml"], chdir: cached_location)
-    xml = REXML::Document.new(out)
-    Time.parse REXML::XPath.first(xml, "//date/text()").to_s
+    time = if Version.create(Utils::Svn.version) >= Version.create("1.9")
+      out, = system_command("svn", args: ["info", "--show-item", "last-changed-date"], chdir: cached_location)
+      out
+    else
+      out, = system_command("svn", args: ["info"], chdir: cached_location)
+      out[/^Last Changed Date: (.+)$/, 1]
+    end
+    Time.parse time
   end
 
+  # (see VCSDownloadStrategy#source_modified_time)
   def last_commit
     out, = system_command("svn", args: ["info", "--show-item", "revision"], chdir: cached_location)
     out.strip
@@ -543,7 +614,7 @@ class SubversionDownloadStrategy < VCSDownloadStrategy
     end
   end
 
-  def fetch_repo(target, url, revision = nil, ignore_externals = false)
+  def fetch_repo(target, url, revision = nil, ignore_externals: false)
     # Use "svn update" when the repository already exists locally.
     # This saves on bandwidth and will have a similar effect to verifying the
     # cache as it will make any changes to get the right revision.
@@ -584,10 +655,10 @@ class SubversionDownloadStrategy < VCSDownloadStrategy
     when :revisions
       # nil is OK for main_revision, as fetch_repo will then get latest
       main_revision = @ref[:trunk]
-      fetch_repo cached_location, @url, main_revision, true
+      fetch_repo cached_location, @url, main_revision, ignore_externals: true
 
       externals do |external_name, external_url|
-        fetch_repo cached_location/external_name, external_url, @ref[external_name], true
+        fetch_repo cached_location/external_name, external_url, @ref[external_name], ignore_externals: true
       end
     else
       fetch_repo cached_location, @url
@@ -596,6 +667,9 @@ class SubversionDownloadStrategy < VCSDownloadStrategy
   alias update clone_repo
 end
 
+# Strategy for downloading a Git repository.
+#
+# @api public
 class GitDownloadStrategy < VCSDownloadStrategy
   SHALLOW_CLONE_ALLOWLIST = [
     %r{git://},
@@ -611,11 +685,13 @@ class GitDownloadStrategy < VCSDownloadStrategy
     @shallow = meta.fetch(:shallow, true)
   end
 
+  # (see AbstractDownloadStrategy#source_modified_time)
   def source_modified_time
     out, = system_command("git", args: ["--git-dir", git_dir, "show", "-s", "--format=%cD"])
     Time.parse(out)
   end
 
+  # (see VCSDownloadStrategy#source_modified_time)
   def last_commit
     out, = system_command("git", args: ["--git-dir", git_dir, "rev-parse", "--short=7", "HEAD"])
     out.chomp
@@ -681,6 +757,7 @@ class GitDownloadStrategy < VCSDownloadStrategy
     case @ref_type
     when :branch, :tag
       args << "--branch" << @ref
+      args << "-c" << "advice.detachedHead=false" # silences detached head warning
     end
 
     args << @url << cached_location
@@ -793,6 +870,9 @@ class GitDownloadStrategy < VCSDownloadStrategy
   end
 end
 
+# Strategy for downloading a Git repository from GitHub.
+#
+# @api public
 class GitHubGitDownloadStrategy < GitDownloadStrategy
   def initialize(url, name, version, **meta)
     super
@@ -849,6 +929,9 @@ class GitHubGitDownloadStrategy < GitDownloadStrategy
   end
 end
 
+# Strategy for downloading a CVS repository.
+#
+# @api public
 class CVSDownloadStrategy < VCSDownloadStrategy
   def initialize(url, name, version, **meta)
     super
@@ -863,6 +946,7 @@ class CVSDownloadStrategy < VCSDownloadStrategy
     end
   end
 
+  # (see AbstractDownloadStrategy#source_modified_time)
   def source_modified_time
     # Filter CVS's files because the timestamp for each of them is the moment
     # of clone.
@@ -918,12 +1002,16 @@ class CVSDownloadStrategy < VCSDownloadStrategy
   end
 end
 
+# Strategy for downloading a Mercurial repository.
+#
+# @api public
 class MercurialDownloadStrategy < VCSDownloadStrategy
   def initialize(url, name, version, **meta)
     super
     @url = @url.sub(%r{^hg://}, "")
   end
 
+  # (see AbstractDownloadStrategy#source_modified_time)
   def source_modified_time
     out, = system_command("hg",
                           args: ["tip", "--template", "{date|isodate}", "-R", cached_location])
@@ -931,6 +1019,7 @@ class MercurialDownloadStrategy < VCSDownloadStrategy
     Time.parse(out)
   end
 
+  # (see VCSDownloadStrategy#source_modified_time)
   def last_commit
     out, = system_command("hg", args: ["parent", "--template", "{node|short}", "-R", cached_location])
     out.chomp
@@ -968,12 +1057,16 @@ class MercurialDownloadStrategy < VCSDownloadStrategy
   end
 end
 
+# Strategy for downloading a Bazaar repository.
+#
+# @api public
 class BazaarDownloadStrategy < VCSDownloadStrategy
   def initialize(url, name, version, **meta)
     super
     @url.sub!(%r{^bzr://}, "")
   end
 
+  # (see AbstractDownloadStrategy#source_modified_time)
   def source_modified_time
     out, = system_command("bzr", args: ["log", "-l", "1", "--timezone=utc", cached_location])
     timestamp = out.chomp
@@ -982,6 +1075,7 @@ class BazaarDownloadStrategy < VCSDownloadStrategy
     Time.parse(timestamp)
   end
 
+  # (see VCSDownloadStrategy#source_modified_time)
   def last_commit
     out, = system_command("bzr", args: ["revno", cached_location])
     out.chomp
@@ -1017,17 +1111,22 @@ class BazaarDownloadStrategy < VCSDownloadStrategy
   end
 end
 
+# Strategy for downloading a Fossil repository.
+#
+# @api public
 class FossilDownloadStrategy < VCSDownloadStrategy
   def initialize(url, name, version, **meta)
     super
     @url = @url.sub(%r{^fossil://}, "")
   end
 
+  # (see AbstractDownloadStrategy#source_modified_time)
   def source_modified_time
     out, = system_command("fossil", args: ["info", "tip", "-R", cached_location])
     Time.parse(out[/^uuid: +\h+ (.+)$/, 1])
   end
 
+  # (see VCSDownloadStrategy#source_modified_time)
   def last_commit
     out, = system_command("fossil", args: ["info", "tip", "-R", cached_location])
     out[/^uuid: +(\h+) .+$/, 1]
@@ -1056,6 +1155,9 @@ class FossilDownloadStrategy < VCSDownloadStrategy
   end
 end
 
+# Helper class for detecting a download strategy from a URL.
+#
+# @api private
 class DownloadStrategyDetector
   def self.detect(url, using = nil)
     if using.nil?

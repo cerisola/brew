@@ -66,8 +66,10 @@ RSpec.shared_context "integration test" do
     env = args.last.is_a?(Hash) ? args.pop : {}
 
     # Avoid warnings when HOMEBREW_PREFIX/bin is not in PATH.
+    # Also include our extra commands directory.
     path = [
       env["PATH"],
+      (HOMEBREW_LIBRARY_PATH/"test/support/helper/cmd").realpath.to_s,
       (HOMEBREW_PREFIX/"bin").realpath.to_s,
       ENV["PATH"],
     ].compact.join(File::PATH_SEPARATOR)
@@ -84,7 +86,7 @@ RSpec.shared_context "integration test" do
 
     @ruby_args ||= begin
       ruby_args = [
-        "-W0",
+        ENV["HOMEBREW_RUBY_WARNINGS"],
         "-I", $LOAD_PATH.join(File::PATH_SEPARATOR)
       ]
       if ENV["HOMEBREW_TESTS_COVERAGE"]

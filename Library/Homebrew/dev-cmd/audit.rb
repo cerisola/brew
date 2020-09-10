@@ -3,7 +3,7 @@
 require "formula"
 require "formula_versions"
 require "utils/curl"
-require "utils/notability"
+require "utils/shared_audits"
 require "utils/spdx"
 require "extend/ENV"
 require "formula_cellar_checks"
@@ -98,9 +98,9 @@ module Homebrew
     elsif args.no_named?
       Formula
     else
-      args.resolved_formulae
+      args.named.to_resolved_formulae
     end
-    style_files = args.formulae_paths unless skip_style
+    style_files = args.named.to_formulae_paths unless skip_style
 
     only_cops = args.only_cops
     except_cops = args.except_cops
@@ -117,22 +117,24 @@ module Homebrew
     end
 
     # Check style in a single batch run up front for performance
-    style_results = Style.check_style_json(style_files, options) if style_files
+    style_offenses = Style.check_style_json(style_files, options) if style_files
     # load licenses
-    spdx_data = SPDX.spdx_data
+    spdx_license_data = SPDX.license_data
+    spdx_exception_data = SPDX.exception_data
     new_formula_problem_lines = []
     audit_formulae.sort.each do |f|
       only = only_cops ? ["style"] : args.only
       options = {
-        new_formula: new_formula,
-        strict:      strict,
-        online:      online,
-        git:         git,
-        only:        only,
-        except:      args.except,
-        spdx_data:   spdx_data,
+        new_formula:         new_formula,
+        strict:              strict,
+        online:              online,
+        git:                 git,
+        only:                only,
+        except:              args.except,
+        spdx_license_data:   spdx_license_data,
+        spdx_exception_data: spdx_exception_data,
       }
-      options[:style_offenses] = style_results.file_offenses(f.path) if style_results
+      options[:style_offenses] = style_offenses.for_path(f.path) if style_offenses
       options[:display_cop_names] = args.display_cop_names?
       options[:build_stable] = args.build_stable?
 
@@ -227,8 +229,9 @@ module Homebrew
       @problems = []
       @new_formula_problems = []
       @text = FormulaText.new(formula.path)
-      @specs = %w[stable devel head].map { |s| formula.send(s) }.compact
-      @spdx_data = options[:spdx_data]
+      @specs = %w[stable head].map { |s| formula.send(s) }.compact
+      @spdx_license_data = options[:spdx_license_data]
+      @spdx_exception_data = options[:spdx_exception_data]
     end
 
     def audit_style
@@ -261,9 +264,8 @@ module Homebrew
             !(versioned_formulae = formula.versioned_formulae).empty?
         versioned_aliases = formula.aliases.grep(/.@\d/)
         _, last_alias_version = versioned_formulae.map(&:name).last.split("@")
-        major, minor, = formula.version.to_s.split(".")
-        alias_name_major = "#{formula.name}@#{major}"
-        alias_name_major_minor = "#{alias_name_major}.#{minor}"
+        alias_name_major = "#{formula.name}@#{formula.version.major}"
+        alias_name_major_minor = "#{alias_name_major}.#{formula.version.minor}"
         alias_name = if last_alias_version.split(".").length == 1
           alias_name_major
         else
@@ -351,29 +353,57 @@ module Homebrew
       "LGPL-3.0" => ["LGPL-3.0-only", "LGPL-3.0-or-later"],
     }.freeze
 
+    PERMITTED_FORMULA_LICENSE_MISMATCHES = {
+      "cmockery" => "0.1.2",
+      "scw@1"    => "1.20",
+    }.freeze
+
     def audit_license
       if formula.license.present?
-        non_standard_licenses = formula.license.map do |license|
-          next if license == :public_domain
-          next if @spdx_data["licenses"].any? { |spdx| spdx["licenseId"] == license }
+        licenses, exceptions = SPDX.parse_license_expression formula.license
 
-          license
-        end.compact
-
+        non_standard_licenses = licenses.reject { |license| SPDX.valid_license? license }
         if non_standard_licenses.present?
-          problem "Formula #{formula.name} contains non-standard SPDX licenses: #{non_standard_licenses}."
+          problem <<~EOS
+            Formula #{formula.name} contains non-standard SPDX licenses: #{non_standard_licenses}.
+            For a list of valid licenses check: #{Formatter.url("https://spdx.org/licenses/")}
+          EOS
+        end
+
+        if @strict
+          deprecated_licenses = licenses.select do |license|
+            SPDX.deprecated_license? license
+          end
+          if deprecated_licenses.present?
+            problem <<~EOS
+              Formula #{formula.name} contains deprecated SPDX licenses: #{deprecated_licenses}.
+              You may need to add `-only` or `-or-later` for GNU licenses (e.g. `GPL`, `LGPL`, `AGPL`, `GFDL`).
+              For a list of valid licenses check: #{Formatter.url("https://spdx.org/licenses/")}
+            EOS
+          end
+        end
+
+        invalid_exceptions = exceptions.reject { |exception| SPDX.valid_license_exception? exception }
+        if invalid_exceptions.present?
+          problem <<~EOS
+            Formula #{formula.name} contains invalid or deprecated SPDX license exceptions: #{invalid_exceptions}.
+            For a list of valid license exceptions check:
+              #{Formatter.url("https://spdx.org/licenses/exceptions-index.html")}
+          EOS
         end
 
         return unless @online
 
-        user, repo = get_repo_data(%r{https?://github\.com/([^/]+)/([^/]+)/?.*}) if @new_formula
+        user, repo = get_repo_data(%r{https?://github\.com/([^/]+)/([^/]+)/?.*})
         return if user.blank?
 
         github_license = GitHub.get_repo_license(user, repo)
-        return if github_license && (formula.license + ["NOASSERTION"]).include?(github_license)
-        return if PERMITTED_LICENSE_MISMATCHES[github_license]&.any? { |license| formula.license.include? license }
+        return unless github_license
+        return if (licenses + ["NOASSERTION"]).include?(github_license)
+        return if PERMITTED_LICENSE_MISMATCHES[github_license]&.any? { |license| licenses.include? license }
+        return if PERMITTED_FORMULA_LICENSE_MISMATCHES[formula.name] == formula.version
 
-        problem "Formula license #{formula.license} does not match GitHub license #{Array(github_license)}."
+        problem "Formula license #{licenses} does not match GitHub license #{Array(github_license)}."
 
       elsif @new_formula && @core_tap
         problem "Formulae in homebrew/core must specify a license."
@@ -473,11 +503,7 @@ module Homebrew
       return unless formula.name == "postgresql"
       return unless @core_tap
 
-      major_version = formula.version
-                             .to_s
-                             .split(".")
-                             .first
-                             .to_i
+      major_version = formula.version.major.to_i
       previous_major_version = major_version - 1
       previous_formula_name = "postgresql@#{previous_major_version}"
       begin
@@ -492,6 +518,7 @@ module Homebrew
     VERSIONED_KEG_ONLY_ALLOWLIST = %w[
       autoconf@2.13
       bash-completion@2
+      clang-format@8
       gnupg@1.4
       libsigc++@2
       lua@5.1
@@ -519,12 +546,18 @@ module Homebrew
       problem "Versioned formulae in homebrew/core should use `keg_only :versioned_formula`"
     end
 
+    CERT_ERROR_ALLOWLIST = {
+      "monero" => "https://www.getmonero.org/",
+    }.freeze
+
     def audit_homepage
       homepage = formula.homepage
 
       return if homepage.nil? || homepage.empty?
 
       return unless @online
+
+      return if CERT_ERROR_ALLOWLIST[formula.name] == homepage
 
       return unless DevelopmentTools.curl_handles_most_https_certificates?
 
@@ -668,19 +701,13 @@ module Homebrew
       "libepoxy"            => "1.5",
     }.freeze
 
-    GITHUB_PRERELEASE_ALLOWLIST = {
-      "gitless"      => "0.8.8",
-      "telegram-cli" => "1.3.1",
-    }.freeze
-
     # version_prefix = stable_version_string.sub(/\d+$/, "")
-    # version_prefix = stable_version_string.split(".")[0..1].join(".")
+    # version_prefix = stable.version.major_minor
 
     def audit_specs
       problem "Head-only (no stable download)" if head_only?(formula)
-      problem "Devel-only (no stable download)" if devel_only?(formula)
 
-      %w[Stable Devel HEAD].each do |name|
+      %w[Stable HEAD].each do |name|
         spec_name = name.downcase.to_sym
         next unless spec = formula.send(spec_name)
 
@@ -705,27 +732,15 @@ module Homebrew
         )
       end
 
-      %w[Stable Devel].each do |name|
-        next unless spec = formula.send(name.downcase)
-
-        version = spec.version
-        problem "#{name}: version (#{version}) is set to a string without a digit" if version.to_s !~ /\d/
+      if stable = formula.stable
+        version = stable.version
+        problem "Stable: version (#{version}) is set to a string without a digit" if version.to_s !~ /\d/
         if version.to_s.start_with?("HEAD")
-          problem "#{name}: non-HEAD version name (#{version}) should not begin with HEAD"
-        end
-      end
-
-      if formula.stable && formula.devel
-        if formula.devel.version < formula.stable.version
-          problem "devel version #{formula.devel.version} is older than stable version #{formula.stable.version}"
-        elsif formula.devel.version == formula.stable.version
-          problem "stable and devel versions are identical"
+          problem "Stable: non-HEAD version name (#{version}) should not begin with HEAD"
         end
       end
 
       return unless @core_tap
-
-      problem "Formulae in homebrew/core should not have a `devel` spec" if formula.devel
 
       if formula.head && @versioned_formula
         head_spec_message = "Versioned formulae should not have a `HEAD` spec"
@@ -738,11 +753,9 @@ module Homebrew
 
       stable_version_string = stable.version.to_s
       stable_url_version = Version.parse(stable.url)
-      _, stable_url_minor_version, = stable_url_version.to_s
-                                                       .split(".", 3)
-                                                       .map(&:to_i)
+      stable_url_minor_version = stable_url_version.minor.to_i
 
-      formula_suffix = stable_version_string.split(".").last.to_i
+      formula_suffix = stable.version.patch.to_i
       throttled_rate = THROTTLED_FORMULAE[formula.name]
       if throttled_rate && formula_suffix.modulo(throttled_rate).nonzero?
         problem "should only be updated every #{throttled_rate} releases on multiples of #{throttled_rate}"
@@ -756,7 +769,7 @@ module Homebrew
 
         problem "Stable version URLs should not contain #{matched}"
       when %r{download\.gnome\.org/sources}, %r{ftp\.gnome\.org/pub/GNOME/sources}i
-        version_prefix = stable_version_string.split(".")[0..1].join(".")
+        version_prefix = stable.version.major_minor
         return if GNOME_DEVEL_ALLOWLIST[formula.name] == version_prefix
         return if stable_url_version < Version.create("1.0")
         return if stable_url_minor_version.even?
@@ -766,27 +779,28 @@ module Homebrew
         return if stable_url_minor_version.even?
 
         problem "#{stable.version} is a development release"
-      when %r{^https://github.com/([\w-]+)/([\w-]+)/}
+
+      when %r{https?://gitlab\.com/([\w-]+)/([\w-]+)}
         owner = Regexp.last_match(1)
         repo = Regexp.last_match(2)
-        tag = url.match(%r{^https://github\.com/[\w-]+/[\w-]+/archive/([^/]+)\.(tar\.gz|zip)$})
-                 .to_a
-                 .second
-        tag ||= url.match(%r{^https://github\.com/[\w-]+/[\w-]+/releases/download/([^/]+)/})
-                   .to_a
-                   .second
 
-        begin
-          if @online && (release = GitHub.open_api("#{GitHub::API_URL}/repos/#{owner}/#{repo}/releases/tags/#{tag}"))
-            if release["prerelease"] && !GITHUB_PRERELEASE_ALLOWLIST.include?(formula.name)
-              problem "#{tag} is a GitHub prerelease"
-            elsif release["draft"]
-              problem "#{tag} is a GitHub draft"
-            end
-          end
-        rescue GitHub::HTTPNotFoundError
-          # No-op if we can't find the release.
-          nil
+        tag = SharedAudits.gitlab_tag_from_url(url)
+        tag ||= stable.specs[:tag]
+        tag ||= stable.version
+
+        if @online
+          error = SharedAudits.gitlab_release(owner, repo, tag, formula: formula)
+          problem error if error
+        end
+      when %r{^https://github.com/([\w-]+)/([\w-]+)}
+        owner = Regexp.last_match(1)
+        repo = Regexp.last_match(2)
+        tag = SharedAudits.github_tag_from_url(url)
+        tag ||= formula.stable.specs[:tag]
+
+        if @online
+          error = SharedAudits.github_release(owner, repo, tag, formula: formula)
+          problem error if error
         end
       end
     end
@@ -854,7 +868,8 @@ module Homebrew
         end
       end
 
-      if previous_version != newest_committed_version &&
+      if (previous_version != newest_committed_version ||
+         current_version != newest_committed_version) &&
          !current_revision.zero? &&
          current_revision == newest_committed_revision &&
          current_revision == previous_revision
@@ -945,11 +960,7 @@ module Homebrew
     end
 
     def head_only?(formula)
-      formula.head && formula.devel.nil? && formula.stable.nil?
-    end
-
-    def devel_only?(formula)
-      formula.devel && formula.stable.nil?
+      formula.head && formula.stable.nil?
     end
   end
 
@@ -983,7 +994,7 @@ module Homebrew
         problem "missing version"
       elsif !version.detected_from_url?
         version_text = version
-        version_url = Version.detect(url, specs)
+        version_url = Version.detect(url, **specs)
         if version_url.to_s == version_text.to_s && version.instance_of?(Version)
           problem "version #{version_text} is redundant with version scanned from URL"
         end
@@ -993,8 +1004,8 @@ module Homebrew
     def audit_download_strategy
       url_strategy = DownloadStrategyDetector.detect(url)
 
-      if using == :git || url_strategy == GitDownloadStrategy
-        problem "Git should specify :revision when a :tag is specified." if specs[:tag] && !specs[:revision]
+      if (using == :git || url_strategy == GitDownloadStrategy) && specs[:tag] && !specs[:revision]
+        problem "Git should specify :revision when a :tag is specified."
       end
 
       return unless using
@@ -1049,12 +1060,12 @@ module Homebrew
             problem http_content_problem
           end
         elsif strategy <= GitDownloadStrategy
-          problem "The URL #{url} is not a valid git URL" unless Utils.git_remote_exists? url
+          problem "The URL #{url} is not a valid git URL" unless Utils::Git.remote_exists? url
         elsif strategy <= SubversionDownloadStrategy
           next unless DevelopmentTools.subversion_handles_most_https_certificates?
-          next unless Utils.svn_available?
+          next unless Utils::Svn.available?
 
-          problem "The URL #{url} is not a valid svn URL" unless Utils.svn_remote_exists? url
+          problem "The URL #{url} is not a valid svn URL" unless Utils::Svn.remote_exists? url
         end
       end
     end

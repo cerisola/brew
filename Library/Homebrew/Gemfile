@@ -2,22 +2,20 @@
 
 source "https://rubygems.org"
 
-# installed gems
-gem "byebug"
+# installed gems (should all be require: false)
+gem "byebug", require: false
 gem "codecov", require: false
-gem "parallel_tests"
+gem "parallel_tests", require: false
 gem "ronn", require: false
-gem "rspec"
+gem "rspec", require: false
 gem "rspec-its", require: false
 gem "rspec-retry", require: false
 gem "rspec-wait", require: false
-gem "rubocop"
+gem "rubocop", require: false
 gem "simplecov", require: false
-if ENV["HOMEBREW_SORBET"]
-  gem "sorbet", "0.5.5823"
-  gem "sorbet-runtime", "0.5.5823"
-  gem "tapioca"
-end
+gem "sorbet", require: false
+gem "sorbet-runtime", require: false
+gem "tapioca", require: false
 
 # vendored gems
 gem "activesupport"

@@ -2,7 +2,12 @@
 
 require "tempfile"
 require "uri"
+require "utils/github/actions"
+require "utils/shell"
 
+# Helper functions for interacting with the GitHub API.
+#
+# @api private
 module GitHub
   module_function
 
@@ -15,10 +20,12 @@ module GitHub
     "https://github.com/settings/tokens/new?scopes=#{ALL_SCOPES.join(",")}&description=Homebrew",
   ).freeze
 
+  # Generic API error.
   class Error < RuntimeError
     attr_reader :github_message
   end
 
+  # Error when the requested URL is not found.
   class HTTPNotFoundError < Error
     def initialize(github_message)
       @github_message = github_message
@@ -26,6 +33,7 @@ module GitHub
     end
   end
 
+  # Error when the API rate limit is exceeded.
   class RateLimitExceededError < Error
     def initialize(reset, github_message)
       @github_message = github_message
@@ -42,6 +50,7 @@ module GitHub
     end
   end
 
+  # Error when authentication fails.
   class AuthenticationFailedError < Error
     def initialize(github_message)
       @github_message = github_message
@@ -65,6 +74,7 @@ module GitHub
     end
   end
 
+  # Error when the API returns a validation error.
   class ValidationFailedError < Error
     def initialize(github_message, errors)
       @github_message = if errors.empty?
@@ -571,5 +581,137 @@ module GitHub
   def api_errors
     [GitHub::AuthenticationFailedError, GitHub::HTTPNotFoundError,
      GitHub::RateLimitExceededError, GitHub::Error, JSON::ParserError].freeze
+  end
+
+  def fetch_pull_requests(query, tap_full_name, state: nil)
+    GitHub.issues_for_formula(query, tap_full_name: tap_full_name, state: state).select do |pr|
+      pr["html_url"].include?("/pull/") &&
+        /(^|\s)#{Regexp.quote(query)}(:|\s|$)/i =~ pr["title"]
+    end
+  rescue GitHub::RateLimitExceededError => e
+    opoo e.message
+    []
+  end
+
+  def check_for_duplicate_pull_requests(query, tap_full_name, state:, args:)
+    pull_requests = fetch_pull_requests(query, tap_full_name, state: state)
+    return if pull_requests.blank?
+
+    duplicates_message = <<~EOS
+      These pull requests may be duplicates:
+      #{pull_requests.map { |pr| "#{pr["title"]} #{pr["html_url"]}" }.join("\n")}
+    EOS
+    error_message = "Duplicate PRs should not be opened. Use --force to override this error."
+    if args.force? && !args.quiet?
+      opoo duplicates_message
+    elsif !args.force? && args.quiet?
+      odie error_message
+    elsif !args.force?
+      odie <<~EOS
+        #{duplicates_message.chomp}
+        #{error_message}
+      EOS
+    end
+  end
+
+  def forked_repo_info!(tap_full_name)
+    response = GitHub.create_fork(tap_full_name)
+    # GitHub API responds immediately but fork takes a few seconds to be ready.
+    sleep 1 until GitHub.check_fork_exists(tap_full_name)
+    remote_url = if system("git", "config", "--local", "--get-regexp", "remote\..*\.url", "git@github.com:.*")
+      response.fetch("ssh_url")
+    else
+      url = response.fetch("clone_url")
+      if (api_token = Homebrew::EnvConfig.github_api_token)
+        url.gsub!(%r{^https://github\.com/}, "https://#{api_token}@github.com/")
+      end
+      url
+    end
+    username = response.fetch("owner").fetch("login")
+    [remote_url, username]
+  end
+
+  def create_bump_pr(info, args:)
+    sourcefile_path = info[:sourcefile_path]
+    old_contents = info[:old_contents]
+    additional_files = info[:additional_files] || []
+    origin_branch = info[:origin_branch]
+    branch = info[:branch_name]
+    commit_message = info[:commit_message]
+    previous_branch = info[:previous_branch]
+    tap = info[:tap]
+    tap_full_name = info[:tap_full_name]
+    pr_message = info[:pr_message]
+
+    sourcefile_path.parent.cd do
+      _, base_branch = origin_branch.split("/")
+      git_dir = Utils.popen_read("git rev-parse --git-dir").chomp
+      shallow = !git_dir.empty? && File.exist?("#{git_dir}/shallow")
+      changed_files = [sourcefile_path]
+      changed_files += additional_files if additional_files.present?
+
+      if args.dry_run? || (args.write? && !args.commit?)
+        ohai "try to fork repository with GitHub API" unless args.no_fork?
+        ohai "git fetch --unshallow origin" if shallow
+        ohai "git add #{changed_files.join(" ")}"
+        ohai "git checkout --no-track -b #{branch} #{origin_branch}"
+        ohai "git commit --no-edit --verbose --message='#{commit_message}'" \
+             " -- #{changed_files.join(" ")}"
+        ohai "git push --set-upstream $HUB_REMOTE #{branch}:#{branch}"
+        ohai "git checkout --quiet #{previous_branch}"
+        ohai "create pull request with GitHub API (base branch: #{base_branch})"
+      else
+
+        unless args.commit?
+          if args.no_fork?
+            remote_url = Utils.popen_read("git remote get-url --push origin").chomp
+            username = tap.user
+          else
+            begin
+              remote_url, username = GitHub.forked_repo_info!(tap_full_name)
+            rescue *GitHub.api_errors => e
+              sourcefile_path.atomic_write(old_contents)
+              odie "Unable to fork: #{e.message}!"
+            end
+          end
+
+          safe_system "git", "fetch", "--unshallow", "origin" if shallow
+        end
+
+        safe_system "git", "add", *changed_files
+        safe_system "git", "checkout", "--no-track", "-b", branch, origin_branch unless args.commit?
+        safe_system "git", "commit", "--no-edit", "--verbose",
+                    "--message=#{commit_message}",
+                    "--", *changed_files
+        return if args.commit?
+
+        safe_system "git", "push", "--set-upstream", remote_url, "#{branch}:#{branch}"
+        safe_system "git", "checkout", "--quiet", previous_branch
+        pr_message = <<~EOS
+          #{pr_message}
+        EOS
+        user_message = args.message
+        if user_message
+          pr_message += <<~EOS
+
+            ---
+
+            #{user_message}
+          EOS
+        end
+
+        begin
+          url = GitHub.create_pull_request(tap_full_name, commit_message,
+                                           "#{username}:#{branch}", base_branch, pr_message)["html_url"]
+          if args.no_browse?
+            puts url
+          else
+            exec_browser url
+          end
+        rescue *GitHub.api_errors => e
+          odie "Unable to open pull request: #{e.message}!"
+        end
+      end
+    end
   end
 end

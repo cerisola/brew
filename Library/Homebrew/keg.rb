@@ -6,9 +6,13 @@ require "lock_file"
 require "ostruct"
 require "extend/cachable"
 
+# Installation prefix of a formula.
+#
+# @api private
 class Keg
   extend Cachable
 
+  # Error for when a keg is already linked.
   class AlreadyLinkedError < RuntimeError
     def initialize(keg)
       super <<~EOS
@@ -18,6 +22,7 @@ class Keg
     end
   end
 
+  # Error for when a keg cannot be linked.
   class LinkError < RuntimeError
     attr_reader :keg, :src, :dst
 
@@ -31,6 +36,7 @@ class Keg
     end
   end
 
+  # Error for when a file already exists or belongs to another keg.
   class ConflictError < LinkError
     def suggestion
       conflict = Keg.for(dst)
@@ -58,6 +64,7 @@ class Keg
     end
   end
 
+  # Error for when a directory is not writable.
   class DirectoryNotWritableError < LinkError
     def to_s
       <<~EOS
@@ -290,8 +297,8 @@ class Keg
       next if aliases.include?(a)
 
       alias_opt_symlink = opt/a
-      if alias_opt_symlink.symlink? && alias_opt_symlink.exist?
-        alias_opt_symlink.delete if rack == alias_opt_symlink.realpath.parent
+      if alias_opt_symlink.symlink? && alias_opt_symlink.exist? && rack == alias_opt_symlink.realpath.parent
+        alias_opt_symlink.delete
       end
 
       alias_linkedkegs_symlink = linkedkegs/a
@@ -362,10 +369,10 @@ class Keg
     ObserverPathnameExtension.n
   end
 
-  def lock
+  def lock(&block)
     FormulaLock.new(name).with_lock do
       if oldname_opt_record
-        FormulaLock.new(oldname_opt_record.basename.to_s).with_lock { yield }
+        FormulaLock.new(oldname_opt_record.basename.to_s).with_lock(&block)
       else
         yield
       end

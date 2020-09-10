@@ -1,19 +1,26 @@
 # frozen_string_literal: true
 
+if ENV["HOMEBREW_STACKPROF"]
+  require_relative "utils/gems"
+  Homebrew.setup_gem_environment!
+  require "stackprof"
+  StackProf.start(mode: :wall, raw: true)
+end
+
 raise "HOMEBREW_BREW_FILE was not exported! Please call bin/brew directly!" unless ENV["HOMEBREW_BREW_FILE"]
 
 std_trap = trap("INT") { exit! 130 } # no backtrace thanks
 
 # check ruby version before requiring any modules.
-RUBY_X, RUBY_Y, = RUBY_VERSION.split(".").map(&:to_i)
-if RUBY_X < 2 || (RUBY_X == 2 && RUBY_Y < 6)
-  raise "Homebrew must be run under Ruby 2.6! You're running #{RUBY_VERSION}."
+unless ENV["HOMEBREW_REQUIRED_RUBY_VERSION"]
+  raise "HOMEBREW_REQUIRED_RUBY_VERSION was not exported! Please call bin/brew directly!"
 end
 
-# Load Bundler first of all if it's needed to avoid Gem version conflicts.
-if ENV["HOMEBREW_INSTALL_BUNDLER_GEMS_FIRST"]
-  require_relative "utils/gems"
-  Homebrew.install_bundler_gems!
+REQUIRED_RUBY_X, REQUIRED_RUBY_Y, = ENV["HOMEBREW_REQUIRED_RUBY_VERSION"].split(".").map(&:to_i)
+RUBY_X, RUBY_Y, = RUBY_VERSION.split(".").map(&:to_i)
+if RUBY_X < REQUIRED_RUBY_X || (RUBY_X == REQUIRED_RUBY_X && RUBY_Y < REQUIRED_RUBY_Y)
+  raise "Homebrew must be run under Ruby #{REQUIRED_RUBY_X}.#{REQUIRED_RUBY_Y}! " \
+        "You're running #{RUBY_VERSION}."
 end
 
 # Also define here so we can rescue regardless of location.
@@ -132,10 +139,12 @@ begin
         brew_uid = HOMEBREW_BREW_FILE.stat.uid
         tap_commands += %W[/usr/bin/sudo -u ##{brew_uid}] if Process.uid.zero? && !brew_uid.zero?
       end
-      tap_commands += %W[#{HOMEBREW_BREW_FILE} tap #{possible_tap.name}]
+      quiet_arg = args.quiet? ? "--quiet" : nil
+      tap_commands += [HOMEBREW_BREW_FILE, "tap", *quiet_arg, possible_tap.name]
       safe_system(*tap_commands)
     end
 
+    ARGV << "--help" if help_flag
     exec HOMEBREW_BREW_FILE, cmd, *ARGV
   end
 rescue UsageError => e
@@ -186,4 +195,9 @@ rescue Exception => e # rubocop:disable Lint/RescueException
   exit 1
 else
   exit 1 if Homebrew.failed?
+ensure
+  if ENV["HOMEBREW_STACKPROF"]
+    StackProf.stop
+    StackProf.results("prof/stackprof.dump")
+  end
 end

@@ -1,20 +1,30 @@
 # frozen_string_literal: true
 
 require "json"
-require "cask/installer"
 
 module Cask
   class Cmd
+    # Implementation of the `brew cask info` command.
+    #
+    # @api private
     class Info < AbstractCommand
-      option "--json=VERSION", :json
+      def self.min_named
+        :cask
+      end
 
-      def initialize(*)
-        super
-        raise CaskUnspecifiedError if args.empty?
+      def self.description
+        "Displays information about the given <cask>."
+      end
+
+      def self.parser
+        super do
+          flag "--json=",
+               description: "Output information in JSON format."
+        end
       end
 
       def run
-        if json == "v1"
+        if args.json == "v1"
           puts JSON.generate(casks.map(&:to_h))
         else
           casks.each_with_index do |cask, i|
@@ -25,20 +35,19 @@ module Cask
         end
       end
 
-      def self.help
-        "displays information about the given Cask"
-      end
-
       def self.get_info(cask)
-        output = title_info(cask) + "\n"
-        output << Formatter.url(cask.homepage) + "\n" if cask.homepage
+        require "cask/installer"
+
+        output = +"#{title_info(cask)}\n"
+        output << "#{Formatter.url(cask.homepage)}\n" if cask.homepage
         output << installation_info(cask)
         repo = repo_info(cask)
-        output << repo + "\n" if repo
+        output << "#{repo}\n" if repo
         output << name_info(cask)
+        output << desc_info(cask)
         language = language_info(cask)
         output << language if language
-        output << artifact_info(cask) + "\n"
+        output << "#{artifact_info(cask)}\n"
         caveats = Installer.caveats(cask)
         output << caveats if caveats
         output
@@ -79,6 +88,13 @@ module Cask
         <<~EOS
           #{ohai_title((cask.name.size > 1) ? "Names" : "Name")}
           #{cask.name.empty? ? Formatter.error("None") : cask.name.join("\n")}
+        EOS
+      end
+
+      def self.desc_info(cask)
+        <<~EOS
+          #{ohai_title("Description")}
+          #{cask.desc.nil? ? Formatter.error("None") : cask.desc}
         EOS
       end
 
