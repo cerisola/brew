@@ -127,7 +127,7 @@ class FormulaInstaller
     build_flags << "--HEAD" if args.HEAD?
     build_flags << "--universal" if args.universal?
     build_flags << "--build-bottle" if args.build_bottle?
-    build_flags << "--build-from-source" if args.build_from_source?
+    build_flags << "--build-from-source"
 
     return if build_flags.empty?
 
@@ -137,7 +137,7 @@ class FormulaInstaller
 
   sig { returns(T::Boolean) }
   def build_from_source?
-    @build_from_source_formulae.include?(formula.full_name)
+    return true
   end
 
   sig { returns(T::Boolean) }
