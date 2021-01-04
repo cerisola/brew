@@ -11,7 +11,7 @@ describe "brew livecheck", :integration_test do
   it "reports the latest version of a Formula", :needs_network do
     content = <<~RUBY
       desc "Some test"
-      homepage "https://github.com/Homebrew/brew"
+      homepage "https://github.com/cerisola/brew"
       url "https://brew.sh/test-1.0.0.tgz"
     RUBY
     setup_test_formula("test", content)

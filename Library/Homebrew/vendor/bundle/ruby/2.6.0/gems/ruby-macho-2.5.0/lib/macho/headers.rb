@@ -53,7 +53,7 @@ module MachO
     CPU_ARCH_ABI64 = 0x01000000
 
     # mask for CPUs with 64-bit architectures (when running a 32-bit ABI?)
-    # @see https://github.com/Homebrew/ruby-macho/issues/113
+    # @see https://github.com/cerisola/ruby-macho/issues/113
     # @api private
     CPU_ARCH_ABI32 = 0x02000000
 
@@ -86,7 +86,7 @@ module MachO
     CPU_TYPE_ARM64 = (CPU_TYPE_ARM | CPU_ARCH_ABI64)
 
     # 64-bit ARM compatible CPUs (running in 32-bit mode?)
-    # @see https://github.com/Homebrew/ruby-macho/issues/113
+    # @see https://github.com/cerisola/ruby-macho/issues/113
     CPU_TYPE_ARM64_32 = (CPU_TYPE_ARM | CPU_ARCH_ABI32)
 
     # PowerPC compatible CPUs

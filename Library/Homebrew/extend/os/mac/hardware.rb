@@ -10,7 +10,7 @@ module Hardware
     # TODO: this cannot be re-enabled until either Rosetta 2 supports AVX
     # instructions in bottles or Homebrew refuses to run under Rosetta 2 (when
     # ARM support is sufficiently complete):
-    #   https://github.com/Homebrew/homebrew-core/issues/67713
+    #   https://github.com/cerisola/homebrew-core/issues/67713
     #
     # elsif version >= :big_sur
     #   :ivybridge

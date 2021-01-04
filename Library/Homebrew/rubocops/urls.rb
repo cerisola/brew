@@ -27,7 +27,7 @@ module RuboCop
           end
 
           # Fossies upstream requests they aren't used as primary URLs
-          # https://github.com/Homebrew/homebrew-core/issues/14486#issuecomment-307753234
+          # https://github.com/cerisola/homebrew-core/issues/14486#issuecomment-307753234
           fossies_pattern = %r{^https?://fossies\.org/}
           audit_urls(urls, fossies_pattern) do
             problem "Please don't use fossies.org in the url (using as a mirror is fine)"

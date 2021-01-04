@@ -39,7 +39,7 @@ Cask/NoDslVersion:
   Enabled: true
 
 Cask/StanzaGrouping:
-  Description: "Ensure that cask stanzas are grouped correctly. More info at https://github.com/Homebrew/homebrew-cask/blob/HEAD/doc/cask_language_reference/readme.md#stanza-order"
+  Description: "Ensure that cask stanzas are grouped correctly. More info at https://github.com/cerisola/homebrew-cask/blob/HEAD/doc/cask_language_reference/readme.md#stanza-order"
   Enabled: true
 
 Cask/StanzaOrder:

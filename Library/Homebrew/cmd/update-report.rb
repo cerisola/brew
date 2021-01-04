@@ -68,7 +68,7 @@ module Homebrew
         Utils.popen_read("git", "config", "--get", "homebrew.donationmessage").chomp == "true"
       if !donation_message_displayed && !args.quiet?
         ohai "Homebrew is run entirely by unpaid volunteers. Please consider donating:"
-        puts "  #{Formatter.url("https://github.com/Homebrew/brew#donations")}\n"
+        puts "  #{Formatter.url("https://github.com/cerisola/brew#donations")}\n"
 
         # Consider the message possibly missed if not a TTY.
         safe_system "git", "config", "--replace-all", "homebrew.donationmessage", "true" if $stdout.tty?
@@ -165,7 +165,7 @@ module Homebrew
     else
       puts <<~EOS
         The changelog can be found at:
-          #{Formatter.url("https://github.com/Homebrew/brew/releases/tag/#{new_repository_version}")}
+          #{Formatter.url("https://github.com/cerisola/brew/releases/tag/#{new_repository_version}")}
       EOS
     end
   end

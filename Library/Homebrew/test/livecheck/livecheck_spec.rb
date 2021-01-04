@@ -11,7 +11,7 @@ describe Homebrew::Livecheck do
       desc "Test formula"
       homepage "https://brew.sh"
       url "https://brew.sh/test-0.0.1.tgz"
-      head "https://github.com/Homebrew/brew.git"
+      head "https://github.com/cerisola/brew.git"
 
       livecheck do
         url "https://formulae.brew.sh/api/formula/ruby.json"
@@ -114,7 +114,7 @@ describe Homebrew::Livecheck do
     formula("test_head_only") do
       desc "HEAD-only test formula"
       homepage "https://brew.sh"
-      head "https://github.com/Homebrew/brew.git"
+      head "https://github.com/cerisola/brew.git"
     end
   end
 
@@ -122,7 +122,7 @@ describe Homebrew::Livecheck do
     formula("test_gist") do
       desc "Gist test formula"
       homepage "https://brew.sh"
-      url "https://gist.github.com/Homebrew/0000000000"
+      url "https://gist.github.com/cerisola/0000000000"
     end
   end
 
@@ -240,14 +240,14 @@ describe Homebrew::Livecheck do
     it "returns the list of URLs to check" do
       expect(livecheck.checkable_urls(f))
         .to eq(
-          ["https://github.com/Homebrew/brew.git", "https://brew.sh/test-0.0.1.tgz", "https://brew.sh"],
+          ["https://github.com/cerisola/brew.git", "https://brew.sh/test-0.0.1.tgz", "https://brew.sh"],
         )
       expect(livecheck.checkable_urls(c)).to eq(["https://brew.sh/test-0.0.1.tgz", "https://brew.sh"])
     end
   end
 
   describe "::preprocess_url" do
-    let(:github_git_url_with_extension) { "https://github.com/Homebrew/brew.git" }
+    let(:github_git_url_with_extension) { "https://github.com/cerisola/brew.git" }
 
     it "returns the unmodified URL for an unparseable URL" do
       # Modeled after the `head` URL in the `ncp` formula
@@ -261,13 +261,13 @@ describe Homebrew::Livecheck do
     end
 
     it "returns the Git repository URL for a GitHub URL not ending in .git" do
-      expect(livecheck.preprocess_url("https://github.com/Homebrew/brew"))
+      expect(livecheck.preprocess_url("https://github.com/cerisola/brew"))
         .to eq(github_git_url_with_extension)
     end
 
     it "returns the unmodified URL for a GitHub /releases/latest URL" do
-      expect(livecheck.preprocess_url("https://github.com/Homebrew/brew/releases/latest"))
-        .to eq("https://github.com/Homebrew/brew/releases/latest")
+      expect(livecheck.preprocess_url("https://github.com/cerisola/brew/releases/latest"))
+        .to eq("https://github.com/cerisola/brew/releases/latest")
     end
 
     it "returns the Git repository URL for a GitHub AWS URL" do
@@ -281,12 +281,12 @@ describe Homebrew::Livecheck do
     end
 
     it "returns the Git repository URL for a GitHub tag archive URL" do
-      expect(livecheck.preprocess_url("https://github.com/Homebrew/brew/archive/1.0.0.tar.gz"))
+      expect(livecheck.preprocess_url("https://github.com/cerisola/brew/archive/1.0.0.tar.gz"))
         .to eq(github_git_url_with_extension)
     end
 
     it "returns the Git repository URL for a GitHub release archive URL" do
-      expect(livecheck.preprocess_url("https://github.com/Homebrew/brew/releases/download/1.0.0/brew-1.0.0.tar.gz"))
+      expect(livecheck.preprocess_url("https://github.com/cerisola/brew/releases/download/1.0.0/brew-1.0.0.tar.gz"))
         .to eq(github_git_url_with_extension)
     end
 

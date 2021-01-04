@@ -6,7 +6,7 @@ require "livecheck/strategy/git"
 describe Homebrew::Livecheck::Strategy::Git do
   subject(:git) { described_class }
 
-  let(:git_url) { "https://github.com/Homebrew/brew.git" }
+  let(:git_url) { "https://github.com/cerisola/brew.git" }
   let(:non_git_url) { "https://brew.sh/test" }
 
   describe "::tag_info", :needs_network do

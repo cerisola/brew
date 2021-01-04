@@ -319,7 +319,7 @@ module Kernel
         pcmd = File.expand_path(cmd, p)
       rescue ArgumentError
         # File.expand_path will raise an ArgumentError if the path is malformed.
-        # See https://github.com/Homebrew/legacy-homebrew/issues/32789
+        # See https://github.com/cerisola/legacy-homebrew/issues/32789
         next
       end
       return Pathname.new(pcmd) if File.file?(pcmd) && File.executable?(pcmd)
@@ -333,7 +333,7 @@ module Kernel
         pcmd = File.expand_path(cmd, p)
       rescue ArgumentError
         # File.expand_path will raise an ArgumentError if the path is malformed.
-        # See https://github.com/Homebrew/legacy-homebrew/issues/32789
+        # See https://github.com/cerisola/legacy-homebrew/issues/32789
         next
       end
       Pathname.new(pcmd) if File.file?(pcmd) && File.executable?(pcmd)

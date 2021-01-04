@@ -414,7 +414,7 @@ module Cask
 
       add_error "The URL's domain #{domain} matches the homepage domain #{homepage}, " \
                 "the `verified` parameter of the `url` stanza is unnecessary. " \
-                "See https://github.com/Homebrew/homebrew-cask/blob/master/doc/cask_language_reference/stanzas/url.md#when-url-and-homepage-hostnames-differ-add-verified"
+                "See https://github.com/cerisola/homebrew-cask/blob/master/doc/cask_language_reference/stanzas/url.md#when-url-and-homepage-hostnames-differ-add-verified"
     end
 
     def check_missing_verified
@@ -425,7 +425,7 @@ module Cask
 
       add_error "The URL's domain #{domain} does not match the homepage domain #{homepage}, " \
                 "a `verified` parameter has to be added to the `url` stanza. " \
-                "See https://github.com/Homebrew/homebrew-cask/blob/master/doc/cask_language_reference/stanzas/url.md#when-url-and-homepage-hostnames-differ-add-verified"
+                "See https://github.com/cerisola/homebrew-cask/blob/master/doc/cask_language_reference/stanzas/url.md#when-url-and-homepage-hostnames-differ-add-verified"
     end
 
     def check_no_match
@@ -434,7 +434,7 @@ module Cask
       return if !url_match_homepage? && verified_matches_url?
 
       add_error "Verified URL #{url_from_verified} does not match URL #{strip_url_scheme(cask.url.to_s)}. " \
-                "See https://github.com/Homebrew/homebrew-cask/blob/master/doc/cask_language_reference/stanzas/url.md#when-url-and-homepage-hostnames-differ-add-verified"
+                "See https://github.com/cerisola/homebrew-cask/blob/master/doc/cask_language_reference/stanzas/url.md#when-url-and-homepage-hostnames-differ-add-verified"
     end
 
     def check_generic_artifacts

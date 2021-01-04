@@ -76,7 +76,7 @@ module OS
             end
 
             # Use unversioned SDK path on Big Sur to avoid issues such as:
-            # https://github.com/Homebrew/homebrew-core/issues/67075
+            # https://github.com/cerisola/homebrew-core/issues/67075
             # This creates an entry in `paths` whose key is the OS major version
             sdk_path = Pathname.new("#{sdk_prefix}/MacOSX.sdk")
             sdk_settings = sdk_path/"SDKSettings.json"

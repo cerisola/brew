@@ -98,7 +98,7 @@ class Keg
   ).map { |dir| HOMEBREW_PREFIX/dir }.sort.uniq.freeze
 
   # Keep relatively in sync with
-  # {https://github.com/Homebrew/install/blob/HEAD/install.sh}
+  # {https://github.com/cerisola/install/blob/HEAD/install.sh}
   MUST_EXIST_DIRECTORIES = (MUST_EXIST_SUBDIRECTORIES + [
     HOMEBREW_CELLAR,
   ].sort.uniq).freeze

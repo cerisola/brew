@@ -177,7 +177,7 @@ module Utils
       end
 
       unless details[:status]
-        # Hack around https://github.com/Homebrew/brew/issues/3199
+        # Hack around https://github.com/cerisola/brew/issues/3199
         return if MacOS.version == :el_capitan
 
         return "The URL #{url} is not reachable"

@@ -26,7 +26,7 @@ describe "brew bottle", :integration_test do
     install_test_formula "testball", build_bottle: true
 
     # `brew bottle` should not fail with dead symlink
-    # https://github.com/Homebrew/legacy-homebrew/issues/49007
+    # https://github.com/cerisola/legacy-homebrew/issues/49007
     (HOMEBREW_CELLAR/"testball/0.1").cd do
       FileUtils.ln_s "not-exist", "symlink"
     end

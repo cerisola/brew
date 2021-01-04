@@ -137,7 +137,7 @@ describe "globally-scoped helper methods" do
 
     it "skips malformed path and doesn't fail" do
       # 'which' should not fail if a path is malformed
-      # see https://github.com/Homebrew/legacy-homebrew/issues/32789 for an example
+      # see https://github.com/cerisola/legacy-homebrew/issues/32789 for an example
       cmd.chmod 0744
 
       # ~~ will fail because ~foo resolves to foo's home and there is no '~' user
