@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require_relative "shared_examples/invalid_option"
@@ -20,7 +21,7 @@ describe Cask::Cmd::Audit, :cask do
 
     it "audits specified Casks if tokens are given" do
       cask_token = "nice-app"
-      expect(Cask::CaskLoader).to receive(:load).with(cask_token).and_return(cask)
+      expect(Cask::CaskLoader).to receive(:load).with(cask_token, any_args).and_return(cask)
 
       expect(Cask::Auditor).to receive(:audit)
         .with(cask, quarantine: true)

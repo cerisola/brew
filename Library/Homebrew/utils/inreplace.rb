@@ -1,10 +1,15 @@
+# typed: true
 # frozen_string_literal: true
+
+require "utils/string_inreplace_extension"
 
 module Utils
   # Helper functions for replacing text in files in-place.
   #
   # @api private
   module Inreplace
+    extend T::Sig
+
     # Error during replacement.
     class Error < RuntimeError
       def initialize(errors)
@@ -27,7 +32,17 @@ module Utils
     # <pre>inreplace "somefile.cfg", /look[for]what?/, "replace by #{bin}/tool"</pre>
     #
     # @api public
+    sig do
+      params(
+        paths:        T.any(T::Array[T.untyped], String, Pathname),
+        before:       T.nilable(T.any(Regexp, String)),
+        after:        T.nilable(T.any(String, Symbol)),
+        audit_result: T::Boolean,
+      ).void
+    end
     def inreplace(paths, before = nil, after = nil, audit_result = true) # rubocop:disable Style/OptionalBooleanParameter
+      after = after.to_s if after.is_a? Symbol
+
       errors = {}
 
       errors["`paths` (first) parameter"] = ["`paths` was empty"] if paths.blank?
@@ -39,8 +54,7 @@ module Utils
         if before.nil? && after.nil?
           yield s
         else
-          after = after.to_s if after.is_a? Symbol
-          s.gsub!(before, after, audit_result)
+          s.gsub!(T.must(before), after, audit_result)
         end
 
         errors[path] = s.errors unless s.errors.empty?
@@ -52,7 +66,7 @@ module Utils
     end
 
     def inreplace_pairs(path, replacement_pairs, read_only_run: false, silent: false)
-      str = File.open(path, "rb", &:read)
+      str = File.open(path, "rb", &:read) || ""
       contents = StringInreplaceExtension.new(str)
       replacement_pairs.each do |old, new|
         ohai "replace #{old.inspect} with #{new.inspect}" unless silent

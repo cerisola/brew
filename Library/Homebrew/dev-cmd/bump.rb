@@ -1,10 +1,14 @@
+# typed: true
 # frozen_string_literal: true
 
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def bump_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -13,8 +17,8 @@ module Homebrew
         Display out-of-date brew formulae and the latest version available.
         Also displays whether a pull request has been opened with the URL.
       EOS
-      flag "--limit=",
-           description: "Limit number of package results returned."
+      flag   "--limit=",
+             description: "Limit number of package results returned."
       switch :verbose
       switch :debug
     end

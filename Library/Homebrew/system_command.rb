@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require "open3"
@@ -6,41 +7,44 @@ require "plist"
 require "shellwords"
 
 require "extend/io"
+require "extend/predicable"
 require "extend/hash_validator"
-using HashValidator
-
-# Make `system_command` available everywhere.
-#
-# @api private
-module Kernel
-  def system_command(*args)
-    SystemCommand.run(*args)
-  end
-
-  def system_command!(*args)
-    SystemCommand.run!(*args)
-  end
-end
 
 # Class for running sub-processes and capturing their output and exit status.
 #
 # @api private
 class SystemCommand
+  extend T::Sig
+
+  using HashValidator
+
+  # Helper functions for calling {SystemCommand.run}.
+  module Mixin
+    extend T::Sig
+
+    def system_command(*args)
+      T.unsafe(SystemCommand).run(*args)
+    end
+
+    def system_command!(*args)
+      T.unsafe(SystemCommand).run!(*args)
+    end
+  end
+
   include Context
   extend Predicable
 
-  attr_reader :pid
-
   def self.run(executable, **options)
-    new(executable, **options).run!
+    T.unsafe(self).new(executable, **options).run!
   end
 
   def self.run!(command, **options)
-    run(command, **options, must_succeed: true)
+    T.unsafe(self).run(command, **options, must_succeed: true)
   end
 
+  sig { returns(SystemCommand::Result) }
   def run!
-    puts redact_secrets(command.shelljoin.gsub('\=', "="), @secrets) if verbose? || debug?
+    $stderr.puts redact_secrets(command.shelljoin.gsub('\=', "="), @secrets) if verbose? || debug?
 
     @output = []
 
@@ -60,59 +64,83 @@ class SystemCommand
     result
   end
 
+  sig do
+    params(
+      executable:   T.any(String, Pathname),
+      args:         T::Array[T.any(String, Integer, Float, URI::Generic)],
+      sudo:         T::Boolean,
+      env:          T::Hash[String, String],
+      input:        T.any(String, T::Array[String]),
+      must_succeed: T::Boolean,
+      print_stdout: T::Boolean,
+      print_stderr: T::Boolean,
+      debug:        T.nilable(T::Boolean),
+      verbose:      T.nilable(T::Boolean),
+      secrets:      T.any(String, T::Array[String]),
+      chdir:        T.any(String, Pathname),
+    ).void
+  end
   def initialize(executable, args: [], sudo: false, env: {}, input: [], must_succeed: false,
-                 print_stdout: false, print_stderr: true, verbose: false, secrets: [], **options)
-
+                 print_stdout: false, print_stderr: true, debug: nil, verbose: nil, secrets: [], chdir: T.unsafe(nil))
     require "extend/ENV"
     @executable = executable
     @args = args
     @sudo = sudo
-    @input = Array(input)
-    @print_stdout = print_stdout
-    @print_stderr = print_stderr
-    @verbose = verbose
-    @secrets = (Array(secrets) + ENV.sensitive_environment.values).uniq
-    @must_succeed = must_succeed
-    options.assert_valid_keys!(:chdir)
-    @options = options
-    @env = env
-
-    @env.each_key do |name|
+    env.each_key do |name|
       next if /^[\w&&\D]\w*$/.match?(name)
 
       raise ArgumentError, "Invalid variable name: '#{name}'"
     end
+    @env = env
+    @input = Array(input)
+    @must_succeed = must_succeed
+    @print_stdout = print_stdout
+    @print_stderr = print_stderr
+    @debug = debug
+    @verbose = verbose
+    @secrets = (Array(secrets) + ENV.sensitive_environment.values).uniq
+    @chdir = chdir
   end
 
+  sig { returns(T::Array[String]) }
   def command
     [*sudo_prefix, *env_args, executable.to_s, *expanded_args]
   end
 
   private
 
-  attr_reader :executable, :args, :input, :options, :env
+  attr_reader :executable, :args, :input, :chdir, :env
 
   attr_predicate :sudo?, :print_stdout?, :print_stderr?, :must_succeed?
 
+  sig { returns(T::Boolean) }
+  def debug?
+    return super if @debug.nil?
+
+    @debug
+  end
+
+  sig { returns(T::Boolean) }
   def verbose?
     return super if @verbose.nil?
 
     @verbose
   end
 
+  sig { returns(T::Array[String]) }
   def env_args
-    set_variables = env.reject { |_, value| value.nil? }
-                       .map do |name, value|
-                         sanitized_name = Shellwords.escape(name)
-                         sanitized_value = Shellwords.escape(value)
-                         "#{sanitized_name}=#{sanitized_value}"
-                       end
+    set_variables = env.compact.map do |name, value|
+      sanitized_name = Shellwords.escape(name)
+      sanitized_value = Shellwords.escape(value)
+      "#{sanitized_name}=#{sanitized_value}"
+    end
 
     return [] if set_variables.empty?
 
     ["/usr/bin/env", *set_variables]
   end
 
+  sig { returns(T::Array[String]) }
   def sudo_prefix
     return [] unless sudo?
 
@@ -120,11 +148,12 @@ class SystemCommand
     ["/usr/bin/sudo", *askpass_flags, "-E", "--"]
   end
 
+  sig { returns(T::Array[String]) }
   def expanded_args
     @expanded_args ||= args.map do |arg|
       if arg.respond_to?(:to_path)
         File.absolute_path(arg)
-      elsif arg.is_a?(Integer) || arg.is_a?(Float) || arg.is_a?(URI)
+      elsif arg.is_a?(Integer) || arg.is_a?(Float) || arg.is_a?(URI::Generic)
         arg.to_s
       else
         arg.to_str
@@ -132,32 +161,46 @@ class SystemCommand
     end
   end
 
-  def each_output_line(&b)
+  sig { params(block: T.proc.params(type: Symbol, line: String).void).void }
+  def each_output_line(&block)
     executable, *args = command
+    options = {
+      # Create a new process group so that we can send `SIGINT` from
+      # parent to child rather than the child receiving `SIGINT` directly.
+      pgroup: sudo? ? nil : true,
+    }
+    options[:chdir] = chdir if chdir
 
-    raw_stdin, raw_stdout, raw_stderr, raw_wait_thr =
-      Open3.popen3(env, [executable, executable], *args, **options)
-    @pid = raw_wait_thr.pid
+    pid = T.let(nil, T.nilable(Integer))
+    raw_stdin, raw_stdout, raw_stderr, raw_wait_thr = ignore_interrupts do
+      T.unsafe(Open3).popen3(env, [executable, executable], *args, **options)
+       .tap { |*, wait_thr| pid = wait_thr.pid }
+    end
 
     write_input_to(raw_stdin)
     raw_stdin.close_write
-    each_line_from [raw_stdout, raw_stderr], &b
+    each_line_from [raw_stdout, raw_stderr], &block
 
     @status = raw_wait_thr.value
+  rescue Interrupt
+    Process.kill("INT", pid) if pid && !sudo?
+    raise Interrupt
   rescue SystemCallError => e
     @status = $CHILD_STATUS
     @output << [:stderr, e.message]
   end
 
+  sig { params(raw_stdin: IO).void }
   def write_input_to(raw_stdin)
     input.each(&raw_stdin.method(:write))
   end
 
-  def each_line_from(sources)
+  sig { params(sources: T::Array[IO], _block: T.proc.params(type: Symbol, line: String).void).void }
+  def each_line_from(sources, &_block)
     loop do
       readable_sources, = IO.select(sources)
 
-      readable_sources = readable_sources.reject(&:eof?)
+      readable_sources = T.must(readable_sources).reject(&:eof?)
 
       break if readable_sources.empty?
 
@@ -175,10 +218,20 @@ class SystemCommand
 
   # Result containing the output and exit status of a finished sub-process.
   class Result
+    extend T::Sig
+
     include Context
 
     attr_accessor :command, :status, :exit_status
 
+    sig do
+      params(
+        command: T::Array[String],
+        output:  T::Array[[Symbol, String]],
+        status:  Process::Status,
+        secrets: T::Array[String],
+      ).void
+    end
     def initialize(command, output, status, secrets:)
       @command       = command
       @output        = output
@@ -187,57 +240,65 @@ class SystemCommand
       @secrets       = secrets
     end
 
+    sig { void }
     def assert_success!
       return if @status.success?
 
       raise ErrorDuringExecution.new(command, status: @status, output: @output, secrets: @secrets)
     end
 
+    sig { returns(String) }
     def stdout
       @stdout ||= @output.select { |type,| type == :stdout }
                          .map { |_, line| line }
                          .join
     end
 
+    sig { returns(String) }
     def stderr
       @stderr ||= @output.select { |type,| type == :stderr }
                          .map { |_, line| line }
                          .join
     end
 
+    sig { returns(String) }
     def merged_output
       @merged_output ||= @output.map { |_, line| line }
                                 .join
     end
 
+    sig { returns(T::Boolean) }
     def success?
       return false if @exit_status.nil?
 
       @exit_status.zero?
     end
 
+    sig { returns([String, String, Process::Status]) }
     def to_ary
       [stdout, stderr, status]
     end
 
+    sig { returns(T.nilable(T.any(Array, Hash))) }
     def plist
       @plist ||= begin
         output = stdout
 
-        if /\A(?<garbage>.*?)<\?\s*xml/m =~ output
-          output = output.sub(/\A#{Regexp.escape(garbage)}/m, "")
-          warn_plist_garbage(garbage)
+        output = output.sub(/\A(.*?)(\s*<\?\s*xml)/m) do
+          warn_plist_garbage(T.must(Regexp.last_match(1)))
+          Regexp.last_match(2)
         end
 
-        if %r{<\s*/\s*plist\s*>(?<garbage>.*?)\Z}m =~ output
-          output = output.sub(/#{Regexp.escape(garbage)}\Z/, "")
-          warn_plist_garbage(garbage)
+        output = output.sub(%r{(<\s*/\s*plist\s*>\s*)(.*?)\Z}m) do
+          warn_plist_garbage(T.must(Regexp.last_match(2)))
+          Regexp.last_match(1)
         end
 
         Plist.parse_xml(output)
       end
     end
 
+    sig { params(garbage: String).void }
     def warn_plist_garbage(garbage)
       return unless verbose?
       return unless garbage.match?(/\S/)
@@ -248,3 +309,7 @@ class SystemCommand
     private :warn_plist_garbage
   end
 end
+
+# Make `system_command` available everywhere.
+# FIXME: Include this explicitly only where it is needed.
+include SystemCommand::Mixin # rubocop:disable Style/MixinUsage

@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require "forwardable"
@@ -8,8 +9,8 @@ require "rubocops/shared/desc_helper"
 module RuboCop
   module Cop
     module Cask
-      # This cop audits `desc` in Casks.
-      # See the `DescHelper` module for details of the checks.
+      # This cop audits `desc` in casks.
+      # See the {DescHelper} module for details of the checks.
       class Desc < Cop
         include OnDescStanza
         include DescHelper

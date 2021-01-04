@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "json"
@@ -8,26 +9,55 @@ module Cask
     #
     # @api private
     class Info < AbstractCommand
+      extend T::Sig
+
+      sig { override.returns(T.nilable(T.any(Integer, Symbol))) }
       def self.min_named
         :cask
       end
 
+      sig { returns(String) }
       def self.description
         "Displays information about the given <cask>."
       end
 
       def self.parser
         super do
-          flag "--json=",
-               description: "Output information in JSON format."
+          flag   "--json=",
+                 description: "Output information in JSON format."
+          switch "--github",
+                 description: "Open the GitHub source page for <Cask> in a browser. "
         end
       end
 
+      def github_info(cask)
+        sourcefile_path = cask.sourcefile_path
+        dir = cask.tap.path
+        path = sourcefile_path.relative_path_from(dir)
+        remote = cask.tap.remote
+        github_remote_path(remote, path)
+      end
+
+      def github_remote_path(remote, path)
+        if remote =~ %r{^(?:https?://|git(?:@|://))github\.com[:/](.+)/(.+?)(?:\.git)?$}
+          "https://github.com/#{Regexp.last_match(1)}/#{Regexp.last_match(2)}/blob/HEAD/#{path}"
+        else
+          "#{remote}/#{path}"
+        end
+      end
+
+      sig { void }
       def run
         if args.json == "v1"
-          puts JSON.generate(casks.map(&:to_h))
+          puts JSON.generate(args.named.to_casks.map(&:to_h))
+        elsif args.github?
+          raise CaskUnspecifiedError if args.no_named?
+
+          args.named.to_casks.map do |cask|
+            exec_browser(github_info(cask))
+          end
         else
-          casks.each_with_index do |cask, i|
+          args.named.to_casks.each_with_index do |cask, i|
             puts unless i.zero?
             odebug "Getting info for Cask #{cask}"
             self.class.info(cask)

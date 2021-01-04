@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "dependable"
@@ -6,6 +7,8 @@ require "dependable"
 #
 # @api private
 class Dependency
+  extend T::Sig
+
   extend Forwardable
   include Dependable
 
@@ -63,11 +66,12 @@ class Dependency
     env_proc&.call
   end
 
+  sig { returns(String) }
   def inspect
     "#<#{self.class.name}: #{name.inspect} #{tags.inspect}>"
   end
 
-  # Define marshaling semantics because we cannot serialize @env_proc
+  # Define marshaling semantics because we cannot serialize @env_proc.
   def _dump(*)
     Marshal.dump([name, tags])
   end
@@ -77,7 +81,9 @@ class Dependency
   end
 
   class << self
-    # Expand the dependencies of dependent recursively, optionally yielding
+    extend T::Sig
+
+    # Expand the dependencies of each dependent recursively, optionally yielding
     # `[dependent, dep]` pairs to allow callers to apply arbitrary filters to
     # the list.
     # The default filter, which is applied when a block is not given, omits
@@ -114,9 +120,9 @@ class Dependency
       @expand_stack.pop
     end
 
-    def action(dependent, dep, &_block)
+    def action(dependent, dep, &block)
       catch(:action) do
-        if block_given?
+        if block
           yield dependent, dep
         elsif dep.optional? || dep.recommended?
           prune unless dependent.build.with?(dep)
@@ -124,17 +130,20 @@ class Dependency
       end
     end
 
-    # Prune a dependency and its dependencies recursively
+    # Prune a dependency and its dependencies recursively.
+    sig { void }
     def prune
       throw(:action, :prune)
     end
 
-    # Prune a single dependency but do not prune its dependencies
+    # Prune a single dependency but do not prune its dependencies.
+    sig { void }
     def skip
       throw(:action, :skip)
     end
 
-    # Keep a dependency, but prune its dependencies
+    # Keep a dependency, but prune its dependencies.
+    sig { void }
     def keep_but_prune_recursive_deps
       throw(:action, :keep_but_prune_recursive_deps)
     end

@@ -1,7 +1,9 @@
+# typed: false
 # frozen_string_literal: true
 
 require "locale"
 require "lazy_object"
+require "livecheck"
 
 require "cask/artifact"
 
@@ -79,6 +81,9 @@ module Cask
                             :url,
                             :version,
                             :appdir,
+                            :discontinued?,
+                            :livecheck,
+                            :livecheckable?,
                             *ORDINARY_ARTIFACT_CLASSES.map(&:dsl_key),
                             *ACTIVATABLE_ARTIFACT_CLASSES.map(&:dsl_key),
                             *ARTIFACT_BLOCK_CLASSES.flat_map { |klass| [klass.dsl_key, klass.uninstall_dsl_key] },
@@ -123,7 +128,7 @@ module Cask
     def language(*args, default: false, &block)
       if args.empty?
         language_eval
-      elsif block_given?
+      elsif block
         @language_blocks ||= {}
         @language_blocks[args] = block
 
@@ -140,9 +145,9 @@ module Cask
     end
 
     def language_eval
-      return @language if defined?(@language)
+      return @language_eval if defined?(@language_eval)
 
-      return @language = nil if @language_blocks.nil? || @language_blocks.empty?
+      return @language_eval = nil if @language_blocks.blank?
 
       raise CaskInvalidError.new(cask, "No default language specified.") if @language_blocks.default.nil?
 
@@ -159,10 +164,10 @@ module Cask
 
         next if key.nil?
 
-        return @language = @language_blocks[key].call
+        return @language_eval = @language_blocks[key].call
       end
 
-      @language = @language_blocks.default.call
+      @language_eval = @language_blocks.default.call
     end
 
     def languages
@@ -171,12 +176,14 @@ module Cask
       @language_blocks.keys.flatten
     end
 
-    def url(*args)
-      set_unique_stanza(:url, args.empty? && !block_given?) do
+    def url(*args, **options)
+      caller_location = caller_locations[0]
+
+      set_unique_stanza(:url, args.empty? && options.empty? && !block_given?) do
         if block_given?
-          LazyObject.new { URL.new(*yield) }
+          LazyObject.new { URL.new(*yield, from_block: true, caller_location: caller_location) }
         else
-          URL.new(*args)
+          URL.new(*args, **options, caller_location: caller_location)
         end
       end
     end
@@ -203,15 +210,18 @@ module Cask
 
     def sha256(arg = nil)
       set_unique_stanza(:sha256, arg.nil?) do
-        if !arg.is_a?(String) && arg != :no_check
+        case arg
+        when :no_check
+          arg
+        when String
+          Checksum.new(:sha256, arg)
+        else
           raise CaskInvalidError.new(cask, "invalid 'sha256' value: '#{arg.inspect}'")
         end
-
-        arg
       end
     end
 
-    # depends_on uses a load method so that multiple stanzas can be merged
+    # `depends_on` uses a load method so that multiple stanzas can be merged.
     def depends_on(*args)
       @depends_on ||= DSL::DependsOn.new
       return @depends_on if args.empty?
@@ -246,7 +256,7 @@ module Cask
 
     def caveats(*strings, &block)
       @caveats ||= DSL::Caveats.new(cask)
-      if block_given?
+      if block
         @caveats.eval_caveats(&block)
       elsif strings.any?
         strings.each do |string|
@@ -258,8 +268,26 @@ module Cask
       @caveats
     end
 
+    def discontinued?
+      @caveats&.discontinued?
+    end
+
     def auto_updates(auto_updates = nil)
       set_unique_stanza(:auto_updates, auto_updates.nil?) { auto_updates }
+    end
+
+    def livecheck(&block)
+      @livecheck ||= Livecheck.new(self)
+      return @livecheck unless block
+
+      raise CaskInvalidError.new(cask, "'livecheck' stanza may only appear once.") if @livecheckable
+
+      @livecheckable = true
+      @livecheck.instance_eval(&block)
+    end
+
+    def livecheckable?
+      @livecheckable == true
     end
 
     ORDINARY_ARTIFACT_CLASSES.each do |klass|
@@ -285,7 +313,7 @@ module Cask
       end
     end
 
-    # No need to define it as its the default/superclass implementation.
+    # No need to define it as it's the default/superclass implementation.
     # rubocop:disable Style/MissingRespondToMissing
     def method_missing(method, *)
       if method

@@ -1,11 +1,14 @@
+# typed: true
 # frozen_string_literal: true
 
 # Representation of a system locale.
 #
-# Used to compare the system language and languages defined using cask `language` stanza.
+# Used to compare the system language and languages defined using the cask `language` stanza.
 #
 # @api private
 class Locale
+  extend T::Sig
+
   # Error when a string cannot be parsed to a `Locale`.
   class ParserError < StandardError
   end
@@ -33,6 +36,7 @@ class Locale
     raise ParserError, "'#{string}' cannot be parsed to a #{self}"
   end
 
+  sig { params(string: String).returns(T.nilable(T.attached_class)) }
   def self.try_parse(string)
     return if string.blank?
 
@@ -106,6 +110,7 @@ class Locale
       locale_groups.find { |locales| locales.any? { |locale| include?(locale) } }
   end
 
+  sig { returns(String) }
   def to_s
     [@language, @region, @script].compact.join("-")
   end

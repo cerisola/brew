@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "extend/pathname"
@@ -44,6 +45,7 @@ describe Pathname do
   describe "#patch!" do
     # testing only patchelf.rb as HOMEBREW_PREFIX is different for tests,
     # and DevelopmentTools.locate fails to locate patchelf
+    # TODO: use stub_const("HOMEBREW_PATCHELF_RB_WRITE", true) in tests instead.
     HOMEBREW_PATCHELF_RB_WRITE = true
 
     let(:placeholder_prefix) { "@@HOMEBREW_PREFIX@@" }

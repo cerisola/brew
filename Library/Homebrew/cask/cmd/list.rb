@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cask/artifact/relocated"
@@ -8,6 +9,9 @@ module Cask
     #
     # @api private
     class List < AbstractCommand
+      extend T::Sig
+
+      sig { returns(String) }
       def self.description
         "Lists installed casks or the casks provided in the arguments."
       end
@@ -25,6 +29,7 @@ module Cask
         end
       end
 
+      sig { void }
       def run
         self.class.list_casks(
           *casks,
@@ -32,16 +37,17 @@ module Cask
           one:       args.public_send(:'1?'),
           full_name: args.full_name?,
           versions:  args.versions?,
+          args:      args,
         )
       end
 
-      def self.list_casks(*casks, json: false, one: false, full_name: false, versions: false)
+      def self.list_casks(*casks, args:, json: false, one: false, full_name: false, versions: false)
         output = if casks.any?
           casks.each do |cask|
             raise CaskNotInstalledError, cask unless cask.installed?
           end
         else
-          Caskroom.casks
+          Caskroom.casks(config: Config.from_args(args))
         end
 
         if json

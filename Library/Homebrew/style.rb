@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "shellwords"
@@ -29,7 +30,7 @@ module Homebrew
       success
     end
 
-    # Checks style for a list of files, returning results as `Offenses`
+    # Checks style for a list of files, returning results as an {Offenses}
     # object parsed from its JSON output.
     def check_style_json(files, **options)
       check_style_impl(files, :json, **options)
@@ -39,6 +40,7 @@ module Homebrew
                          fix: false,
                          except_cops: nil, only_cops: nil,
                          display_cop_names: false,
+                         reset_cache: false,
                          debug: false, verbose: false)
       raise ArgumentError, "Invalid output type: #{output_type.inspect}" unless [:print, :json].include?(output_type)
 
@@ -53,6 +55,7 @@ module Homebrew
                     fix: fix,
                     except_cops: except_cops, only_cops: only_cops,
                     display_cop_names: display_cop_names,
+                    reset_cache: reset_cache,
                     debug: debug, verbose: verbose)
       end
 
@@ -70,7 +73,7 @@ module Homebrew
     end
 
     def run_rubocop(files, output_type,
-                    fix: false, except_cops: nil, only_cops: nil, display_cop_names: false,
+                    fix: false, except_cops: nil, only_cops: nil, display_cop_names: false, reset_cache: false,
                     debug: false, verbose: false)
       Homebrew.install_bundler_gems!
       require "rubocop"
@@ -80,7 +83,7 @@ module Homebrew
         --force-exclusion
       ]
       args << if fix
-        "--auto-correct"
+        "-A"
       else
         "--parallel"
       end
@@ -129,6 +132,14 @@ module Homebrew
 
       cache_env = { "XDG_CACHE_HOME" => "#{HOMEBREW_CACHE}/style" }
 
+      FileUtils.rm_rf cache_env["XDG_CACHE_HOME"] if reset_cache
+
+      ruby_args = [
+        (ENV["HOMEBREW_RUBY_WARNINGS"] if !debug && !verbose),
+        "-S",
+        "rubocop",
+      ].compact.freeze
+
       case output_type
       when :print
         args << "--debug" if debug
@@ -139,10 +150,12 @@ module Homebrew
 
         args << "--color" if Tty.color?
 
-        system cache_env, "rubocop", *args
+        system cache_env, RUBY_PATH, *ruby_args, *args
         $CHILD_STATUS.success?
       when :json
-        result = system_command "rubocop", args: ["--format", "json", *args], env: cache_env
+        result = system_command RUBY_PATH,
+                                args: [*ruby_args, "--format", "json", *args],
+                                env:  cache_env
         json = json_result!(result)
         json["files"]
       end
@@ -178,6 +191,7 @@ module Homebrew
         json = json_result!(result)
 
         # Convert to same format as RuboCop offenses.
+        severity_hash = { "style" => "refactor", "info" => "convention" }
         json.group_by { |v| v["file"] }
             .map do |k, v|
           {
@@ -188,7 +202,7 @@ module Homebrew
               o["cop_name"] = "SC#{o.delete("code")}"
 
               level = o.delete("level")
-              o["severity"] = { "style" => "refactor", "info" => "convention" }.fetch(level, level)
+              o["severity"] = severity_hash.fetch(level, level)
 
               line = o.delete("line")
               column = o.delete("column")
@@ -263,36 +277,21 @@ module Homebrew
       def corrected?
         @corrected
       end
-
-      def correction_status
-        "[Corrected] " if corrected?
-      end
-
-      def to_s(display_cop_name: false)
-        if display_cop_name
-          "#{severity_code}: #{location.to_short_s}: #{cop_name}: " \
-          "#{Tty.green}#{correction_status}#{Tty.reset}#{message}"
-        else
-          "#{severity_code}: #{location.to_short_s}: #{Tty.green}#{correction_status}#{Tty.reset}#{message}"
-        end
-      end
     end
 
     # Source location of a style offense.
     class LineLocation
-      attr_reader :line, :column, :length
+      extend T::Sig
+
+      attr_reader :line, :column
 
       def initialize(json)
         @line = json["line"]
         @column = json["column"]
-        @length = json["length"]
       end
 
+      sig { returns(String) }
       def to_s
-        "#{line}: col #{column} (#{length} chars)"
-      end
-
-      def to_short_s
         "#{line}: col #{column}"
       end
     end

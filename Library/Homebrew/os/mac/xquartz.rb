@@ -1,11 +1,17 @@
+# typed: true
 # frozen_string_literal: true
 
 module OS
   module Mac
-    X11 = XQuartz = Module.new do # rubocop:disable Style/MutableConstant
+    # Helper module for querying XQuartz information.
+    #
+    # @api private
+    module XQuartz
+      extend T::Sig
+
       module_function
 
-      DEFAULT_BUNDLE_PATH = Pathname.new("Applications/Utilities/XQuartz.app").freeze
+      DEFAULT_BUNDLE_PATH = Pathname("Applications/Utilities/XQuartz.app").freeze
       FORGE_BUNDLE_ID = "org.macosforge.xquartz.X11"
       FORGE_PKG_ID = "org.macosforge.xquartz.pkg"
 
@@ -48,14 +54,15 @@ module OS
         end
       end
 
+      sig { returns(String) }
       def minimum_version
         # Update this a little later than latest_version to give people
         # time to upgrade.
         "2.7.11"
       end
 
-      # - https://xquartz.macosforge.org/trac/wiki
-      # - https://xquartz.macosforge.org/trac/wiki/Releases
+      # @see https://www.xquartz.org/releases/index.html
+      sig { returns(String) }
       def latest_version
         "2.7.11"
       end
@@ -83,9 +90,6 @@ module OS
         PKGINFO_VERSION_MAP.fetch(str, str)
       end
 
-      # This should really be private, but for compatibility reasons it must
-      # remain public. New code should use `MacOS::X11.bin`, `MacOS::X11.lib` and
-      # `MacOS::X11.include` instead, as that accounts for Xcode-only systems.
       def prefix
         @prefix ||= Pathname.new("/opt/X11") if Pathname.new("/opt/X11/lib/libpng.dylib").exist?
       end

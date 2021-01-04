@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cask/dsl"
@@ -8,11 +9,13 @@ module Cask
     #
     # @api private
     class InternalStanza < AbstractInternalCommand
+      extend T::Sig
+
       # Syntax
       #
       #     brew cask _stanza <stanza_name> [ --quiet ] [ --table | --yaml ] [ <cask_token> ... ]
       #
-      # If no tokens are given, then data for all Casks is returned.
+      # If no tokens are given, then data for all casks is returned.
       #
       # The pseudo-stanza "artifacts" is available.
       #
@@ -23,14 +26,17 @@ module Cask
         (DSL::ORDINARY_ARTIFACT_CLASSES.map(&:dsl_key) +
          DSL::ARTIFACT_BLOCK_CLASSES.map(&:dsl_key)).freeze
 
+      sig { override.returns(T.nilable(T.any(Integer, Symbol))) }
       def self.min_named
         1
       end
 
+      sig { returns(String) }
       def self.banner_args
         " <stanza_name> [<cask>]"
       end
 
+      sig { returns(String) }
       def self.description
         <<~EOS
           Extract and render a specific stanza for the given <cask>.
@@ -79,6 +85,7 @@ module Cask
         EOS
       end
 
+      sig { void }
       def run
         if ARTIFACTS.include?(stanza)
           artifact_name = stanza

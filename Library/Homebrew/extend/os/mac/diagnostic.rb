@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 module Homebrew
@@ -41,8 +42,8 @@ module Homebrew
     end
 
     class Checks
-      undef fatal_build_from_source_checks, supported_configuration_checks,
-            build_from_source_checks
+      undef fatal_build_from_source_checks, fatal_setup_build_environment_checks,
+            supported_configuration_checks, build_from_source_checks
 
       def fatal_build_from_source_checks
         %w[
@@ -50,6 +51,12 @@ module Homebrew
           check_xcode_minimum_version
           check_clt_minimum_version
           check_if_xcode_needs_clt_installed
+          check_if_supported_sdk_available
+        ].freeze
+      end
+
+      def fatal_setup_build_environment_checks
+        %w[
           check_if_supported_sdk_available
         ].freeze
       end
@@ -87,14 +94,14 @@ module Homebrew
         return if Homebrew::EnvConfig.developer?
 
         who = +"We"
-        if OS::Mac.prerelease?
-          what = "pre-release version"
+        what = if OS::Mac.prerelease?
+          "pre-release version"
         elsif OS::Mac.outdated_release?
           who << " (and Apple)"
-          what = "old version"
-        else
-          return
+          "old version"
         end
+        return if what.blank?
+
         who.freeze
 
         <<~EOS
@@ -221,7 +228,7 @@ module Homebrew
         <<~EOS
           Your Xcode is configured with an invalid path.
           You should change it to the correct path:
-            sudo xcode-select -switch #{path}
+            sudo xcode-select --switch #{path}
         EOS
       end
 
@@ -404,8 +411,10 @@ module Homebrew
         locator = MacOS.sdk_locator
 
         source = if locator.source == :clt
+          update_instructions = MacOS::CLT.update_instructions
           "CLT"
         else
+          update_instructions = MacOS::Xcode.update_instructions
           "Xcode"
         end
 
@@ -413,6 +422,7 @@ module Homebrew
           Your #{source} does not support macOS #{MacOS.version}.
           It is either outdated or was modified.
           Please update your #{source} or delete it if no updates are available.
+          #{update_instructions}
         EOS
       end
     end

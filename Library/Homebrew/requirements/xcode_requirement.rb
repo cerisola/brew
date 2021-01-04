@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "requirement"
@@ -6,6 +7,8 @@ require "requirement"
 #
 # @api private
 class XcodeRequirement < Requirement
+  extend T::Sig
+
   fatal true
 
   attr_reader :version
@@ -17,6 +20,7 @@ class XcodeRequirement < Requirement
     super(tags)
   end
 
+  sig { returns(T::Boolean) }
   def xcode_installed_version
     return false unless MacOS::Xcode.installed?
     return true unless @version
@@ -24,6 +28,7 @@ class XcodeRequirement < Requirement
     MacOS::Xcode.version >= @version
   end
 
+  sig { returns(String) }
   def message
     version = " #{@version}" if @version
     message = <<~EOS
@@ -44,7 +49,16 @@ class XcodeRequirement < Requirement
     end
   end
 
+  sig { returns(String) }
   def inspect
-    "#<#{self.class.name}: #{tags.inspect} version=#{@version.inspect}>"
+    "#<#{self.class.name}: version>=#{@version.inspect} #{tags.inspect}>"
+  end
+
+  def display_s
+    return name.capitalize unless @version
+
+    "#{name.capitalize} >= #{@version}"
   end
 end
+
+require "extend/os/requirements/xcode_requirement"

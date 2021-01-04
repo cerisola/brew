@@ -1,10 +1,14 @@
+# typed: true
 # frozen_string_literal: true
 
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def tap_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -26,7 +30,7 @@ module Homebrew
       EOS
       switch "--full",
              description: "Convert a shallow clone to a full clone without untapping. Taps are only cloned as "\
-                          "shallow clones on continuous integration, or if `--shallow` was originally passed."
+                          "shallow clones if `--shallow` was originally passed."
       switch "--shallow",
              description: "Fetch tap as a shallow clone rather than a full clone. Useful for continuous integration."
       switch "--force-auto-update",
@@ -41,6 +45,7 @@ module Homebrew
     end
   end
 
+  sig { void }
   def tap
     args = tap_args.parse
 
@@ -53,8 +58,6 @@ module Homebrew
     else
       full_clone = if args.full?
         true
-      elsif !args.shallow?
-        ENV["CI"].blank?
       else
         !args.shallow?
       end

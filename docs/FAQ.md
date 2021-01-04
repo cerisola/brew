@@ -45,6 +45,9 @@ When automatic `brew cleanup` is disabled, if you uninstall a formula, it will o
 
 In this case, to remove a formula entirely, you may run `brew uninstall --force <formula>`. Be careful as this is a destructive operation.
 
+## Why does `brew upgrade <formula>` also upgrade a bunch of other stuff?
+Homebrew doesn't support arbitrary mixing and matching of formula versions, so everything a formula depends on, and everything that depends on it in turn, needs to be upgraded to the latest version as that's the only combination of formulae we test. As a consequence any given `upgrade` or `install` command can upgrade many other (seemingly unrelated) formulae, if something important like `python` or `openssl` also needed an upgrade.
+
 ## Where does stuff get downloaded?
 
     brew --cache
@@ -85,6 +88,10 @@ cd $(brew --repository)
 hub pull someone_else
 ```
 
+## Why should I install Homebrew in the default location?
+
+Homebrew's pre-built binary packages (known as [bottles](Bottles.md)) of many packages can only be used if you install in the default installation prefix, otherwise they have to be built from source. Building from source takes a long time, is prone to fail, and is not supported. Do yourself a favour and install to the default prefix so that you can use our pre-built binary packages. The default prefix is `/usr/local` for macOS on Intel, `/opt/homebrew` for macOS on ARM, and `/home/linuxbrew/.linuxbrew` for Linux. *Pick another prefix at your peril!*
+
 ## Why does Homebrew prefer I install to `/usr/local`?
 
 1.  **It’s easier**<br>`/usr/local/bin` is already in your
@@ -101,6 +108,10 @@ hub pull someone_else
 **If you plan to install gems that depend on formulae then save yourself a bunch of hassle and install to `/usr/local`!**
 
 It is not always straightforward to tell `gem` to look in non-standard directories for headers and libraries. If you choose `/usr/local`, many things will "just work".
+
+## Why is the default installation prefix `/home/linuxbrew/.linuxbrew` on Linux?
+
+The prefix `/home/linuxbrew/.linuxbrew` was chosen so that users without admin access can ask an admin to create a `linuxbrew` role account and still benefit from precompiled binaries. If you do not yourself have admin privileges, consider asking your admin staff to create a `linuxbrew` role account for you with home directory `/home/linuxbrew`.
 
 ## Why does Homebrew say sudo is bad?
 **tl;dr** Sudo is dangerous, and you installed TextMate.app without sudo

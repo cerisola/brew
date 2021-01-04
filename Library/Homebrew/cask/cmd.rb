@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "optparse"
@@ -37,6 +38,8 @@ module Cask
   #
   # @api private
   class Cmd
+    extend T::Sig
+
     include Context
 
     ALIASES = {
@@ -51,92 +54,41 @@ module Cask
     }.freeze
 
     DEPRECATED_COMMANDS = {
-      Cmd::Cache     => "brew --cache --cask",
+      Cmd::Cache     => "brew --cache [--cask]",
+      Cmd::Audit     => "brew audit [--cask]",
+      Cmd::Cat       => "brew cat [--cask]",
+      Cmd::Create    => "brew create --cask --set-name <name> <url>",
       Cmd::Doctor    => "brew doctor --verbose",
+      Cmd::Edit      => "brew edit [--cask]",
+      Cmd::Fetch     => "brew fetch [--cask]",
+      Cmd::Help      => "brew help",
       Cmd::Home      => "brew home",
-      Cmd::List      => "brew list --cask",
-      Cmd::Outdated  => "brew outdated --cask",
-      Cmd::Reinstall => "brew reinstall",
-      Cmd::Upgrade   => "brew upgrade --cask",
+      Cmd::Info      => "brew info [--cask]",
+      Cmd::Install   => "brew install [--cask]",
+      Cmd::List      => "brew list [--cask]",
+      Cmd::Outdated  => "brew outdated [--cask]",
+      Cmd::Reinstall => "brew reinstall [--cask]",
+      Cmd::Style     => "brew style",
+      Cmd::Uninstall => "brew uninstall [--cask]",
+      Cmd::Upgrade   => "brew upgrade [--cask]",
+      Cmd::Zap       => "brew uninstall --zap [--cask]",
     }.freeze
-
-    def self.description
-      max_command_length = Cmd.commands.map(&:length).max
-
-      command_lines = Cmd.command_classes
-                         .select(&:visible?)
-                         .map do |klass|
-        "  - #{"`#{klass.command_name}`".ljust(max_command_length + 2)}  #{klass.short_description}\n"
-      end
-
-      <<~EOS
-        Homebrew Cask provides a friendly CLI workflow for the administration of macOS applications distributed as binaries.
-
-        Commands:
-        #{command_lines.join}
-
-        See also: `man brew`
-      EOS
-    end
 
     def self.parser(&block)
       Homebrew::CLI::Parser.new do
-        if block_given?
+        if block
           instance_eval(&block)
         else
           usage_banner <<~EOS
             `cask` <command> [<options>] [<cask>]
 
-            #{Cmd.description}
+            Homebrew Cask provides a friendly CLI workflow for the administration of macOS applications distributed as binaries.
+
+            See also: `man brew`
           EOS
         end
 
-        flag "--appdir=",
-             description: "Target location for Applications. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:appdir]}`"
-        flag "--colorpickerdir=",
-             description: "Target location for Color Pickers. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:colorpickerdir]}`"
-        flag "--prefpanedir=",
-             description: "Target location for Preference Panes. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:prefpanedir]}`"
-        flag "--qlplugindir=",
-             description: "Target location for QuickLook Plugins. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:qlplugindir]}`"
-        flag "--mdimporterdir=",
-             description: "Target location for Spotlight Plugins. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:mdimporterdir]}`"
-        flag "--dictionarydir=",
-             description: "Target location for Dictionaries. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:dictionarydir]}`"
-        flag "--fontdir=",
-             description: "Target location for Fonts. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:fontdir]}`"
-        flag "--servicedir=",
-             description: "Target location for Services. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:servicedir]}`"
-        flag "--input_methoddir=",
-             description: "Target location for Input Methods. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:input_methoddir]}`"
-        flag "--internet_plugindir=",
-             description: "Target location for Internet Plugins. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:internet_plugindir]}`"
-        flag "--audio_unit_plugindir=",
-             description: "Target location for Audio Unit Plugins. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:audio_unit_plugindir]}`"
-        flag "--vst_plugindir=",
-             description: "Target location for VST Plugins. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:vst_plugindir]}`"
-        flag "--vst3_plugindir=",
-             description: "Target location for VST3 Plugins. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:vst3_plugindir]}`"
-        flag "--screen_saverdir=",
-             description: "Target location for Screen Savers. " \
-                          "Default: `#{Config::DEFAULT_DIRS[:screen_saverdir]}`"
-        comma_array "--language",
-                    description: "Set language of the Cask to install. The first matching " \
-                                 "language is used, otherwise the default language on the Cask. " \
-                                 "The default value is the `language of your system`"
+        cask_options
       end
     end
 
@@ -215,20 +167,14 @@ module Cask
 
       args = self.class.parser.parse(argv, ignore_invalid_options: true)
 
-      Config::DEFAULT_DIRS.each_key do |name|
-        Config.global.public_send(:"#{name}=", args[name]) if args[name]
-      end
-
-      Config.global.languages = args.language if args.language
-
-      Tap.default_cask_tap.install unless Tap.default_cask_tap.installed?
+      Tap.install_default_cask_tap_if_necessary
 
       command, argv = detect_internal_command(*argv) ||
                       detect_external_command(*argv) ||
                       [args.remaining.empty? ? NullCommand : UnknownSubcommand.new(args.remaining.first), argv]
 
       if (replacement = DEPRECATED_COMMANDS[command])
-        odeprecated "brew cask #{command.command_name}", replacement
+        odisabled "brew cask #{command.command_name}", replacement
       end
 
       if args.help?

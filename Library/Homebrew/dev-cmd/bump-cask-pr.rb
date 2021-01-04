@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cask"
@@ -5,12 +6,15 @@ require "cli/parser"
 require "utils/tar"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def bump_cask_pr_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
-        `bump-cask-pr` [<options>] [<cask>]
+        `bump-cask-pr` [<options>] <cask>
 
         Create a pull request to update <cask> with a new version.
 
@@ -26,9 +30,11 @@ module Homebrew
              description: "When passed with `--write`, generate a new commit after writing changes "\
                           "to the cask file."
       switch "--no-audit",
-             description: "Don't run `brew cask audit` before opening the PR."
+             description: "Don't run `brew audit` before opening the PR."
+      switch "--online",
+             description: "Run `brew audit --online` before opening the PR."
       switch "--no-style",
-             description: "Don't run `brew cask style --fix` before opening the PR."
+             description: "Don't run `brew style --fix` before opening the PR."
       switch "--no-browse",
              description: "Print the pull request URL instead of opening in a browser."
       switch "--no-fork",
@@ -45,6 +51,7 @@ module Homebrew
              description: "Ignore duplicate open PRs."
 
       conflicts "--dry-run", "--write"
+      conflicts "--no-audit", "--online"
       named 1
     end
   end
@@ -61,43 +68,38 @@ module Homebrew
 
     cask = args.named.to_casks.first
     new_version = args.version
+    new_version = :latest if ["latest", ":latest"].include?(new_version)
+    new_version = Cask::DSL::Version.new(new_version) if new_version.present?
     new_base_url = args.url
     new_hash = args.sha256
+    new_hash = :no_check if ["no_check", ":no_check"].include? new_hash
+
+    if new_version.nil? && new_base_url.nil? && new_hash.nil?
+      raise UsageError, "No --version=/--url=/--sha256= argument specified!"
+    end
 
     old_version = cask.version
     old_hash = cask.sha256
 
     tap_full_name = cask.tap&.full_name
-    origin_branch = Utils::Git.origin_branch(cask.tap.path) if cask.tap
-    origin_branch ||= "origin/master"
+    default_remote_branch = cask.tap.path.git_origin_branch if cask.tap
+    default_remote_branch ||= "master"
     previous_branch = "-"
 
     check_open_pull_requests(cask, tap_full_name, args: args)
 
-    odie "#{cask}: no --version= argument specified!" unless new_version
-
-    check_closed_pull_requests(cask, tap_full_name, version: new_version, args: args)
-
-    if Version.new(new_version) < Version.new(old_version)
-      odie <<~EOS
-        You need to bump this cask manually since changing the
-        version from #{old_version} to #{new_version} would be a downgrade.
-      EOS
-    elsif new_version == old_version
-      odie <<~EOS
-        You need to bump this cask manually since the new version
-        and old version are both #{new_version}.
-      EOS
-    end
-
     old_contents = File.read(cask.sourcefile_path)
 
-    replacement_pairs = [
-      [
-        old_version,
-        new_version,
-      ],
-    ]
+    replacement_pairs = []
+
+    if new_version.present?
+      old_version_regex = old_version.latest? ? ":latest" : "[\"']#{Regexp.escape(old_version.to_s)}[\"']"
+
+      replacement_pairs << [
+        /version\s+#{old_version_regex}/m,
+        "version #{new_version.latest? ? ":latest" : "\"#{new_version}\""}",
+      ]
+    end
 
     if new_base_url.present?
       m = /^ +url "(.+?)"\n/m.match(old_contents)
@@ -111,45 +113,55 @@ module Homebrew
       ]
     end
 
-    if new_hash.nil? || cask.languages.present?
-      tmp_contents = Utils::Inreplace.inreplace_pairs(cask.sourcefile_path,
-                                                      replacement_pairs.uniq.compact,
-                                                      read_only_run: true,
-                                                      silent:        true)
+    if new_version.present?
+      if new_version.latest?
+        opoo "Ignoring specified --sha256= argument." if new_hash.present?
+        new_hash = :no_check
+      elsif new_hash.nil? || cask.languages.present?
+        tmp_contents = Utils::Inreplace.inreplace_pairs(cask.sourcefile_path,
+                                                        replacement_pairs.uniq.compact,
+                                                        read_only_run: true,
+                                                        silent:        true)
 
-      tmp_cask = Cask::CaskLoader.load(tmp_contents)
-      tmp_url = tmp_cask.url.to_s
+        tmp_cask = Cask::CaskLoader.load(tmp_contents)
+        tmp_config = cask.config
+        tmp_url = tmp_cask.url.to_s
 
-      if new_hash.nil?
-        resource_path = fetch_resource(cask, new_version, tmp_url)
-        Utils::Tar.validate_file(resource_path)
-        new_hash = resource_path.sha256
-      end
+        if new_hash.nil? && old_hash != :no_check
+          resource_path = fetch_resource(cask, new_version, tmp_url)
+          Utils::Tar.validate_file(resource_path)
+          new_hash = resource_path.sha256
+        end
 
-      cask.languages.each do |language|
-        next if language == cask.language
+        cask.languages.each do |language|
+          next if language == cask.language
 
-        tmp_cask.config.languages = [language]
+          lang_config = tmp_config.merge(Cask::Config.new(explicit: { languages: [language] }))
+          lang_cask = Cask::CaskLoader.load(tmp_contents)
+          lang_cask.config = lang_config
+          lang_url = lang_cask.url.to_s
+          lang_old_hash = lang_cask.sha256.to_s
 
-        lang_cask = Cask::CaskLoader.load(tmp_contents)
-        lang_url = lang_cask.url.to_s
-        lang_old_hash = lang_cask.sha256
+          resource_path = fetch_resource(cask, new_version, lang_url)
+          Utils::Tar.validate_file(resource_path)
+          lang_new_hash = resource_path.sha256
 
-        resource_path = fetch_resource(cask, new_version, lang_url)
-        Utils::Tar.validate_file(resource_path)
-        lang_new_hash = resource_path.sha256
-
-        replacement_pairs << [
-          lang_old_hash,
-          lang_new_hash,
-        ]
+          replacement_pairs << [
+            lang_old_hash,
+            lang_new_hash,
+          ]
+        end
       end
     end
 
-    replacement_pairs << [
-      old_hash,
-      new_hash,
-    ]
+    if new_hash.present?
+      hash_regex = old_hash == :no_check ? ":no_check" : "[\"']#{Regexp.escape(old_hash.to_s)}[\"']"
+
+      replacement_pairs << [
+        /sha256\s+#{hash_regex}/m,
+        "sha256 #{new_hash == :no_check ? ":no_check" : "\"#{new_hash}\""}",
+      ]
+    end
 
     Utils::Inreplace.inreplace_pairs(cask.sourcefile_path,
                                      replacement_pairs.uniq.compact,
@@ -159,12 +171,18 @@ module Homebrew
     run_cask_audit(cask, old_contents, args: args)
     run_cask_style(cask, old_contents, args: args)
 
+    branch_name = "bump-#{cask.token}"
+    commit_message = "Update #{cask.token}"
+    if new_version.present?
+      branch_name += "-#{new_version.tr(",:", "-")}"
+      commit_message += " from #{old_version} to #{new_version}"
+    end
     pr_info = {
       sourcefile_path: cask.sourcefile_path,
       old_contents:    old_contents,
-      origin_branch:   origin_branch,
-      branch_name:     "bump-#{cask.token}-#{new_version}",
-      commit_message:  "Update #{cask.token} from #{old_version} to #{new_version}",
+      remote_branch:   default_remote_branch,
+      branch_name:     branch_name,
+      commit_message:  commit_message,
       previous_branch: previous_branch,
       tap:             cask.tap,
       tap_full_name:   tap_full_name,
@@ -194,44 +212,49 @@ module Homebrew
   def run_cask_audit(cask, old_contents, args:)
     if args.dry_run?
       if args.no_audit?
-        ohai "Skipping `brew cask audit`"
+        ohai "Skipping `brew audit`"
+      elsif args.online?
+        ohai "brew audit --cask --online #{cask.sourcefile_path.basename}"
       else
-        ohai "brew cask audit #{cask.sourcefile_path.basename}"
+        ohai "brew audit --cask #{cask.sourcefile_path.basename}"
       end
       return
     end
     failed_audit = false
     if args.no_audit?
-      ohai "Skipping `brew cask audit`"
+      ohai "Skipping `brew audit`"
+    elsif args.online?
+      system HOMEBREW_BREW_FILE, "audit", "--cask", "--online", cask.sourcefile_path
+      failed_audit = !$CHILD_STATUS.success?
     else
-      system HOMEBREW_BREW_FILE, "cask", "audit", cask.sourcefile_path
+      system HOMEBREW_BREW_FILE, "audit", "--cask", cask.sourcefile_path
       failed_audit = !$CHILD_STATUS.success?
     end
     return unless failed_audit
 
     cask.sourcefile_path.atomic_write(old_contents)
-    odie "`brew cask audit` failed!"
+    odie "`brew audit` failed!"
   end
 
   def run_cask_style(cask, old_contents, args:)
     if args.dry_run?
       if args.no_style?
-        ohai "Skipping `brew cask style --fix`"
+        ohai "Skipping `brew style --fix`"
       else
-        ohai "brew cask style --fix #{cask.sourcefile_path.basename}"
+        ohai "brew style --fix #{cask.sourcefile_path.basename}"
       end
       return
     end
     failed_style = false
     if args.no_style?
-      ohai "Skipping `brew cask style --fix`"
+      ohai "Skipping `brew style --fix`"
     else
-      system HOMEBREW_BREW_FILE, "cask", "style", "--fix", cask.sourcefile_path
+      system HOMEBREW_BREW_FILE, "style", "--fix", cask.sourcefile_path
       failed_style = !$CHILD_STATUS.success?
     end
     return unless failed_style
 
     cask.sourcefile_path.atomic_write(old_contents)
-    odie "`brew cask style --fix` failed!"
+    odie "`brew style --fix` failed!"
   end
 end

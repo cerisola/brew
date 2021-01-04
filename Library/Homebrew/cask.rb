@@ -1,3 +1,4 @@
+# typed: strict
 # frozen_string_literal: true
 
 require "cask/artifact"
@@ -22,4 +23,3 @@ require "cask/staged"
 require "cask/topological_hash"
 require "cask/url"
 require "cask/utils"
-require "cask/verify"

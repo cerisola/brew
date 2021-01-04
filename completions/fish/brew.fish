@@ -93,18 +93,16 @@ function __fish_brew_suggest_formulae_all -d 'Lists all available formulae with 
     set -q __brew_cache_path
     or set -gx __brew_cache_path (brew --cache)
 
-    # TODO: Probably drop this since I think that desc_cache.json is no longer generated. Is there a different available cache?
-    if test -f "$__brew_cache_path/desc_cache.json"
-        __fish_brew_ruby_parse_json "$__brew_cache_path/desc_cache.json" \
+    if test -f "$__brew_cache_path/descriptions.json"
+        __fish_brew_ruby_parse_json "$__brew_cache_path/descriptions.json" \
             '.each{ |k, v| puts([k, v].reject(&:nil?).join("\t")) }'
-        # backup: (note that it lists only formulae names without descriptions)
     else
-        brew search
+        brew formulae
     end
 end
 
 function __fish_brew_suggest_formulae_installed
-    brew list
+    brew list --formula
 end
 
 function __fish_brew_suggest_formulae_pinned
@@ -198,7 +196,7 @@ function __fish_brew_suggest_services -d "Lists available services"
 end
 
 function __fish_brew_suggest_casks_installed -d "Lists installed casks"
-    brew cask list -1
+    brew list --cask -1
 end
 
 function __fish_brew_suggest_casks_outdated -d "Lists outdated casks with the information about potential upgrade"
@@ -448,16 +446,16 @@ __fish_brew_complete_arg 'list ls;
 
 __fish_brew_complete_cmd 'livecheck' "Check for newer versions of formulae from upstream"
 __fish_brew_complete_arg 'livecheck' -a '(__fish_brew_suggest_formulae_all)'
-__fish_brew_complete_arg 'livecheck' -s v -l verbose    -d "Make some output more verbose"
-__fish_brew_complete_arg 'livecheck' -s q -l quiet      -d "Suppress any warnings"
-__fish_brew_complete_arg 'livecheck' -s d -l debug      -d "Display any debugging information"
-__fish_brew_complete_arg 'livecheck'      -l full-name  -d "Print formulae with fully-qualified name"
-__fish_brew_complete_arg 'livecheck'      -l tap        -d "Check the formulae within the given tap, specified as user/repo"
-__fish_brew_complete_arg 'livecheck'      -l installed  -d "Check formulae that are currently installed"
-__fish_brew_complete_arg 'livecheck'      -l json       -d "Output information in JSON format"
-__fish_brew_complete_arg 'livecheck'      -l all        -d "Check all available formulae"
-__fish_brew_complete_arg 'livecheck'      -l newer-only -d "Show the latest version only if it is newer than the formula"
-__fish_brew_complete_arg 'livecheck' -s h -l help       -d "Show the help message"
+__fish_brew_complete_arg 'livecheck'      -l full-name   -d "Print formulae with fully-qualified name"
+__fish_brew_complete_arg 'livecheck'      -l tap         -d "Check the formulae within the given tap, specified as user/repo"
+__fish_brew_complete_arg 'livecheck'      -l all         -d "Check all available formulae"
+__fish_brew_complete_arg 'livecheck'      -l installed   -d "Check formulae that are currently installed"
+__fish_brew_complete_arg 'livecheck'      -l newer-only  -d "Show the latest version only if it's newer than the formula"
+__fish_brew_complete_arg 'livecheck'      -l json        -d "Output information in JSON format"
+__fish_brew_complete_arg 'livecheck' -s q -l quiet       -d "Suppress warnings, don't print a progress bar for JSON output"
+__fish_brew_complete_arg 'livecheck' -s d -l debug       -d "Display any debugging information"
+__fish_brew_complete_arg 'livecheck' -s v -l verbose     -d "Make some output more verbose"
+__fish_brew_complete_arg 'livecheck' -s h -l help        -d "Show the help message"
 
 
 __fish_brew_complete_cmd 'log' "Show git log for formula"

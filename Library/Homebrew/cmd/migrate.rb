@@ -1,11 +1,15 @@
+# typed: true
 # frozen_string_literal: true
 
 require "migrator"
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def migrate_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS

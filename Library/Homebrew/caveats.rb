@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "language/python"
@@ -25,9 +26,20 @@ class Caveats
       f.build = build
     end
     caveats << keg_only_text
-    caveats << function_completion_caveats(:bash)
-    caveats << function_completion_caveats(:zsh)
-    caveats << function_completion_caveats(:fish)
+
+    valid_shells = [:bash, :zsh, :fish].freeze
+    current_shell = Utils::Shell.preferred || Utils::Shell.parent
+    shells = if current_shell.present? &&
+                (shell_sym = current_shell.to_sym) &&
+                valid_shells.include?(shell_sym)
+      [shell_sym]
+    else
+      valid_shells
+    end
+    shells.each do |shell|
+      caveats << function_completion_caveats(shell)
+    end
+
     caveats << plist_caveats
     caveats << elisp_caveats
     caveats.compact.join("\n")

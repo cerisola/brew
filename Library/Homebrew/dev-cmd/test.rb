@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "extend/ENV"
@@ -6,8 +7,11 @@ require "timeout"
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def test_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS

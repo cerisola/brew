@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "diagnostic"
@@ -5,8 +6,11 @@ require "cli/parser"
 require "cask/caskroom"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def doctor_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -59,7 +63,7 @@ module Homebrew
       end
 
       out = checks.send(method)
-      next if out.nil? || out.empty?
+      next if out.blank?
 
       if first_warning
         $stderr.puts <<~EOS

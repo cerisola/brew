@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require "monitor"
@@ -33,15 +34,15 @@ module Context
     end
 
     def debug?
-      @debug
+      @debug == true
     end
 
     def quiet?
-      @quiet
+      @quiet == true
     end
 
     def verbose?
-      @verbose
+      @verbose == true
     end
   end
 

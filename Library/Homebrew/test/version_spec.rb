@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "version"
@@ -168,6 +169,16 @@ describe Version do
     expect(described_class.create("1.2.3-p34")).to be > described_class.create("1.2.3beta2")
     expect(described_class.create("1.2.3-p34")).to be > described_class.create("1.2.3rc3")
     expect(described_class.create("1.2.3-p34")).to be > described_class.create("1.2.3")
+  end
+
+  specify "comparing post-level versions" do
+    expect(described_class.create("1.2.3.post34")).to be > described_class.create("1.2.3.post33")
+    expect(described_class.create("1.2.3.post34")).to be < described_class.create("1.2.3.post35")
+
+    expect(described_class.create("1.2.3.post34")).to be > described_class.create("1.2.3rc35")
+    expect(described_class.create("1.2.3.post34")).to be > described_class.create("1.2.3alpha35")
+    expect(described_class.create("1.2.3.post34")).to be > described_class.create("1.2.3beta35")
+    expect(described_class.create("1.2.3.post34")).to be > described_class.create("1.2.3")
   end
 
   specify "comparing unevenly-padded versions" do

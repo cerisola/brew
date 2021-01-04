@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "keg"
@@ -28,13 +29,32 @@ module Homebrew
       missing
     end
 
+    def self.checks(type, fatal: true)
+      @checks ||= Checks.new
+      failed = false
+      @checks.public_send(type).each do |check|
+        out = @checks.public_send(check)
+        next if out.nil?
+
+        if fatal
+          failed ||= true
+          ofail out
+        else
+          opoo out
+        end
+      end
+      exit 1 if failed && fatal
+    end
+
     # Diagnostic checks.
     class Checks
+      extend T::Sig
+
       def initialize(verbose: true)
         @verbose = verbose
       end
 
-      ############# HELPERS
+      ############# @!group HELPERS
       # Finds files in `HOMEBREW_PREFIX` *and* /usr/local.
       # Specify paths relative to a prefix, e.g. "include/foo.h".
       # Sets @found for your convenience.
@@ -53,6 +73,7 @@ module Homebrew
         path.gsub(ENV["HOME"], "~")
       end
 
+      sig { returns(String) }
       def none_string
         "<NONE>"
       end
@@ -60,7 +81,7 @@ module Homebrew
       def add_info(*args)
         ohai(*args) if @verbose
       end
-      ############# END HELPERS
+      ############# @!endgroup END HELPERS
 
       def fatal_preinstall_checks
         %w[
@@ -72,6 +93,10 @@ module Homebrew
         %w[
           check_for_installed_developer_tools
         ].freeze
+      end
+
+      def fatal_setup_build_environment_checks
+        [].freeze
       end
 
       def supported_configuration_checks
@@ -90,8 +115,9 @@ module Homebrew
         <<~EOS
           You will encounter build failures with some formulae.
           Please create pull requests instead of asking for help on Homebrew's GitHub,
-          Discourse, Twitter or IRC. You are responsible for resolving any issues you
-          experience while you are running this #{what}.
+          Twitter or any other official channels. You are responsible for resolving
+          any issues you experience while you are running this
+          #{what}.
         EOS
       end
 
@@ -315,6 +341,8 @@ module Homebrew
       alias generic_check_tmpdir_sticky_bit check_tmpdir_sticky_bit
 
       def check_exist_directories
+        return if HOMEBREW_PREFIX.writable_real?
+
         not_exist_dirs = Keg::MUST_EXIST_DIRECTORIES.reject(&:exist?)
         return if not_exist_dirs.empty?
 
@@ -534,26 +562,29 @@ module Homebrew
       end
 
       def check_casktap_git_origin
-        cask_tap = Tap.default_cask_tap
-        return unless cask_tap.installed?
+        default_cask_tap = Tap.default_cask_tap
+        return unless default_cask_tap.installed?
 
-        examine_git_origin(cask_tap.path, cask_tap.remote)
+        examine_git_origin(default_cask_tap.path, default_cask_tap.remote)
       end
 
-      def check_coretap_git_branch
+      sig { returns(T.nilable(String)) }
+      def check_tap_git_branch
         return if ENV["CI"]
+        return unless Utils::Git.available?
 
-        coretap_path = CoreTap.instance.path
-        return if !Utils::Git.available? || !(coretap_path/".git").exist?
+        commands = Tap.map do |tap|
+          next if tap.path.git_default_origin_branch?
 
-        branch = coretap_path.git_branch
-        return if branch.blank? || branch.include?("master")
+          "git -C $(brew --repo #{tap.name}) checkout #{tap.path.git_origin_branch}"
+        end.compact
+
+        return if commands.blank?
 
         <<~EOS
-          #{CoreTap.instance.full_name} is not on the master branch.
-
-          Check out the master branch by running:
-            git -C "$(brew --repo homebrew/core)" checkout master
+          Some taps are not on the default git origin branch and may not receive
+          updates. If this is a surprise to you, check out the default branch with:
+            #{commands.join("\n  ")}
         EOS
       end
 
@@ -676,20 +707,6 @@ module Homebrew
         message
       end
 
-      def check_for_bad_python_symlink
-        return unless which "python"
-
-        `python -V 2>&1` =~ /Python (\d+)\./
-        # This won't be the right warning if we matched nothing at all
-        return if Regexp.last_match(1).nil?
-        return if Regexp.last_match(1) == "2"
-
-        <<~EOS
-          python is symlinked to python#{Regexp.last_match(1)}
-          This will confuse build scripts and in general lead to subtle breakage.
-        EOS
-      end
-
       def check_for_non_prefixed_coreutils
         coreutils = Formula["coreutils"]
         return unless coreutils.any_version_installed?
@@ -736,14 +753,14 @@ module Homebrew
 
       def check_for_unlinked_but_not_keg_only
         unlinked = Formula.racks.reject do |rack|
-          if !(HOMEBREW_LINKED_KEGS/rack.basename).directory?
+          if (HOMEBREW_LINKED_KEGS/rack.basename).directory?
+            true
+          else
             begin
               Formulary.from_rack(rack).keg_only?
             rescue FormulaUnavailableError, TapFormulaAmbiguityError, TapFormulaWithOldnameAmbiguityError
               false
             end
-          else
-            true
           end
         end.map(&:basename)
         return if unlinked.empty?
@@ -829,7 +846,8 @@ module Homebrew
         return if deleted_formulae.blank?
 
         <<~EOS
-          Some installed formulae were deleted!
+          Some installed kegs have no formulae!
+          This means they were either deleted or installed with `brew diy`.
           You should find replacements for the following formulae:
             #{deleted_formulae.join("\n  ")}
         EOS
@@ -884,21 +902,21 @@ module Homebrew
       end
 
       def check_cask_taps
-        default_tap = Tap.default_cask_tap
-        alt_taps = Tap.select { |t| t.cask_dir.exist? && t != default_tap }
+        default_cask_tap = Tap.default_cask_tap
+        alt_taps = Tap.select { |t| t.cask_dir.exist? && t != default_cask_tap }
 
         error_tap_paths = []
 
-        add_info "Homebrew Cask Taps:", ([default_tap, *alt_taps].map do |tap|
+        add_info "Homebrew Cask Taps:", ([default_cask_tap, *alt_taps].map do |tap|
           if tap.path.blank?
             none_string
           else
             cask_count = begin
-                tap.cask_files.count
-              rescue
-                error_tap_paths << tap.path
-                0
-              end
+              tap.cask_files.count
+            rescue
+              error_tap_paths << tap.path
+              0
+            end
 
             "#{tap.path} (#{cask_count} #{"cask".pluralize(cask_count)})"
           end
@@ -947,9 +965,9 @@ module Homebrew
         return if result.status.success?
 
         if result.stderr.include? "ImportError: No module named pkg_resources"
-          result = system_command "/usr/bin/python", "--version"
+          result = Utils.popen_read "/usr/bin/python", "--version", err: :out
 
-          if result.stdout.include? "Python 2.7"
+          if result.include? "Python 2.7"
             <<~EOS
               Your Python installation has a broken version of setuptools.
               To fix, reinstall macOS or run 'sudo /usr/bin/python -m pip install -I setuptools'.

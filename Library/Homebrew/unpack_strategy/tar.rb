@@ -1,12 +1,19 @@
+# typed: true
 # frozen_string_literal: true
+
+require "system_command"
 
 module UnpackStrategy
   # Strategy for unpacking tar archives.
   class Tar
+    extend T::Sig
+
     include UnpackStrategy
+    extend SystemCommand::Mixin
 
     using Magic
 
+    sig { returns(T::Array[String]) }
     def self.extensions
       [
         ".tar",
@@ -29,6 +36,7 @@ module UnpackStrategy
 
     private
 
+    sig { override.params(unpack_dir: Pathname, basename: Pathname, verbose: T::Boolean).returns(T.untyped) }
     def extract_to_dir(unpack_dir, basename:, verbose:)
       Dir.mktmpdir do |tmpdir|
         tar_path = path

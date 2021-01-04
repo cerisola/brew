@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require "rubocops/extend/formula"
@@ -5,7 +6,7 @@ require "rubocops/extend/formula"
 module RuboCop
   module Cop
     module FormulaAudit
-      # This cop makes sure that `Formula` is used as superclass.
+      # This cop makes sure that {Formula} is used as superclass.
       #
       # @api private
       class ClassName < FormulaCop

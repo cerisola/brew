@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require "rubocops/extend/formula"
@@ -42,7 +43,7 @@ module RuboCop
         end
       end
 
-      # This cop makes sure that checksums strings are lowercase.
+      # This cop makes sure that checksum strings are lowercase.
       #
       # @api private
       class ChecksumCase < FormulaCop

@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "resource"
@@ -11,9 +12,13 @@ require "patch"
 require "compilers"
 require "global"
 require "os/mac/version"
+require "extend/on_os"
 
 class SoftwareSpec
+  extend T::Sig
+
   extend Forwardable
+  include OnOS
 
   PREDEFINED_OPTIONS = {
     universal: Option.new("universal", "Build a universal binary"),
@@ -26,7 +31,9 @@ class SoftwareSpec
 
   def_delegators :@resource, :stage, :fetch, :verify_download_integrity, :source_modified_time, :download_name,
                  :cached_download, :clear_cache, :checksum, :mirrors, :specs, :using, :version, :mirror,
-                 :downloader, *Checksum::TYPES
+                 :downloader
+
+  def_delegators :@resource, *Checksum::TYPES
 
   def initialize(flags: [])
     @resource = Resource.new
@@ -77,6 +84,7 @@ class SoftwareSpec
     @bottle_disable_reason.unneeded?
   end
 
+  sig { returns(T::Boolean) }
   def bottle_disabled?
     @bottle_disable_reason ? true : false
   end
@@ -85,9 +93,13 @@ class SoftwareSpec
     !bottle_specification.collector.keys.empty?
   end
 
+  def bottle_tag?
+    bottle_specification.tag?(Utils::Bottles.tag)
+  end
+
   def bottled?
-    bottle_specification.tag?(Utils::Bottles.tag) && \
-      (bottle_specification.compatible_cellar? || owner.force_bottle)
+    bottle_tag? && \
+      (bottle_specification.compatible_locations? || owner.force_bottle)
   end
 
   def bottle(disable_type = nil, disable_reason = nil, &block)
@@ -103,7 +115,7 @@ class SoftwareSpec
   end
 
   def resource(name, klass = Resource, &block)
-    if block_given?
+    if block
       raise DuplicateResourceError, name if resource_defined?(name)
 
       res = klass.new(name, &block)
@@ -215,7 +227,7 @@ class SoftwareSpec
     end
   end
 
-  # TODO
+  # TODO: ?
   def add_legacy_patches(list)
     list = Patch.normalize_legacy_patches(list)
     list.each { |p| p.owner = self }
@@ -246,6 +258,8 @@ end
 
 class Bottle
   class Filename
+    extend T::Sig
+
     attr_reader :name, :version, :tag, :rebuild
 
     def self.create(formula, tag, rebuild)
@@ -259,11 +273,13 @@ class Bottle
       @rebuild = rebuild
     end
 
+    sig { returns(String) }
     def to_s
       "#{name}--#{version}#{extname}"
     end
     alias to_str to_s
 
+    sig { returns(String) }
     def json
       "#{name}--#{version}.#{tag}.bottle.json"
     end
@@ -272,6 +288,7 @@ class Bottle
       ERB::Util.url_encode("#{name}-#{version}#{extname}")
     end
 
+    sig { returns(String) }
     def extname
       s = rebuild.positive? ? ".#{rebuild}" : ""
       ".#{tag}.bottle#{s}.tar.gz"
@@ -304,8 +321,8 @@ class Bottle
     @rebuild = spec.rebuild
   end
 
-  def compatible_cellar?
-    @spec.compatible_cellar?
+  def compatible_locations?
+    @spec.compatible_locations?
   end
 
   # Does the bottle need to be relocated?
@@ -326,18 +343,29 @@ class Bottle
 end
 
 class BottleSpecification
-  DEFAULT_PREFIX = Homebrew::DEFAULT_PREFIX
+  extend T::Sig
 
   attr_rw :prefix, :cellar, :rebuild
   attr_accessor :tap
-  attr_reader :checksum, :collector, :root_url_specs
+  attr_reader :checksum, :collector, :root_url_specs, :repository
 
+  sig { void }
   def initialize
     @rebuild = 0
     @prefix = Homebrew::DEFAULT_PREFIX
     @cellar = Homebrew::DEFAULT_CELLAR
+    @repository = Homebrew::DEFAULT_REPOSITORY
     @collector = Utils::Bottles::Collector.new
     @root_url_specs = {}
+  end
+
+  def prefix=(prefix)
+    if [HOMEBREW_DEFAULT_PREFIX,
+        HOMEBREW_MACOS_ARM_DEFAULT_PREFIX,
+        HOMEBREW_LINUX_DEFAULT_PREFIX].exclude?(prefix)
+      odeprecated "setting `prefix` for bottles"
+    end
+    @prefix = prefix
   end
 
   def root_url(var = nil, specs = {})
@@ -349,11 +377,30 @@ class BottleSpecification
     end
   end
 
-  def compatible_cellar?
-    cellar == :any || cellar == :any_skip_relocation || cellar == HOMEBREW_CELLAR.to_s
+  def compatible_locations?
+    # this looks like it should check prefix and repository too but to be
+    # `cellar :any` actually requires no references to the cellar, prefix or
+    # repository.
+    return true if [:any, :any_skip_relocation].include?(cellar)
+
+    compatible_cellar = cellar == HOMEBREW_CELLAR.to_s
+    compatible_prefix = prefix == HOMEBREW_PREFIX.to_s
+
+    # Only check the repository matches if the prefix is the default.
+    # This is because the bottle DSL does not allow setting a custom repository
+    # but does allow setting a custom prefix.
+    # TODO: delete this after Homebrew 2.7.0 is released.
+    compatible_repository = if Homebrew.default_prefix?(prefix)
+      repository == HOMEBREW_REPOSITORY.to_s
+    else
+      true
+    end
+
+    compatible_cellar && compatible_prefix && compatible_repository
   end
 
-  # Does the {Bottle} this BottleSpecification belongs to need to be relocated?
+  # Does the {Bottle} this {BottleSpecification} belongs to need to be relocated?
+  sig { returns(T::Boolean) }
   def skip_relocation?
     cellar == :any_skip_relocation
   end
@@ -377,10 +424,9 @@ class BottleSpecification
 
   def checksums
     tags = collector.keys.sort_by do |tag|
-      # Sort non-MacOS tags below MacOS tags.
-
-      OS::Mac::Version.from_symbol tag
+      "#{OS::Mac::Version.from_symbol(tag)}_#{tag}"
     rescue MacOSVersionError
+      # Sort non-MacOS tags below MacOS tags.
       "0.#{tag}"
     end
     checksums = {}
@@ -394,6 +440,8 @@ class BottleSpecification
 end
 
 class PourBottleCheck
+  include OnOS
+
   def initialize(formula)
     @formula = formula
   end

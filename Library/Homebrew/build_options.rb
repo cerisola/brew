@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 # Options for a formula build.
@@ -8,13 +9,6 @@ class BuildOptions
   def initialize(args, options)
     @args = args
     @options = options
-  end
-
-  # TODO: rename private_include? when include? is removed.
-  # @deprecated
-  def include?(name)
-    odeprecated "BuildOptions#include?"
-    private_include?("--#{name}")
   end
 
   # True if a {Formula} is being built with a specific option.
@@ -33,9 +27,9 @@ class BuildOptions
 
     option_names.any? do |name|
       if option_defined? "with-#{name}"
-        private_include? "with-#{name}"
+        include? "with-#{name}"
       elsif option_defined? "without-#{name}"
-        !private_include? "without-#{name}"
+        !include? "without-#{name}" # rubocop:disable Rails/NegateInclude
       else
         false
       end
@@ -50,23 +44,18 @@ class BuildOptions
 
   # True if a {Formula} is being built as a bottle (i.e. binary package).
   def bottle?
-    private_include? "build-bottle"
+    include? "build-bottle"
   end
 
   # True if a {Formula} is being built with {Formula.head} instead of {Formula.stable}.
   # <pre>args << "--some-new-stuff" if build.head?</pre>
   # <pre># If there are multiple conditional arguments use a block instead of lines.
-  #  if build.head?
-  #    args << "--i-want-pizza"
-  #    args << "--and-a-cold-beer" if build.with? "cold-beer"
-  #  end</pre>
+  # if build.head?
+  #   args << "--i-want-pizza"
+  #   args << "--and-a-cold-beer" if build.with? "cold-beer"
+  # end</pre>
   def head?
-    private_include? "HEAD"
-  end
-
-  # @private
-  def devel?
-    odisabled "BuildOptions#devel?"
+    include? "HEAD"
   end
 
   # True if a {Formula} is being built with {Formula.stable} instead of {Formula.head}.
@@ -74,20 +63,6 @@ class BuildOptions
   # <pre>args << "--some-beta" if build.head?</pre>
   def stable?
     !head?
-  end
-
-  # True if a {Formula} is being built universally.
-  # e.g. on newer Intel Macs this means a combined x86_64/x86 binary/library.
-  # <pre>args << "--universal-binary" if build.universal?</pre>
-  def universal?
-    odeprecated "BuildOptions#universal?"
-    private_include?("universal") && option_defined?("universal")
-  end
-
-  # True if a {Formula} is being built in C++11 mode.
-  def cxx11?
-    odeprecated "BuildOptions#cxx11?"
-    private_include?("c++11") && option_defined?("c++11")
   end
 
   # True if the build has any arguments or options specified.
@@ -107,8 +82,7 @@ class BuildOptions
 
   private
 
-  # TODO: rename to include? when include? is removed.
-  def private_include?(name)
+  def include?(name)
     @args.include?("--#{name}")
   end
 

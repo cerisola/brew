@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 # @private
@@ -26,10 +27,10 @@ class CompilerFailure
   end
 
   # Allows Apple compiler `fails_with` statements to keep using `build`
-  # even though `build` and `version` are the same internally
+  # even though `build` and `version` are the same internally.
   alias build version
 
-  # The cause is no longer used so we need not hold a reference to the string
+  # The cause is no longer used so we need not hold a reference to the string.
   def cause(_); end
 
   def self.for_standard(standard)
@@ -55,7 +56,7 @@ class CompilerFailure
   def initialize(name, version, &block)
     @name = name
     @version = Version.parse(version.to_s)
-    instance_eval(&block) if block_given?
+    instance_eval(&block) if block
   end
 
   def fails_with?(compiler)

@@ -17,7 +17,7 @@ find_ruby() {
     echo "/System/Library/Frameworks/Ruby.framework/Versions/Current/usr/bin/ruby"
   else
     IFS=$'\n' # Do word splitting on new lines only
-    for ruby_exec in $(which -a ruby) $(PATH=$HOMEBREW_PATH which -a ruby)
+    for ruby_exec in $(which -a ruby 2>/dev/null) $(PATH=$HOMEBREW_PATH which -a ruby 2>/dev/null)
     do
       if test_ruby "$ruby_exec"; then
         echo "$ruby_exec"
@@ -28,11 +28,14 @@ find_ruby() {
   fi
 }
 
-unusable_ruby() {
-  if [[ -n "$HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH" ]]
+need_vendored_ruby() {
+  if [[ -n "$HOMEBREW_FORCE_VENDOR_RUBY" ]]
+  then
+    return 0
+  elif [[ -n "$HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH" ]]
   then
     return 1
-  elif [[ -n "$HOMEBREW_RUBY_PATH" && -z "$HOMEBREW_FORCE_VENDOR_RUBY" ]] && test_ruby "$HOMEBREW_RUBY_PATH"
+  elif [[ -z "$HOMEBREW_MACOS" ]] && test_ruby "$HOMEBREW_RUBY_PATH"
   then
     return 1
   else
@@ -92,7 +95,7 @@ If there's no Homebrew Portable Ruby available for your processor:
     fi
   else
     HOMEBREW_RUBY_PATH=$(find_ruby)
-    if [[ -z "$HOMEBREW_RUBY_PATH" || -n "$HOMEBREW_FORCE_VENDOR_RUBY" ]] || unusable_ruby
+    if need_vendored_ruby
     then
       brew vendor-install ruby || odie "$install_fail"
       HOMEBREW_RUBY_PATH="$vendor_ruby_path"

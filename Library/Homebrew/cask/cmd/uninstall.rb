@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 module Cask
@@ -6,10 +7,14 @@ module Cask
     #
     # @api private
     class Uninstall < AbstractCommand
+      extend T::Sig
+
+      sig { override.returns(T.nilable(T.any(Integer, Symbol))) }
       def self.min_named
         :cask
       end
 
+      sig { returns(String) }
       def self.description
         "Uninstalls the given <cask>."
       end
@@ -22,6 +27,7 @@ module Cask
         end
       end
 
+      sig { void }
       def run
         self.class.uninstall_casks(
           *casks,
@@ -58,7 +64,7 @@ module Cask
 
           puts <<~EOS
             #{cask} #{versions.to_sentence} #{"is".pluralize(versions.count)} still installed.
-            Remove #{(versions.count == 1) ? "it" : "them all"} with `brew cask uninstall --force #{cask}`.
+            Remove #{(versions.count == 1) ? "it" : "them all"} with `brew uninstall --cask --force #{cask}`.
           EOS
         end
       end

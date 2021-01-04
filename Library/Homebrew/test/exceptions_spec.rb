@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "exceptions"
@@ -47,12 +48,12 @@ describe FormulaUnavailableError do
 
     it "returns a string if there is a dependent" do
       subject.dependent = "foobar"
-      expect(subject.dependent_s).to eq("(dependency of foobar)")
+      expect(subject.dependent_s).to eq(" (dependency of foobar)")
     end
   end
 
   context "without a dependent" do
-    its(:to_s) { is_expected.to eq('No available formula with the name "foo" ') }
+    its(:to_s) { is_expected.to eq('No available formula with the name "foo".') }
   end
 
   context "with a dependent" do
@@ -61,7 +62,7 @@ describe FormulaUnavailableError do
     end
 
     its(:to_s) {
-      expect(subject.to_s).to eq('No available formula with the name "foo" (dependency of foobar)')
+      expect(subject.to_s).to eq('No available formula with the name "foo" (dependency of foobar).')
     }
   end
 end
@@ -80,6 +81,7 @@ describe FormulaClassUnavailableError do
   let(:mod) do
     Module.new do
       class Bar < Requirement; end
+
       class Baz < Formula; end
     end
   end

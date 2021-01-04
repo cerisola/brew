@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "descriptions"
@@ -6,10 +7,13 @@ require "description_cache_store"
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
   extend Search
 
+  sig { returns(CLI::Parser) }
   def desc_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS

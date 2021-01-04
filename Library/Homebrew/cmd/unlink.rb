@@ -1,11 +1,16 @@
+# typed: true
 # frozen_string_literal: true
 
 require "ostruct"
 require "cli/parser"
+require "unlink"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def unlink_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -35,11 +40,7 @@ module Homebrew
         next
       end
 
-      keg.lock do
-        print "Unlinking #{keg}... "
-        puts if args.verbose?
-        puts "#{keg.unlink(**options)} symlinks removed"
-      end
+      Unlink.unlink(keg, dry_run: args.dry_run?, verbose: args.verbose?)
     end
   end
 end

@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cask/cask_loader"
@@ -12,7 +13,6 @@ describe CaskDependent, :needs_macos do
         depends_on formula: "baz"
         depends_on cask: "foo-cask"
         depends_on macos: ">= :mojave"
-        depends_on x11: true
       end
     RUBY
   end
@@ -27,7 +27,7 @@ describe CaskDependent, :needs_macos do
   describe "#requirements" do
     it "is the requirements of the cask" do
       expect(dependent.requirements.map(&:name))
-        .to eq %w[foo-cask macos x11]
+        .to eq %w[foo-cask macos]
     end
   end
 
@@ -38,7 +38,6 @@ describe CaskDependent, :needs_macos do
       setup_test_formula "baz", <<-RUBY
         url "https://brew.sh/baz-1.0"
         depends_on "bar"
-        depends_on :osxfuse
       RUBY
 
       expect(dependent.recursive_dependencies.map(&:name))
@@ -53,11 +52,10 @@ describe CaskDependent, :needs_macos do
       setup_test_formula "baz", <<-RUBY
         url "https://brew.sh/baz-1.0"
         depends_on "bar"
-        depends_on :osxfuse
       RUBY
 
       expect(dependent.recursive_requirements.map(&:name))
-        .to eq(%w[foo-cask macos x11 osxfuse])
+        .to eq(%w[foo-cask macos])
     end
   end
 end

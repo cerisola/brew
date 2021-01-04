@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "utils/github"
@@ -53,26 +54,44 @@ describe GitHub do
     it "errors on an unauthenticated token" do
       expect {
         subject.sponsors_by_tier("Homebrew")
-      }.to raise_error(/INSUFFICIENT_SCOPES|FORBIDDEN/)
+      }.to raise_error(/INSUFFICIENT_SCOPES|FORBIDDEN|token needs the 'admin:org' scope/)
     end
   end
 
   describe "::get_artifact_url", :needs_network do
     it "fails to find a nonexistant workflow" do
       expect {
-        subject.get_artifact_url("Homebrew", "homebrew-core", 1)
+        subject.get_artifact_url(
+          subject.get_workflow_run("Homebrew", "homebrew-core", 1),
+        )
       }.to raise_error(/No matching workflow run found/)
     end
 
     it "fails to find artifacts that don't exist" do
       expect {
-        subject.get_artifact_url("Homebrew", "homebrew-core", 51971, artifact_name: "false_bottles")
+        subject.get_artifact_url(
+          subject.get_workflow_run("Homebrew", "homebrew-core", 51971, artifact_name: "false_bottles"),
+        )
       }.to raise_error(/No artifact .+ was found/)
     end
 
     it "gets an artifact link" do
-      url = subject.get_artifact_url("Homebrew", "homebrew-core", 51971, artifact_name: "bottles")
+      url = subject.get_artifact_url(
+        subject.get_workflow_run("Homebrew", "homebrew-core", 51971, artifact_name: "bottles"),
+      )
       expect(url).to eq("https://api.github.com/repos/Homebrew/homebrew-core/actions/artifacts/3557392/zip")
+    end
+  end
+
+  describe "::pull_request_commits", :needs_network do
+    hashes = %w[188606a4a9587365d930b02c98ad6857b1d00150 25a71fe1ea1558415d6496d23834dc70778ddee5]
+
+    it "gets commit hashes for a pull request" do
+      expect(subject.pull_request_commits("Homebrew", "legacy-homebrew", 50678)).to eq(hashes)
+    end
+
+    it "gets commit hashes for a paginated pull request API response" do
+      expect(subject.pull_request_commits("Homebrew", "legacy-homebrew", 50678, per_page: 1)).to eq(hashes)
     end
   end
 end

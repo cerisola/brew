@@ -12,6 +12,7 @@ Style/Documentation:
     - 'keg_relocate.rb'
     - 'os/linux/global.rb'
     - 'os/mac/architecture_list.rb'
+    - 'os/mac/global.rb'
     - 'os/mac/keg.rb'
     - 'reinstall.rb'
     - 'software_spec.rb'
@@ -22,3 +23,15 @@ Style/Documentation:
     - 'utils/popen.rb'
     - 'utils/shell.rb'
     - 'version.rb'
+
+Lint/EmptyBlock:
+  Exclude:
+    - 'dependency.rb'
+    - 'dev-cmd/extract.rb'
+    - 'test/cache_store_spec.rb'
+    - 'test/checksum_verification_spec.rb'
+    - 'test/compiler_failure_spec.rb'
+    - 'test/formula_spec.rb'
+    - 'test/formula_validation_spec.rb'
+    - 'test/pathname_spec.rb'
+    - 'test/support/fixtures/cask/Casks/*flight*.rb'

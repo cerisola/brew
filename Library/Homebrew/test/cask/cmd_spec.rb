@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 describe Cask::Cmd, :cask do
@@ -10,30 +11,8 @@ describe Cask::Cmd, :cask do
   context "::run" do
     let(:noop_command) { double("Cmd::Noop", run: nil) }
 
-    it "prints help output when subcommand receives `--help` flag" do
-      expect {
-        described_class.run("info", "--help")
-      }.to output(/Displays information about the given cask/).to_stdout
-    end
-
-    it "respects the env variable when choosing what appdir to create" do
-      allow(described_class).to receive(:lookup_command).with("noop").and_return(noop_command)
-
-      ENV["HOMEBREW_CASK_OPTS"] = "--appdir=/custom/appdir"
-
-      described_class.run("noop")
-
-      expect(Cask::Config.global.appdir).to eq(Pathname.new("/custom/appdir"))
-    end
-
-    it "overrides the env variable when passing --appdir directly" do
-      allow(described_class).to receive(:lookup_command).with("noop").and_return(noop_command)
-
-      ENV["HOMEBREW_CASK_OPTS"] = "--appdir=/custom/appdir"
-
-      described_class.run("noop", "--appdir=/even/more/custom/appdir")
-
-      expect(Cask::Config.global.appdir).to eq(Pathname.new("/even/more/custom/appdir"))
+    before do
+      allow(Homebrew).to receive(:raise_deprecation_exceptions?).and_return(false)
     end
 
     it "exits with a status of 1 when something goes wrong" do

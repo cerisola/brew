@@ -1,11 +1,16 @@
+# typed: true
 # frozen_string_literal: true
 
 require "formula"
 require "cli/parser"
+require "utils/ast"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def bump_revision_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -32,51 +37,25 @@ module Homebrew
 
     args.named.to_formulae.each do |formula|
       current_revision = formula.revision
-
-      if current_revision.zero?
-        formula_spec = formula.stable
-        hash_type, old_hash = if (checksum = formula_spec.checksum)
-          [checksum.hash_type, checksum.hexdigest]
-        end
-
-        old = if formula.license
-          license_string = if formula.license.length > 1
-            formula.license
-          else
-            "\"#{formula.license.first}\""
-          end
-          # insert replacement revision after license
-          <<~EOS
-            license #{license_string}
-          EOS
-        elsif formula.path.read.include?("stable do\n")
-          # insert replacement revision after homepage
-          <<~EOS
-            homepage "#{formula.homepage}"
-          EOS
-        elsif hash_type
-          # insert replacement revision after hash
-          <<~EOS
-            #{hash_type} "#{old_hash}"
-          EOS
-        else
-          # insert replacement revision after :revision
-          <<~EOS
-            revision: "#{formula_spec.specs[:revision]}"
-          EOS
-        end
-        replacement = "#{old}  revision 1\n"
-
-      else
-        old = "revision #{current_revision}"
-        replacement = "revision #{current_revision+1}"
-      end
+      text = "revision #{current_revision+1}"
 
       if args.dry_run?
-        ohai "replace #{old.inspect} with #{replacement.inspect}" unless args.quiet?
+        unless args.quiet?
+          if current_revision.zero?
+            ohai "add #{text.inspect}"
+          else
+            old = "revision #{current_revision}"
+            ohai "replace #{old.inspect} with #{text.inspect}"
+          end
+        end
       else
         Utils::Inreplace.inreplace(formula.path) do |s|
-          s.gsub!(old, replacement)
+          s = s.inreplace_string
+          if current_revision.zero?
+            Utils::AST.add_formula_stanza!(s, :revision, text)
+          else
+            Utils::AST.replace_formula_stanza!(s, :revision, text)
+          end
         end
       end
 

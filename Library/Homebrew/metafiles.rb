@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 # Helper for checking if a file is considered a metadata file.
@@ -5,7 +6,7 @@
 # @api private
 module Metafiles
   LICENSES = Set.new(%w[copying copyright license licence]).freeze
-  # https://github.com/github/markup#markups
+  # {https://github.com/github/markup#markups}
   EXTENSIONS = Set.new(%w[
                          .adoc .asc .asciidoc .creole .html .markdown .md .mdown .mediawiki .mkdn
                          .org .pod .rdoc .rst .rtf .textile .txt .wiki

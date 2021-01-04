@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 module Homebrew
@@ -10,7 +11,7 @@ module Homebrew
     require "test/unit/assertions"
     include ::Test::Unit::Assertions
 
-    # Returns the output of running cmd, and asserts the exit status
+    # Returns the output of running cmd, and asserts the exit status.
     # @api public
     def shell_output(cmd, result = 0)
       ohai cmd

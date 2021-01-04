@@ -1,8 +1,12 @@
+# typed: strict
 # frozen_string_literal: true
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def __caskroom_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -16,6 +20,7 @@ module Homebrew
     end
   end
 
+  sig { void }
   def __caskroom
     args = __caskroom_args.parse
 

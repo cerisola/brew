@@ -1,3 +1,4 @@
+# typed: strict
 # frozen_string_literal: true
 
 require "cask/cmd/abstract_command"
@@ -7,7 +8,10 @@ require "cask/caskroom"
 
 module Homebrew
   module MissingFormula
+    extend T::Sig
     class << self
+      extend T::Sig
+      sig { params(name: String).returns(T.nilable(String)) }
       def disallowed_reason(name)
         case name.downcase
         when "xcode"
@@ -19,29 +23,31 @@ module Homebrew
             There are three versions of MacTeX.
 
             Full installation:
-              brew cask install mactex
+              brew install --cask mactex
 
             Full installation without bundled applications:
-              brew cask install mactex-no-gui
+              brew install --cask mactex-no-gui
 
             Minimal installation:
-              brew cask install basictex
+              brew install --cask basictex
           EOS
         else
           generic_disallowed_reason(name)
         end
       end
 
+      sig { params(name: String, silent: T::Boolean, show_info: T::Boolean).returns(T.nilable(String)) }
       def cask_reason(name, silent: false, show_info: false)
         return if silent
 
         suggest_command(name, show_info ? "info" : "install")
       end
 
+      sig { params(name: String, command: String).returns(T.nilable(String)) }
       def suggest_command(name, command)
         suggestion = <<~EOS
           Found a cask named "#{name}" instead. Try
-            brew cask #{command} #{name}
+            brew #{command} --cask #{name}
 
         EOS
         case command

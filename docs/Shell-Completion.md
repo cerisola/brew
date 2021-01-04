@@ -8,7 +8,7 @@ You must configure your shell to enable its completion support. This is because 
 
 ## Configuring Completions in `bash`
 
-To make Homebrew's completions available in `bash`, you must source the definitions as part of your shell's startup. Add the following to your `~/.bash_profile` (or, if it doesn't exist, `~/.profile):
+To make Homebrew's completions available in `bash`, you must source the definitions as part of your shell's startup. Add the following to your `~/.bash_profile` (or, if it doesn't exist, `~/.profile`):
 
 ```sh
 if type brew &>/dev/null; then
@@ -52,7 +52,7 @@ You may also need to forcibly rebuild `zcompdump`:
 Additionally, if you receive "zsh compinit: insecure directories" warnings when attempting to load these completions, you may need to run this:
 
 ```sh
-  chmod go-w "$(brew --prefix)/share"
+  chmod -R go-w "$(brew --prefix)/share"
 ```
 
 ## Configuring Completions in `fish`

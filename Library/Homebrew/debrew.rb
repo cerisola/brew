@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "mutex_m"
@@ -40,10 +41,13 @@ module Debrew
 
   # Module for displaying a debugging menu.
   class Menu
+    extend T::Sig
+
     Entry = Struct.new(:name, :action)
 
     attr_accessor :prompt, :entries
 
+    sig { void }
     def initialize
       @entries = []
     end

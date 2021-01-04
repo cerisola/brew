@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 class JavaRequirement < Requirement
@@ -25,14 +26,8 @@ class JavaRequirement < Requirement
   end
 
   def java_home_cmd
-    return unless File.executable?("/usr/libexec/java_home")
-
-    args = %w[--failfast]
-    args << "--version" << @version.to_s if @version
-    java_home = Utils.popen_read("/usr/libexec/java_home", *args).chomp
-    return unless $CHILD_STATUS.success?
-
-    Pathname.new(java_home)/"bin/java"
+    odisabled "depends_on :java",
+              'depends_on "openjdk@11", depends_on "openjdk@8" or depends_on "openjdk"'
   end
 
   def env_apple

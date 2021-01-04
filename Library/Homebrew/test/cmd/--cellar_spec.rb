@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cmd/shared_examples/args_parse"
@@ -9,7 +10,7 @@ end
 describe "brew --cellar", :integration_test do
   it "returns the Cellar subdirectory for a given Formula" do
     expect { brew "--cellar", testball }
-      .to output(%r{#{HOMEBREW_CELLAR}/testball}).to_stdout
+      .to output(%r{#{HOMEBREW_CELLAR}/testball}o).to_stdout
       .and not_to_output.to_stderr
       .and be_a_success
   end

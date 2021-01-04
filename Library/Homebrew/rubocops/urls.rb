@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "rubocops/extend/formula"
@@ -5,60 +6,21 @@ require "rubocops/extend/formula"
 module RuboCop
   module Cop
     module FormulaAudit
-      # This cop audits URLs and mirrors in Formulae.
+      # This cop audits `url`s and `mirror`s in formulae.
       #
       # @api private
       class Urls < FormulaCop
-        # These are parts of URLs that look like binaries but actually aren't.
-        NOT_A_BINARY_URL_PREFIX_ALLOWLIST = %w[
-          https://downloads.sourceforge.net/project/astyle/astyle/
-          https://downloads.sourceforge.net/project/bittwist/
-          https://downloads.sourceforge.net/project/launch4j/
-          https://github.com/ChrisJohnsen/tmux-MacOSX-pasteboard/archive/
-          https://github.com/obihann/archey-osx
-          https://github.com/sindresorhus/macos-wallpaper/archive/
-          https://raw.githubusercontent.com/liyanage/macosx-shell-scripts/
-          https://osxbook.com/book/bonus/chapter8/core/download/gcore
-          https://naif.jpl.nasa.gov/pub/naif/toolkit/C/MacIntel_OSX_AppleC_64bit/packages/
-          https://artifacts.videolan.org/x264/release-macos/
-        ].freeze
-
-        # These are formulae that, sadly, require an upstream binary to bootstrap.
-        BINARY_BOOTSTRAP_FORMULA_URLS_ALLOWLIST = %w[
-          clozure-cl
-          crystal
-          fpc
-          ghc
-          ghc@8.6
-          ghc@8.8
-          go
-          go@1.9
-          go@1.10
-          go@1.11
-          go@1.12
-          go@1.13
-          go@1.14
-          haskell-stack
-          ldc
-          mlton
-          openjdk
-          openjdk@11
-          pypy
-          sbcl
-          rust
-        ].freeze
-
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           urls = find_every_func_call_by_name(body_node, :url)
           mirrors = find_every_func_call_by_name(body_node, :mirror)
 
-          # Identify livecheck urls, to skip some checks for them
+          # Identify livecheck URLs, to skip some checks for them
           livecheck_url = if (livecheck = find_every_func_call_by_name(body_node, :livecheck).first) &&
                              (livecheck_url = find_every_func_call_by_name(livecheck.parent, :url).first)
             string_content(parameters(livecheck_url).first)
           end
 
-          # GNU urls; doesn't apply to mirrors
+          # GNU URLs; doesn't apply to mirrors
           gnu_pattern = %r{^(?:https?|ftp)://ftpmirror.gnu.org/(.*)}
           audit_urls(urls, gnu_pattern) do |match, url|
             problem "Please use \"https://ftp.gnu.org/gnu/#{match[1]}\" instead of #{url}."
@@ -199,7 +161,7 @@ module RuboCop
             EOS
           end
 
-          # Check to use canonical urls for Debian packages
+          # Check to use canonical URLs for Debian packages
           noncanon_deb_pattern =
             Regexp.union([%r{^https://mirrors\.kernel\.org/debian/},
                           %r{^https://mirrors\.ocf\.berkeley\.edu/debian/},
@@ -208,26 +170,26 @@ module RuboCop
             problem "Please use https://deb.debian.org/debian/ for #{url}"
           end
 
-          # Check for new-url Google Code download urls, https:// is preferred
+          # Check for new-url Google Code download URLs, https:// is preferred
           google_code_pattern = Regexp.union([%r{^http://.*\.googlecode\.com/files.*},
                                               %r{^http://code\.google\.com/}])
           audit_urls(urls, google_code_pattern) do |_, url|
             problem "Please use https:// for #{url}"
           end
 
-          # Check for git:// GitHub repo urls, https:// is preferred.
+          # Check for git:// GitHub repo URLs, https:// is preferred.
           git_gh_pattern = %r{^git://[^/]*github\.com/}
           audit_urls(urls, git_gh_pattern) do |_, url|
             problem "Please use https:// for #{url}"
           end
 
-          # Check for git:// Gitorious repo urls, https:// is preferred.
+          # Check for git:// Gitorious repo URLs, https:// is preferred.
           git_gitorious_pattern = %r{^git://[^/]*gitorious\.org/}
           audit_urls(urls, git_gitorious_pattern) do |_, url|
             problem "Please use https:// for #{url}"
           end
 
-          # Check for http:// GitHub repo urls, https:// is preferred.
+          # Check for http:// GitHub repo URLs, https:// is preferred.
           gh_pattern = %r{^http://github\.com/.*\.git$}
           audit_urls(urls, gh_pattern) do |_, url|
             problem "Please use https:// for #{url}"
@@ -266,7 +228,7 @@ module RuboCop
             EOS
           end
 
-          # Check for Maven Central urls, prefer HTTPS redirector over specific host
+          # Check for Maven Central URLs, prefer HTTPS redirector over specific host
           maven_pattern = %r{https?://(?:central|repo\d+)\.maven\.org/maven2/(.+)$}
           audit_urls(urls, maven_pattern) do |match, url|
             problem "#{url} should be `https://search.maven.org/remotecontent?filepath=#{match[1]}`"
@@ -278,8 +240,8 @@ module RuboCop
           audit_urls(urls, /(darwin|macos|osx)/i) do |match, url|
             next if @formula_name.include?(match.to_s.downcase)
             next if url.match?(/.(patch|diff)(\?full_index=1)?$/)
-            next if NOT_A_BINARY_URL_PREFIX_ALLOWLIST.any? { |prefix| url.start_with?(prefix) }
-            next if BINARY_BOOTSTRAP_FORMULA_URLS_ALLOWLIST.include?(@formula_name)
+            next if tap_style_exception? :not_a_binary_url_prefix_allowlist
+            next if tap_style_exception? :binary_bootstrap_formula_urls_allowlist
 
             problem "#{url} looks like a binary package, not a source archive; " \
                     "homebrew/core is source-only."
@@ -287,33 +249,80 @@ module RuboCop
         end
       end
 
-      # This cop makes sure that the correct format for PyPi URLs is used.
+      # This cop makes sure that the correct format for PyPI URLs is used.
       #
       # @api private
       class PyPiUrls < FormulaCop
+        extend T::Sig
+
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           urls = find_every_func_call_by_name(body_node, :url)
           mirrors = find_every_func_call_by_name(body_node, :mirror)
           urls += mirrors
 
-          # Check pypi urls
+          # Check pypi URLs
           pypi_pattern = %r{^https?://pypi.python.org/}
           audit_urls(urls, pypi_pattern) do |_, url|
             problem "use the `Source` url found on PyPI downloads page (`#{get_pypi_url(url)}`)"
           end
 
-          # Require long files.pythonhosted.org urls
+          # Require long files.pythonhosted.org URLs
           pythonhosted_pattern = %r{^https?://files.pythonhosted.org/packages/source/}
           audit_urls(urls, pythonhosted_pattern) do |_, url|
             problem "use the `Source` url found on PyPI downloads page (`#{get_pypi_url(url)}`)"
           end
         end
 
+        sig { params(url: String).returns(String) }
         def get_pypi_url(url)
           package_file = File.basename(url)
           package_name = package_file.match(/^(.+)-[a-z0-9.]+$/)[1]
           "https://pypi.org/project/#{package_name}/#files"
         end
+      end
+
+      # This cop makes sure that git URLs have a `revision`.
+      #
+      # @api private
+      class GitUrls < FormulaCop
+        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return unless formula_tap == "homebrew-core"
+
+          find_method_calls_by_name(body_node, :url).each do |url|
+            next unless string_content(parameters(url).first).match?(/\.git$/)
+            next if url_has_revision?(parameters(url).last)
+
+            offending_node(url)
+            problem "Formulae in homebrew/core should specify a revision for git urls"
+          end
+        end
+
+        def_node_matcher :url_has_revision?, <<~EOS
+          (hash <(pair (sym :revision) str) ...>)
+        EOS
+      end
+    end
+
+    module FormulaAuditStrict
+      # This cop makes sure that git URLs have a `tag`.
+      #
+      # @api private
+      class GitUrls < FormulaCop
+        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return unless formula_tap == "homebrew-core"
+
+          find_method_calls_by_name(body_node, :url).each do |url|
+            next unless string_content(parameters(url).first).match?(/\.git$/)
+            next if url_has_tag?(parameters(url).last)
+
+            offending_node(url)
+            problem "Formulae in homebrew/core should specify a tag for git urls"
+          end
+        end
+
+        def_node_matcher :url_has_tag?, <<~EOS
+          (hash <(pair (sym :tag) str) ...>)
+        EOS
       end
     end
   end

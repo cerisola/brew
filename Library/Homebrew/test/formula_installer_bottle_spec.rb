@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "formula"
@@ -82,7 +83,7 @@ describe FormulaInstaller do
 
     expect {
       described_class.new(formula).install
-    }.to raise_error(BuildToolsError)
+    }.to raise_error(UnbottledError)
 
     expect(formula).not_to be_latest_version_installed
   end

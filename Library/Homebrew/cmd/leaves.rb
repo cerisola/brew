@@ -1,12 +1,15 @@
+# typed: true
 # frozen_string_literal: true
 
 require "formula"
-require "tab"
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def leaves_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -22,9 +25,6 @@ module Homebrew
   def leaves
     leaves_args.parse
 
-    installed = Formula.installed.sort
-    deps_of_installed = installed.flat_map(&:runtime_formula_dependencies)
-    leaves = installed.map(&:full_name) - deps_of_installed.map(&:full_name)
-    leaves.each(&method(:puts))
+    Formula.installed_formulae_with_no_dependents.map(&:full_name).sort.each(&method(:puts))
   end
 end

@@ -1,19 +1,19 @@
+# typed: true
 # frozen_string_literal: true
 
 class Formula
   undef shared_library
 
   def shared_library(name, version = nil)
-    "#{name}.so#{"." unless version.nil?}#{version}"
+    suffix = if version == "*" || (name == "*" && version.blank?)
+      "{,.*}"
+    elsif version.present?
+      ".#{version}"
+    end
+    "#{name}.so#{suffix}"
   end
 
   class << self
-    undef on_linux
-
-    def on_linux(&_block)
-      yield
-    end
-
     undef ignore_missing_libraries
 
     def ignore_missing_libraries(*libs)

@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "version/null"
@@ -6,14 +7,18 @@ require "version/null"
 #
 # @api private
 class Version
+  extend T::Sig
+
   include Comparable
 
   def self.formula_optionally_versioned_regex(name, full: true)
     /#{"^" if full}#{Regexp.escape(name)}(@\d[\d.]*)?#{"$" if full}/
   end
 
-  # A part of a `Version`.
+  # A part of a {Version}.
   class Token
+    extend T::Sig
+
     include Comparable
 
     def self.create(val)
@@ -25,6 +30,7 @@ class Version
       when /\A#{RCToken::PATTERN}\z/o      then RCToken
       when /\A#{PreToken::PATTERN}\z/o     then PreToken
       when /\A#{PatchToken::PATTERN}\z/o   then PatchToken
+      when /\A#{PostToken::PATTERN}\z/o    then PostToken
       when /\A#{NumericToken::PATTERN}\z/o then NumericToken
       when /\A#{StringToken::PATTERN}\z/o  then StringToken
       end.new(val)
@@ -46,6 +52,7 @@ class Version
       @value = value
     end
 
+    sig { returns(String) }
     def inspect
       "#<#{self.class.name} #{value.inspect}>"
     end
@@ -67,6 +74,7 @@ class Version
     end
     alias to_str to_s
 
+    sig { returns(T::Boolean) }
     def numeric?
       false
     end
@@ -74,6 +82,8 @@ class Version
 
   # A pseudo-token representing the absence of a token.
   class NullToken < Token
+    extend T::Sig
+
     def initialize
       super(nil)
     end
@@ -93,10 +103,12 @@ class Version
       end
     end
 
+    sig { returns(T::Boolean) }
     def null?
       true
     end
 
+    sig { returns(String) }
     def inspect
       "#<#{self.class.name}>"
     end
@@ -131,6 +143,7 @@ class Version
   # A token consisting of only numbers.
   class NumericToken < Token
     PATTERN = /[0-9]+/i.freeze
+    extend T::Sig
 
     def initialize(value)
       super
@@ -151,6 +164,7 @@ class Version
       end
     end
 
+    sig { returns(T::Boolean) }
     def numeric?
       true
     end
@@ -163,7 +177,7 @@ class Version
     end
   end
 
-  # A token representing the part of a version designating it is an alpha release.
+  # A token representing the part of a version designating it as an alpha release.
   class AlphaToken < CompositeToken
     PATTERN = /alpha[0-9]*|a[0-9]+/i.freeze
 
@@ -173,7 +187,7 @@ class Version
       case other
       when AlphaToken
         rev <=> other.rev
-      when BetaToken, RCToken, PreToken, PatchToken
+      when BetaToken, RCToken, PreToken, PatchToken, PostToken
         -1
       else
         super
@@ -181,7 +195,7 @@ class Version
     end
   end
 
-  # A token representing the part of a version designating it is a beta release.
+  # A token representing the part of a version designating it as a beta release.
   class BetaToken < CompositeToken
     PATTERN = /beta[0-9]*|b[0-9]+/i.freeze
 
@@ -193,7 +207,7 @@ class Version
         rev <=> other.rev
       when AlphaToken
         1
-      when PreToken, RCToken, PatchToken
+      when PreToken, RCToken, PatchToken, PostToken
         -1
       else
         super
@@ -201,7 +215,7 @@ class Version
     end
   end
 
-  # A token representing the part of a version designating it is a pre-release.
+  # A token representing the part of a version designating it as a pre-release.
   class PreToken < CompositeToken
     PATTERN = /pre[0-9]*/i.freeze
 
@@ -213,7 +227,7 @@ class Version
         rev <=> other.rev
       when AlphaToken, BetaToken
         1
-      when RCToken, PatchToken
+      when RCToken, PatchToken, PostToken
         -1
       else
         super
@@ -221,7 +235,7 @@ class Version
     end
   end
 
-  # A token representing the part of a version designating it is a release-candidate.
+  # A token representing the part of a version designating it as a release candidate.
   class RCToken < CompositeToken
     PATTERN = /rc[0-9]*/i.freeze
 
@@ -233,7 +247,7 @@ class Version
         rev <=> other.rev
       when AlphaToken, BetaToken, PreToken
         1
-      when PatchToken
+      when PatchToken, PostToken
         -1
       else
         super
@@ -241,7 +255,7 @@ class Version
     end
   end
 
-  # A token representing the part of a version designating it is a patch release.
+  # A token representing the part of a version designating it as a patch release.
   class PatchToken < CompositeToken
     PATTERN = /p[0-9]*/i.freeze
 
@@ -259,12 +273,31 @@ class Version
     end
   end
 
+  # A token representing the part of a version designating it as a post release.
+  class PostToken < CompositeToken
+    PATTERN = /.post[0-9]+/i.freeze
+
+    def <=>(other)
+      return unless other = Token.from(other)
+
+      case other
+      when PostToken
+        rev <=> other.rev
+      when AlphaToken, BetaToken, RCToken, PreToken
+        1
+      else
+        super
+      end
+    end
+  end
+
   SCAN_PATTERN = Regexp.union(
     AlphaToken::PATTERN,
     BetaToken::PATTERN,
     PreToken::PATTERN,
     RCToken::PATTERN,
     PatchToken::PATTERN,
+    PostToken::PATTERN,
     NumericToken::PATTERN,
     StringToken::PATTERN,
   ).freeze
@@ -285,11 +318,13 @@ class Version
   end
 
   def self.parse(spec, detected_from_url: false)
-    version = _parse(spec)
+    version = _parse(spec, detected_from_url: detected_from_url)
     version.nil? ? NULL : new(version, detected_from_url: detected_from_url)
   end
 
-  def self._parse(spec)
+  def self._parse(spec, detected_from_url:)
+    spec = CGI.unescape(spec.to_s) if detected_from_url
+
     spec = Pathname.new(spec) unless spec.is_a? Pathname
 
     spec_s = spec.to_s
@@ -343,6 +378,10 @@ class Version
 
     # e.g. foobar-4.5.1
     m = /-((?:\d+\.)*\d+)$/.match(stem)
+    return m.captures.first unless m.nil?
+
+    # e.g. foobar-4.5.1.post1
+    m = /-((?:\d+\.)*\d+(.post\d+)?)$/.match(stem)
     return m.captures.first unless m.nil?
 
     # e.g. foobar-4.5.1b
@@ -428,7 +467,6 @@ class Version
     m = /[-.vV]?((?:\d+\.)+\d+(?:[-_.]?(?i:alpha|beta|pre|rc)\.?\d{,2})?)/.match(spec_s)
     return m.captures.first unless m.nil?
   end
-
   private_class_method :_parse
 
   def initialize(val, detected_from_url: false)
@@ -479,13 +517,11 @@ class Version
         l += 1
         r += 1
         next
-      elsif a.numeric? && b.numeric?
-        return a <=> b
-      elsif a.numeric?
+      elsif a.numeric? && !b.numeric?
         return 1 if a > NULL_TOKEN
 
         l += 1
-      elsif b.numeric?
+      elsif !a.numeric? && b.numeric?
         return -1 if b > NULL_TOKEN
 
         r += 1
@@ -558,10 +594,13 @@ class Version
   end
 end
 
-# A formula's [HEAD version](https://docs.brew.sh/Formula-Cookbook#unstable-versions-head).
+# A formula's HEAD version.
+# @see https://docs.brew.sh/Formula-Cookbook#unstable-versions-head Unstable versions (head)
 #
 # @api private
 class HeadVersion < Version
+  extend T::Sig
+
   attr_reader :commit
 
   def initialize(*)
@@ -578,6 +617,7 @@ class HeadVersion < Version
     end
   end
 
+  sig { returns(T::Boolean) }
   def head?
     true
   end

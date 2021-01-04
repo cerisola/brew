@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require "digest"
@@ -8,6 +9,8 @@ module Homebrew
   #
   # @api private
   class FormulaCreator
+    extend T::Sig
+
     attr_reader :args, :url, :sha256, :desc, :homepage
     attr_accessor :name, :version, :tap, :path, :mode, :license
 
@@ -87,6 +90,7 @@ module Homebrew
       path.write ERB.new(template, trim_mode: ">").result(binding)
     end
 
+    sig { returns(String) }
     def template
       <<~ERB
         # Documentation: https://docs.brew.sh/Formula-Cookbook
@@ -189,7 +193,7 @@ module Homebrew
             # end
 
             bin.install name
-            bin.env_script_all_files(libexec/"bin", :PERL5LIB => ENV["PERL5LIB"])
+            bin.env_script_all_files(libexec/"bin", PERL5LIB: ENV["PERL5LIB"])
         <% elsif mode == :python %>
             virtualenv_install_with_resources
         <% elsif mode == :ruby %>
@@ -197,7 +201,7 @@ module Homebrew
             system "gem", "build", "\#{name}.gemspec"
             system "gem", "install", "\#{name}-\#{version}.gem"
             bin.install libexec/"bin/\#{name}"
-            bin.env_script_all_files(libexec/"bin", :GEM_HOME => ENV["GEM_HOME"])
+            bin.env_script_all_files(libexec/"bin", GEM_HOME: ENV["GEM_HOME"])
         <% elsif mode == :rust %>
             system "cargo", "install", *std_cargo_args
         <% else %>

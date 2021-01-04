@@ -1,18 +1,22 @@
+# typed: false
 # frozen_string_literal: true
 
 require "digest/md5"
 require "extend/cachable"
 require "tab"
 
-# The Formulary is responsible for creating instances of {Formula}.
+# The {Formulary} is responsible for creating instances of {Formula}.
 # It is not meant to be used directly from formulae.
 #
 # @api private
 module Formulary
+  extend T::Sig
+
   extend Cachable
 
   URL_START_REGEX = %r{(https?|ftp|file)://}.freeze
 
+  sig { void }
   def self.enable_factory_cache!
     @factory_cache = true
   end
@@ -43,7 +47,6 @@ module Formulary
       mod.const_set(:BUILD_FLAGS, flags)
       mod.module_eval(contents, path)
     rescue NameError, ArgumentError, ScriptError, MethodDeprecatedError => e
-      $stderr.puts e.backtrace if Homebrew::EnvConfig.developer?
       raise FormulaUnreadableError.new(name, e)
     end
     class_name = class_s(name)
@@ -110,7 +113,7 @@ module Formulary
     class_name
   end
 
-  # A FormulaLoader returns instances of formulae.
+  # A {FormulaLoader} returns instances of formulae.
   # Subclasses implement loaders for particular sources of formulae.
   class FormulaLoader
     include Context
@@ -128,7 +131,6 @@ module Formulary
     end
 
     # Gets the formula instance.
-    #
     # `alias_path` can be overridden here in case an alias was used to refer to
     # a formula that was loaded in another way.
     def get_formula(spec, alias_path: nil, force_bottle: false, flags: [])
@@ -208,8 +210,11 @@ module Formulary
 
   # Loads formulae from URLs.
   class FromUrlLoader < FormulaLoader
+    extend T::Sig
+
     attr_reader :url
 
+    sig { params(url: T.any(URI::Generic, String)).void }
     def initialize(url)
       @url = url
       uri = URI(url)
@@ -218,22 +223,21 @@ module Formulary
     end
 
     def load_file(flags:)
-      if url =~ %r{githubusercontent.com/[\w-]+/[\w-]+/[a-f0-9]{40}(/Formula)?/([\w+-.@]+).rb}
-        formula_name = Regexp.last_match(2)
-        odisabled "Installation of #{formula_name} from a GitHub commit URL",
-                  "'brew extract #{formula_name}' to stable tap on GitHub"
+      if %r{githubusercontent.com/[\w-]+/[\w-]+/[a-f0-9]{40}(?:/Formula)?/(?<formula_name>[\w+-.@]+).rb} =~ url # rubocop:disable Style/CaseLikeIf
+        raise UsageError, "Installation of #{formula_name} from a GitHub commit URL is unsupported! " \
+                  "'brew extract #{formula_name}' to stable tap on GitHub instead."
       elsif url.match?(%r{^(https?|ftp)://})
-        odisabled "Non-checksummed download of #{name} formula file from an arbitrary URL",
-                  "'brew extract' or 'brew create' and 'brew tap-new' to create a "\
-                  "formula file in a tap on GitHub"
+        raise UsageError, "Non-checksummed download of #{name} formula file from an arbitrary URL is unsupported! ",
+              "'brew extract' or 'brew create' and 'brew tap-new' to create a "\
+              "formula file in a tap on GitHub instead."
       end
       HOMEBREW_CACHE_FORMULA.mkpath
       FileUtils.rm_f(path)
       curl_download url, to: path
       super
     rescue MethodDeprecatedError => e
-      if url =~ %r{github.com/([\w-]+)/([\w-]+)/}
-        e.issues_url = "https://github.com/#{Regexp.last_match(1)}/#{Regexp.last_match(2)}/issues/new"
+      if %r{github.com/(?<user>[\w-]+)/(?<repo>[\w-]+)/} =~ url
+        e.issues_url = "https://github.com/#{user}/#{repo}/issues/new"
       end
       raise
     end
@@ -244,7 +248,7 @@ module Formulary
     attr_reader :tap
 
     def initialize(tapped_name, from: nil)
-      warn = ![:keg, :rack].include?(from)
+      warn = [:keg, :rack].exclude?(from)
       name, path = formula_name_path(tapped_name, warn: warn)
       super name, path
     end
@@ -300,7 +304,7 @@ module Formulary
     end
   end
 
-  # Pseudo-loader which will raise a `FormulaUnavailableError` when trying to load the corresponding formula.
+  # Pseudo-loader which will raise a {FormulaUnavailableError} when trying to load the corresponding formula.
   class NullLoader < FormulaLoader
     def initialize(name)
       super name, Formulary.core_path(name)
@@ -313,7 +317,7 @@ module Formulary
 
   # Load formulae directly from their contents.
   class FormulaContentsLoader < FormulaLoader
-    # The formula's contents
+    # The formula's contents.
     attr_reader :contents
 
     def initialize(name, path, contents)
@@ -328,7 +332,7 @@ module Formulary
     end
   end
 
-  # Return a Formula instance for the given reference.
+  # Return a {Formula} instance for the given reference.
   # `ref` is a string containing:
   #
   # * a formula name
@@ -353,12 +357,12 @@ module Formulary
     formula
   end
 
-  # Return a Formula instance for the given rack.
-  # It will auto resolve formula's spec when requested spec is nil
+  # Return a {Formula} instance for the given rack.
   #
-  # The :alias_path option will be used if the formula is found not to be
-  # installed, and discarded if it is installed because the alias_path used
-  # to install the formula will be set instead.
+  # @param spec when nil, will auto resolve the formula's spec.
+  # @param :alias_path will be used if the formula is found not to be
+  #   installed, and discarded if it is installed because the `alias_path` used
+  #   to install the formula will be set instead.
   def self.from_rack(rack, spec = nil, alias_path: nil, force_bottle: false, flags: [])
     kegs = rack.directory? ? rack.subdirs.map { |d| Keg.new(d) } : []
     keg = kegs.find(&:linked?) || kegs.find(&:optlinked?) || kegs.max_by(&:version)
@@ -371,15 +375,16 @@ module Formulary
     end
   end
 
-  # Return whether given rack is keg-only
+  # Return whether given rack is keg-only.
   def self.keg_only?(rack)
     Formulary.from_rack(rack).keg_only?
   rescue FormulaUnavailableError, TapFormulaAmbiguityError, TapFormulaWithOldnameAmbiguityError
     false
   end
 
-  # Return a Formula instance for the given keg.
-  # It will auto resolve formula's spec when requested spec is nil
+  # Return a {Formula} instance for the given keg.
+  #
+  # @param spec when nil, will auto resolve the formula's spec.
   def self.from_keg(keg, spec = nil, alias_path: nil, force_bottle: false, flags: [])
     tab = Tab.for_keg(keg)
     tap = tab.tap
@@ -404,7 +409,7 @@ module Formulary
     f
   end
 
-  # Return a Formula instance directly from contents
+  # Return a {Formula} instance directly from contents.
   def self.from_contents(name, path, contents, spec = :stable, alias_path: nil, force_bottle: false, flags: [])
     FormulaContentsLoader.new(name, path, contents)
                          .get_formula(spec, alias_path: alias_path, force_bottle: force_bottle, flags: flags)

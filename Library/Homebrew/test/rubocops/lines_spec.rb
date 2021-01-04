@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "rubocops/lines"
@@ -681,6 +682,16 @@ describe RuboCop::Cop::FormulaAudit::Licenses do
       RUBY
     end
 
+    it "allow license exceptions" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          desc "foo"
+          url 'https://brew.sh/foo-1.0.tgz'
+          license "MIT" => { with: "LLVM-exception" }
+        end
+      RUBY
+    end
+
     it "allow multiline nested license hashes" do
       expect_no_offenses(<<~RUBY)
         class Foo < Formula
@@ -689,6 +700,20 @@ describe RuboCop::Cop::FormulaAudit::Licenses do
           license any_of: [
             "MIT",
             all_of: ["0BSD", "Zlib"],
+          ]
+        end
+      RUBY
+    end
+
+    it "allow multiline nested license hashes with exceptions" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          desc "foo"
+          url 'https://brew.sh/foo-1.0.tgz'
+          license any_of: [
+            "MIT",
+            all_of: ["0BSD", "Zlib"],
+            "GPL-2.0-only" => { with: "LLVM-exception" },
           ]
         end
       RUBY
@@ -703,6 +728,246 @@ describe RuboCop::Cop::FormulaAudit::Licenses do
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Split nested license declarations onto multiple lines
         end
       RUBY
+    end
+  end
+end
+
+describe RuboCop::Cop::FormulaAudit::PythonVersions do
+  subject(:cop) { described_class.new }
+
+  context "When auditing python versions" do
+    it "allow python with no dependency" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          def install
+            puts "python@3.8"
+          end
+        end
+      RUBY
+    end
+
+    it "allow non versioned python references" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          depends_on "python@3.9"
+
+          def install
+            puts "python"
+          end
+        end
+      RUBY
+    end
+
+    it "allow python with no version" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          depends_on "python@3.9"
+
+          def install
+            puts "python3"
+          end
+        end
+      RUBY
+    end
+
+    it "allow matching versions" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          depends_on "python@3.9"
+
+          def install
+            puts "python@3.9"
+          end
+        end
+      RUBY
+    end
+
+    it "allow matching versions without `@`" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          depends_on "python@3.9"
+
+          def install
+            puts "python3.9"
+          end
+        end
+      RUBY
+    end
+
+    it "allow matching versions with two digits" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          depends_on "python@3.10"
+
+          def install
+            puts "python@3.10"
+          end
+        end
+      RUBY
+    end
+
+    it "allow matching versions without `@` with two digits" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          depends_on "python@3.10"
+
+          def install
+            puts "python3.10"
+          end
+        end
+      RUBY
+    end
+
+    it "do not allow mismatching versions" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          depends_on "python@3.9"
+
+          def install
+            puts "python@3.8"
+                 ^^^^^^^^^^^^ References to `python@3.8` should match the specified python dependency (`python@3.9`)
+          end
+        end
+      RUBY
+    end
+
+    it "do not allow mismatching versions without `@`" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          depends_on "python@3.9"
+
+          def install
+            puts "python3.8"
+                 ^^^^^^^^^^^ References to `python3.8` should match the specified python dependency (`python3.9`)
+          end
+        end
+      RUBY
+    end
+
+    it "do not allow mismatching versions with two digits" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          depends_on "python@3.11"
+
+          def install
+            puts "python@3.10"
+                 ^^^^^^^^^^^^^ References to `python@3.10` should match the specified python dependency (`python@3.11`)
+          end
+        end
+      RUBY
+    end
+
+    it "do not allow mismatching versions without `@` with two digits" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          depends_on "python@3.11"
+
+          def install
+            puts "python3.10"
+                 ^^^^^^^^^^^^ References to `python3.10` should match the specified python dependency (`python3.11`)
+          end
+        end
+      RUBY
+    end
+
+    it "autocorrects mismatching versions" do
+      source = <<~RUBY
+        class Foo < Formula
+          depends_on "python@3.9"
+
+          def install
+            puts "python@3.8"
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          depends_on "python@3.9"
+
+          def install
+            puts "python@3.9"
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "autocorrects mismatching versions without `@`" do
+      source = <<~RUBY
+        class Foo < Formula
+          depends_on "python@3.9"
+
+          def install
+            puts "python3.8"
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          depends_on "python@3.9"
+
+          def install
+            puts "python3.9"
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "autocorrects mismatching versions with two digits" do
+      source = <<~RUBY
+        class Foo < Formula
+          depends_on "python@3.10"
+
+          def install
+            puts "python@3.9"
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          depends_on "python@3.10"
+
+          def install
+            puts "python@3.10"
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
+    end
+
+    it "autocorrects mismatching versions without `@` with two digits" do
+      source = <<~RUBY
+        class Foo < Formula
+          depends_on "python@3.11"
+
+          def install
+            puts "python3.10"
+          end
+        end
+      RUBY
+
+      corrected_source = <<~RUBY
+        class Foo < Formula
+          depends_on "python@3.11"
+
+          def install
+            puts "python3.11"
+          end
+        end
+      RUBY
+
+      new_source = autocorrect_source(source)
+      expect(new_source).to eq(corrected_source)
     end
   end
 end
@@ -852,19 +1117,6 @@ describe RuboCop::Cop::FormulaAudit::Miscellaneous do
           url 'https://brew.sh/foo-1.0.tgz'
           if build?
             ENV.universal_binary
-          end
-        end
-      RUBY
-    end
-
-    it "deprecated ENV.x11 usage" do
-      expect_offense(<<~RUBY)
-        class Foo < Formula
-          desc "foo"
-          url 'https://brew.sh/foo-1.0.tgz'
-          if build?
-             ENV.x11
-             ^^^^^^^ Use "depends_on :x11" instead of "ENV.x11"
           end
         end
       RUBY
@@ -1074,7 +1326,7 @@ describe RuboCop::Cop::FormulaAudit::Miscellaneous do
           desc "foo"
           url 'https://brew.sh/foo-1.0.tgz'
           depends_on "lpeg" => :lua51
-                                ^^^^^ lua modules should be vendored rather than use deprecated depends_on \"lpeg\" => :lua51`
+                                ^^^^^ lua modules should be vendored rather than use deprecated `depends_on \"lpeg\" => :lua51`
         end
       RUBY
     end
@@ -1204,8 +1456,23 @@ end
 describe RuboCop::Cop::FormulaAuditStrict::MakeCheck do
   subject(:cop) { described_class.new }
 
+  let(:path) { Tap::TAP_DIRECTORY/"homebrew/homebrew-core" }
+
+  before do
+    path.mkpath
+    (path/"style_exceptions").mkpath
+  end
+
+  def setup_style_exceptions
+    (path/"style_exceptions/make_check_allowlist.json").write <<~JSON
+      [ "bar" ]
+    JSON
+  end
+
   it "build-time checks in homebrew/core" do
-    expect_offense(<<~RUBY, "/homebrew-core/")
+    setup_style_exceptions
+
+    expect_offense(<<~RUBY, "#{path}/Formula/foo.rb")
       class Foo < Formula
         desc "foo"
         url 'https://brew.sh/foo-1.0.tgz'
@@ -1215,7 +1482,17 @@ describe RuboCop::Cop::FormulaAuditStrict::MakeCheck do
     RUBY
   end
 
-  include_examples "formulae exist", described_class::MAKE_CHECK_ALLOWLIST
+  it "build-time checks in homebrew/core in allowlist" do
+    setup_style_exceptions
+
+    expect_no_offenses(<<~RUBY, "#{path}/Formula/bar.rb")
+      class Bar < Formula
+        desc "bar"
+        url 'https://brew.sh/bar-1.0.tgz'
+        system "make", "-j1", "test"
+      end
+    RUBY
+  end
 end
 
 describe RuboCop::Cop::FormulaAuditStrict::ShellCommands do

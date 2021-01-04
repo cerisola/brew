@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 module Cask
@@ -10,14 +11,19 @@ module Cask
     #
     # The return value of the last method in the block is also sent
     # to the output by the caller, but that feature is only for the
-    # convenience of Cask authors.
+    # convenience of cask authors.
     #
     # @api private
     class Caveats < Base
+      extend Predicable
+
+      attr_predicate :discontinued?
+
       def initialize(*args)
         super(*args)
         @built_in_caveats = {}
         @custom_caveats = []
+        @discontinued = false
       end
 
       def self.caveat(name, &block)
@@ -106,17 +112,17 @@ module Cask
         if java_version == :any
           <<~EOS
             #{@cask} requires Java. You can install the latest version with:
-              brew cask install adoptopenjdk
+              brew install --cask adoptopenjdk
           EOS
         elsif java_version.include?("11") || java_version.include?("+")
           <<~EOS
             #{@cask} requires Java #{java_version}. You can install the latest version with:
-              brew cask install adoptopenjdk
+              brew install --cask adoptopenjdk
           EOS
         else
           <<~EOS
             #{@cask} requires Java #{java_version}. You can install it with:
-              brew cask install homebrew/cask-versions/adoptopenjdk#{java_version}
+              brew install --cask homebrew/cask-versions/adoptopenjdk#{java_version}
           EOS
         end
       end
@@ -134,6 +140,7 @@ module Cask
       end
 
       caveat :discontinued do
+        @discontinued = true
         <<~EOS
           #{@cask} has been officially discontinued upstream.
           It may stop working correctly (or at all) in recent versions of macOS.

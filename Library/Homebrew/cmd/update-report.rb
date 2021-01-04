@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "formula_versions"
@@ -9,6 +10,8 @@ require "description_cache_store"
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
   def update_preinstall_header(args:)
@@ -18,6 +21,7 @@ module Homebrew
     end
   end
 
+  sig { returns(CLI::Parser) }
   def update_report_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -62,7 +66,7 @@ module Homebrew
     HOMEBREW_REPOSITORY.cd do
       donation_message_displayed =
         Utils.popen_read("git", "config", "--get", "homebrew.donationmessage").chomp == "true"
-      unless donation_message_displayed
+      if !donation_message_displayed && !args.quiet?
         ohai "Homebrew is run entirely by unpaid volunteers. Please consider donating:"
         puts "  #{Formatter.url("https://github.com/Homebrew/brew#donations")}\n"
 
@@ -74,6 +78,7 @@ module Homebrew
     install_core_tap_if_necessary
 
     updated = false
+    new_repository_version = nil
 
     initial_revision = ENV["HOMEBREW_UPDATE_BEFORE"].to_s
     current_revision = ENV["HOMEBREW_UPDATE_AFTER"].to_s
@@ -83,6 +88,22 @@ module Homebrew
       update_preinstall_header args: args
       puts "Updated Homebrew from #{shorten_revision(initial_revision)} to #{shorten_revision(current_revision)}."
       updated = true
+
+      old_tag = if (HOMEBREW_REPOSITORY/".git/config").exist?
+        Utils.popen_read(
+          "git", "config", "--file=#{HOMEBREW_REPOSITORY}/.git/config", "--get", "homebrew.latesttag"
+        ).chomp.presence
+      end
+
+      new_tag = Utils.popen_read(
+        "git", "-C", HOMEBREW_REPOSITORY, "tag", "--list", "--sort=-version:refname", "*.*"
+      ).lines.first.chomp
+
+      if new_tag != old_tag
+        system "git", "config", "--file=#{HOMEBREW_REPOSITORY}/.git/config",
+               "--replace-all", "homebrew.latesttag", new_tag
+        new_repository_version = new_tag
+      end
     end
 
     Homebrew.failed = true if ENV["HOMEBREW_UPDATE_FAILED"]
@@ -112,11 +133,9 @@ module Homebrew
       updated = true
     end
 
-    if !updated
-      puts "Already up-to-date." if !args.preinstall? && !ENV["HOMEBREW_UPDATE_FAILED"]
-    else
+    if updated
       if hub.empty?
-        puts "No changes to formulae."
+        puts "No changes to formulae." unless args.quiet?
       else
         hub.dump(updated_formula_report: !args.preinstall?)
         hub.reporters.each(&:migrate_tap_migration)
@@ -127,11 +146,28 @@ module Homebrew
         end
       end
       puts if args.preinstall?
+    elsif !args.preinstall? && !ENV["HOMEBREW_UPDATE_FAILED"]
+      puts "Already up-to-date." unless args.quiet?
     end
 
     Commands.rebuild_commands_completion_list
     link_completions_manpages_and_docs
     Tap.each(&:link_completions_and_manpages)
+
+    return if new_repository_version.blank?
+
+    ohai "Homebrew was updated to version #{new_repository_version}"
+    if new_repository_version.split(".").last == "0"
+      puts <<~EOS
+        More detailed release notes are available on the Homebrew Blog:
+          #{Formatter.url("https://brew.sh/blog/#{new_repository_version}")}
+      EOS
+    else
+      puts <<~EOS
+        The changelog can be found at:
+          #{Formatter.url("https://github.com/Homebrew/brew/releases/tag/#{new_repository_version}")}
+      EOS
+    end
   end
 
   def shorten_revision(revision)
@@ -310,7 +346,7 @@ class Reporter
         name
       end
 
-      # This means it is a Cask
+      # This means it is a cask
       if report[:DC].include? full_name
         next unless (HOMEBREW_PREFIX/"Caskroom"/new_name).exist?
 
@@ -318,7 +354,7 @@ class Reporter
         new_tap.install unless new_tap.installed?
         ohai "#{name} has been moved to Homebrew.", <<~EOS
           To uninstall the cask run:
-            brew cask uninstall --force #{name}
+            brew uninstall --cask --force #{name}
         EOS
         next if (HOMEBREW_CELLAR/new_name.split("/").last).directory?
 
@@ -348,8 +384,8 @@ class Reporter
           system HOMEBREW_BREW_FILE, "unlink", name
           ohai "brew cleanup"
           system HOMEBREW_BREW_FILE, "cleanup"
-          ohai "brew cask install #{new_name}"
-          system HOMEBREW_BREW_FILE, "cask", "install", new_name
+          ohai "brew install --cask #{new_name}"
+          system HOMEBREW_BREW_FILE, "install", "--cask", new_name
           ohai <<~EOS
             #{name} has been moved to Homebrew Cask.
             The existing keg has been unlinked.
@@ -361,7 +397,7 @@ class Reporter
             To uninstall the formula and install the cask run:
               brew uninstall --force #{name}
               brew tap #{new_tap_name}
-              brew cask install #{new_name}
+              brew install --cask #{new_name}
           EOS
         end
       else
@@ -412,10 +448,13 @@ class Reporter
 end
 
 class ReporterHub
+  extend T::Sig
+
   extend Forwardable
 
   attr_reader :reporters
 
+  sig { void }
   def initialize
     @hash = {}
     @reporters = []
@@ -449,29 +488,47 @@ class ReporterHub
     dump_formula_report :R, "Renamed Formulae"
     dump_formula_report :D, "Deleted Formulae"
     dump_formula_report :AC, "New Casks"
-    dump_formula_report :MC, "Updated Casks"
+    if updated_formula_report
+      dump_formula_report :MC, "Updated Casks"
+    else
+      updated = select_formula(:MC).count
+      if updated.positive?
+        ohai "Updated Casks"
+        puts "Updated #{updated} #{"cask".pluralize(updated)}."
+      end
+    end
     dump_formula_report :DC, "Deleted Casks"
   end
 
   private
 
   def dump_formula_report(key, title)
+    only_installed = Homebrew::EnvConfig.update_report_only_installed?
+
     formulae = select_formula(key).sort.map do |name, new_name|
       # Format list items of renamed formulae
       case key
       when :R
         name = pretty_installed(name) if installed?(name)
         new_name = pretty_installed(new_name) if installed?(new_name)
-        "#{name} -> #{new_name}"
+        "#{name} -> #{new_name}" unless only_installed
       when :A
-        name unless installed?(name)
+        name if !installed?(name) && !only_installed
       when :AC
-        name.split("/").last unless cask_installed?(name)
+        name.split("/").last if !cask_installed?(name) && !only_installed
       when :MC, :DC
         name = name.split("/").last
-        cask_installed?(name) ? pretty_installed(name) : name
+        if cask_installed?(name)
+          pretty_installed(name)
+        elsif !only_installed
+          name
+        end
       else
-        installed?(name) ? pretty_installed(name) : name
+        if installed?(name)
+          pretty_installed(name)
+        elsif !only_installed
+          name
+        end
       end
     end.compact
 

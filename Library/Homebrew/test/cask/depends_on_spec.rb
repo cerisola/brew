@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 # TODO: this test should be named after the corresponding class, once
@@ -67,39 +68,6 @@ describe "Satisfy Dependencies and Requirements", :cask do
   describe "depends_on arch" do
     context "when satisfied" do
       let(:cask) { Cask::CaskLoader.load(cask_path("with-depends-on-arch")) }
-
-      it "does not raise an error" do
-        expect { install }.not_to raise_error
-      end
-    end
-  end
-
-  describe "depends_on x11" do
-    before do
-      allow(MacOS::X11).to receive(:installed?).and_return(x11_installed)
-    end
-
-    context "when satisfied" do
-      let(:cask) { Cask::CaskLoader.load(cask_path("with-depends-on-x11")) }
-      let(:x11_installed) { true }
-
-      it "does not raise an error" do
-        expect { install }.not_to raise_error
-      end
-    end
-
-    context "when not satisfied" do
-      let(:cask) { Cask::CaskLoader.load(cask_path("with-depends-on-x11")) }
-      let(:x11_installed) { false }
-
-      it "does not raise an error" do
-        expect { install }.to raise_error Cask::CaskX11DependencyError
-      end
-    end
-
-    context "when depends_on x11: false" do
-      let(:cask) { Cask::CaskLoader.load(cask_path("with-depends-on-x11-false")) }
-      let(:x11_installed) { false }
 
       it "does not raise an error" do
         expect { install }.not_to raise_error

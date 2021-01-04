@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "formula"
@@ -6,8 +7,11 @@ require "utils/pypi"
 require "utils/tar"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def bump_formula_pr_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -42,6 +46,8 @@ module Homebrew
              description: "Don't run `brew audit` before opening the PR."
       switch "--strict",
              description: "Run `brew audit --strict` before opening the PR."
+      switch "--online",
+             description: "Run `brew audit --online` before opening the PR."
       switch "--no-browse",
              description: "Print the pull request URL instead of opening in a browser."
       switch "--no-fork",
@@ -64,61 +70,60 @@ module Homebrew
       flag   "--tag=",
              description: "Specify the new git commit <tag> for the formula."
       flag   "--revision=",
-             depends_on:  "--tag=",
-             description: "Specify the new git commit <revision> corresponding to the specified <tag>."
+             description: "Specify the new commit <revision> corresponding to the specified git <tag> "\
+                          "or specified <version>."
       switch "-f", "--force",
-             description: "Ignore duplicate open PRs. Remove all mirrors if --mirror= was not specified."
+             description: "Ignore duplicate open PRs. Remove all mirrors if `--mirror` was not specified."
 
       conflicts "--dry-run", "--write"
       conflicts "--no-audit", "--strict"
+      conflicts "--no-audit", "--online"
       conflicts "--url", "--tag"
       max_named 1
     end
   end
 
   def use_correct_linux_tap(formula, args:)
-    if OS.linux? && formula.tap.core_tap?
-      tap_full_name = formula.tap.full_name.gsub("linuxbrew", "homebrew")
-      homebrew_core_url = "https://github.com/#{tap_full_name}"
-      homebrew_core_remote = "homebrew"
-      homebrew_core_branch = "master"
-      origin_branch = "#{homebrew_core_remote}/#{homebrew_core_branch}"
-      previous_branch = Utils.popen_read("git -C \"#{formula.tap.path}\" symbolic-ref -q --short HEAD").chomp
-      previous_branch = "master" if previous_branch.empty?
-      formula_path = formula.path.to_s[%r{(Formula/.*)}, 1]
+    default_origin_branch = formula.tap.path.git_origin_branch if formula.tap
 
-      if args.dry_run? || args.write?
-        ohai "git remote add #{homebrew_core_remote} #{homebrew_core_url}"
-        ohai "git fetch #{homebrew_core_remote} #{homebrew_core_branch}"
-        ohai "git cat-file -e #{origin_branch}:#{formula_path}"
-        ohai "git checkout #{origin_branch}"
-        return tap_full_name, origin_branch, previous_branch
-      else
-        formula.path.parent.cd do
-          unless Utils.popen_read("git remote -v").match?(%r{^homebrew.*Homebrew/homebrew-core.*$})
-            ohai "Adding #{homebrew_core_remote} remote"
-            safe_system "git", "remote", "add", homebrew_core_remote, homebrew_core_url
-          end
-          ohai "Fetching #{origin_branch}"
-          safe_system "git", "fetch", homebrew_core_remote, homebrew_core_branch
-          if quiet_system "git", "cat-file", "-e", "#{origin_branch}:#{formula_path}"
-            ohai "#{formula.full_name} exists in #{origin_branch}"
-            safe_system "git", "checkout", origin_branch
-            return tap_full_name, origin_branch, previous_branch
-          end
-        end
+    return formula.tap&.full_name, "origin", default_origin_branch, "-" if !OS.linux? || !formula.tap.core_tap?
+
+    tap_full_name = formula.tap.full_name.gsub("linuxbrew", "homebrew")
+    homebrew_core_url = "https://github.com/#{tap_full_name}"
+    homebrew_core_remote = "homebrew"
+    previous_branch = formula.tap.path.git_branch || "master"
+    formula_path = formula.path.relative_path_from(formula.tap.path)
+    full_origin_branch = "#{homebrew_core_remote}/#{default_origin_branch}"
+
+    if args.dry_run? || args.write?
+      ohai "git remote add #{homebrew_core_remote} #{homebrew_core_url}"
+      ohai "git fetch #{homebrew_core_remote} HEAD #{default_origin_branch}"
+      ohai "git cat-file -e #{full_origin_branch}:#{formula_path}"
+      ohai "git checkout #{full_origin_branch}"
+      return tap_full_name, homebrew_core_remote, default_origin_branch, previous_branch
+    end
+
+    formula.tap.path.cd do
+      unless Utils.popen_read("git remote -v").match?(%r{^homebrew.*Homebrew/homebrew-core.*$})
+        ohai "Adding #{homebrew_core_remote} remote"
+        safe_system "git", "remote", "add", homebrew_core_remote, homebrew_core_url
+      end
+      ohai "Fetching remote #{homebrew_core_remote}"
+      safe_system "git", "fetch", homebrew_core_remote, "HEAD", default_origin_branch
+      if quiet_system "git", "cat-file", "-e", "#{full_origin_branch}:#{formula_path}"
+        ohai "#{formula.full_name} exists in #{full_origin_branch}"
+        safe_system "git", "checkout", full_origin_branch
+        return tap_full_name, homebrew_core_remote, default_origin_branch, previous_branch
       end
     end
-    if formula.tap
-      origin_branch = Utils.popen_read("git", "-C", formula.tap.path.to_s, "symbolic-ref", "-q", "--short",
-                                       "refs/remotes/origin/HEAD").chomp.presence
-    end
-    origin_branch ||= "origin/master"
-    [formula.tap&.full_name, origin_branch, "-"]
   end
 
   def bump_formula_pr
     args = bump_formula_pr_args.parse
+
+    if args.revision.present? && args.tag.nil? && args.version.nil?
+      raise UsageError, "`--revision` must be passed with either `--tag` or `--version`!"
+    end
 
     # As this command is simplifying user-run commands then let's just use a
     # user path, too.
@@ -133,14 +138,18 @@ module Homebrew
     formula ||= determine_formula_from_url(new_url) if new_url
     raise FormulaUnspecifiedError unless formula
 
-    tap_full_name, origin_branch, previous_branch = use_correct_linux_tap(formula, args: args)
+    odie "This formula is disabled!" if formula.disabled?
+
+    tap_full_name, remote, remote_branch, previous_branch = use_correct_linux_tap(formula, args: args)
     check_open_pull_requests(formula, tap_full_name, args: args)
 
     new_version = args.version
     check_closed_pull_requests(formula, tap_full_name, version: new_version, args: args) if new_version
 
     opoo "This formula has patches that may be resolved upstream." if formula.patchlist.present?
-    opoo "This formula has resources that may need to be updated." if formula.resources.present?
+    if formula.resources.any? { |resource| !resource.name.start_with?("homebrew-") }
+      opoo "This formula has resources that may need to be updated."
+    end
 
     requested_spec = :stable
     formula_spec = formula.stable
@@ -172,21 +181,28 @@ module Homebrew
       check_closed_pull_requests(formula, tap_full_name, url: old_url, tag: new_tag, args: args) unless new_version
       false
     elsif !hash_type
-      odie "#{formula}: no --tag= or --version= argument specified!" if !new_tag && !new_version
-      new_tag ||= old_tag.gsub(old_version, new_version)
-      if new_tag == old_tag
-        odie <<~EOS
-          You need to bump this formula manually since the new tag
-          and old tag are both #{new_tag}.
-        EOS
+      if !new_tag && !new_version && !new_revision
+        raise UsageError, "#{formula}: no --tag= or --version= argument specified!"
       end
-      check_closed_pull_requests(formula, tap_full_name, url: old_url, tag: new_tag, args: args) unless new_version
-      resource_path, forced_version = fetch_resource(formula, new_version, old_url, tag: new_tag)
-      new_revision = Utils.popen_read("git -C \"#{resource_path}\" rev-parse -q --verify HEAD")
-      new_revision = new_revision.strip
+
+      if old_tag
+        new_tag ||= old_tag.gsub(old_version, new_version)
+        if new_tag == old_tag
+          odie <<~EOS
+            You need to bump this formula manually since the new tag
+            and old tag are both #{new_tag}.
+          EOS
+        end
+        check_closed_pull_requests(formula, tap_full_name, url: old_url, tag: new_tag, args: args) unless new_version
+        resource_path, forced_version = fetch_resource(formula, new_version, old_url, tag: new_tag)
+        new_revision = Utils.popen_read("git -C \"#{resource_path}\" rev-parse -q --verify HEAD")
+        new_revision = new_revision.strip
+      else
+        odie "#{formula}: the current URL requires specifying a --revision= argument." unless new_revision
+      end
       false
     elsif !new_url && !new_version
-      odie "#{formula}: no --url= or --version= argument specified!"
+      raise UsageError, "#{formula}: no --url= or --version= argument specified!"
     else
       new_url ||= PyPI.update_pypi_url(old_url, new_version)
       unless new_url
@@ -236,12 +252,30 @@ module Homebrew
           new_hash,
         ],
       ]
-    else
+    elsif new_tag
       [
         [
           formula_spec.specs[:tag],
           new_tag,
         ],
+        [
+          formula_spec.specs[:revision],
+          new_revision,
+        ],
+      ]
+    elsif new_url
+      [
+        [
+          /#{Regexp.escape(formula_spec.url)}/,
+          new_url,
+        ],
+        [
+          formula_spec.specs[:revision],
+          new_revision,
+        ],
+      ]
+    else
+      [
         [
           formula_spec.specs[:revision],
           new_revision,
@@ -307,8 +341,8 @@ module Homebrew
     if new_formula_version < old_formula_version
       formula.path.atomic_write(old_contents) unless args.dry_run?
       odie <<~EOS
-        You need to bump this formula manually since changing the
-        version from #{old_formula_version} to #{new_formula_version} would be a downgrade.
+        You need to bump this formula manually since changing the version
+        from #{old_formula_version} to #{new_formula_version} would be a downgrade.
       EOS
     elsif new_formula_version == old_formula_version
       formula.path.atomic_write(old_contents) unless args.dry_run?
@@ -325,22 +359,33 @@ module Homebrew
     end
 
     unless args.dry_run?
-      PyPI.update_python_resources! formula, new_formula_version, silent: args.quiet?, ignore_non_pypi_packages: true
+      resources_checked = PyPI.update_python_resources! formula, version: new_formula_version,
+                                                        silent: args.quiet?, ignore_non_pypi_packages: true
     end
 
     run_audit(formula, alias_rename, old_contents, args: args)
+
+    pr_message = "Created with `brew bump-formula-pr`."
+    if resources_checked.nil? && formula.resources.any? { |resource| !resource.name.start_with?("homebrew-") }
+      pr_message += <<~EOS
+
+
+        `resource` blocks may require updates.
+      EOS
+    end
 
     pr_info = {
       sourcefile_path:  formula.path,
       old_contents:     old_contents,
       additional_files: alias_rename,
-      origin_branch:    origin_branch,
+      remote:           remote,
+      remote_branch:    remote_branch,
       branch_name:      "bump-#{formula.name}-#{new_formula_version}",
       commit_message:   "#{formula.name} #{new_formula_version}",
       previous_branch:  previous_branch,
       tap:              formula.tap,
       tap_full_name:    tap_full_name,
-      pr_message:       "Created with `brew bump-formula-pr`.",
+      pr_message:       pr_message,
     }
     GitHub.create_bump_pr(pr_info, args: args)
   end
@@ -438,11 +483,14 @@ module Homebrew
   end
 
   def run_audit(formula, alias_rename, old_contents, args:)
+    audit_args = []
+    audit_args << "--strict" if args.strict?
+    audit_args << "--online" if args.online?
     if args.dry_run?
       if args.no_audit?
         ohai "Skipping `brew audit`"
-      elsif args.strict?
-        ohai "brew audit --strict #{formula.path.basename}"
+      elsif audit_args.present?
+        ohai "brew audit #{audit_args.join(" ")} #{formula.path.basename}"
       else
         ohai "brew audit #{formula.path.basename}"
       end
@@ -452,8 +500,8 @@ module Homebrew
     failed_audit = false
     if args.no_audit?
       ohai "Skipping `brew audit`"
-    elsif args.strict?
-      system HOMEBREW_BREW_FILE, "audit", "--strict", formula.path
+    elsif audit_args.present?
+      system HOMEBREW_BREW_FILE, "audit", *audit_args, formula.path
       failed_audit = !$CHILD_STATUS.success?
     else
       system HOMEBREW_BREW_FILE, "audit", formula.path

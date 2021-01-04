@@ -1,39 +1,17 @@
+# typed: false
 # frozen_string_literal: true
 
 module Stdenv
   # @private
 
-  undef homebrew_extra_pkg_config_paths, x11
+  undef homebrew_extra_pkg_config_paths
 
   def homebrew_extra_pkg_config_paths
     ["#{HOMEBREW_LIBRARY}/Homebrew/os/mac/pkgconfig/#{MacOS.version}"]
   end
 
-  def x11
-    # There are some config scripts here that should go in the PATH
-    append_path "PATH", MacOS::X11.bin.to_s
-
-    # Append these to PKG_CONFIG_LIBDIR so they are searched
-    # *after* our own pkgconfig directories, as we dupe some of the
-    # libs in XQuartz.
-    append_path "PKG_CONFIG_LIBDIR", "#{MacOS::X11.lib}/pkgconfig"
-    append_path "PKG_CONFIG_LIBDIR", "#{MacOS::X11.share}/pkgconfig"
-
-    append "LDFLAGS", "-L#{MacOS::X11.lib}"
-    append_path "CMAKE_PREFIX_PATH", MacOS::X11.prefix.to_s
-    append_path "CMAKE_INCLUDE_PATH", MacOS::X11.include.to_s
-    append_path "CMAKE_INCLUDE_PATH", "#{MacOS::X11.include}/freetype2"
-
-    append "CPPFLAGS", "-I#{MacOS::X11.include}"
-    append "CPPFLAGS", "-I#{MacOS::X11.include}/freetype2"
-
-    append_path "ACLOCAL_PATH", "#{MacOS::X11.share}/aclocal"
-
-    append "CFLAGS", "-I#{MacOS::X11.include}" unless MacOS::CLT.installed?
-  end
-
-  def setup_build_environment(**options)
-    generic_setup_build_environment(**options)
+  def setup_build_environment(formula: nil, cc: nil, build_bottle: false, bottle_arch: nil, testing_formula: false)
+    generic_setup_build_environment(formula: formula, cc: cc, build_bottle: build_bottle, bottle_arch: bottle_arch)
 
     # sed is strict, and errors out when it encounters files with
     # mixed character sets
@@ -41,7 +19,7 @@ module Stdenv
     self["LC_CTYPE"] = "C"
 
     # Add lib and include etc. from the current macosxsdk to compiler flags:
-    macosxsdk(formula: @formula)
+    macosxsdk(formula: @formula, testing_formula: testing_formula)
 
     return unless MacOS::Xcode.without_clt?
 
@@ -72,7 +50,7 @@ module Stdenv
     remove "CMAKE_FRAMEWORK_PATH", "#{sdk}/System/Library/Frameworks"
   end
 
-  def macosxsdk(version = nil, formula: nil)
+  def macosxsdk(version = nil, formula: nil, testing_formula: false)
     # Sets all needed lib and include dirs to CFLAGS, CPPFLAGS, LDFLAGS.
     remove_macosxsdk
     min_version = version || MacOS.version
@@ -80,9 +58,14 @@ module Stdenv
     self["CPATH"] = "#{HOMEBREW_PREFIX}/include"
     prepend "LDFLAGS", "-L#{HOMEBREW_PREFIX}/lib"
 
-    sdk = formula ? MacOS.sdk_for_formula(formula, version) : MacOS.sdk(version)
+    sdk = if formula
+      MacOS.sdk_for_formula(formula, version, check_only_runtime_requirements: testing_formula)
+    else
+      MacOS.sdk(version)
+    end
     return if !MacOS.sdk_root_needed? && sdk&.source != :xcode
 
+    Homebrew::Diagnostic.checks(:fatal_setup_build_environment_checks)
     sdk = sdk.path
 
     # Extra setup to support Xcode 4.3+ without CLT.
@@ -99,8 +82,8 @@ module Stdenv
     append_path "CMAKE_FRAMEWORK_PATH", "#{sdk}/System/Library/Frameworks"
   end
 
-  # Some configure scripts won't find libxml2 without help
-  # This is a no-op with macOS SDK 10.15.4 and later
+  # Some configure scripts won't find libxml2 without help.
+  # This is a no-op with macOS SDK 10.15.4 and later.
   def libxml2
     sdk = self["SDKROOT"] || MacOS.sdk_path_if_needed
     if !sdk

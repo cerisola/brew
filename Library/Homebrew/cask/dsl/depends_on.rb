@@ -1,4 +1,7 @@
+# typed: false
 # frozen_string_literal: true
+
+require "delegate"
 
 require "requirements/macos_requirement"
 
@@ -7,7 +10,7 @@ module Cask
     # Class corresponding to the `depends_on` stanza.
     #
     # @api private
-    class DependsOn < DelegateClass(Hash)
+    class DependsOn < SimpleDelegator
       VALID_KEYS = Set.new([
                              :formula,
                              :cask,
@@ -21,10 +24,10 @@ module Cask
         intel:  { type: :intel, bits: 64 },
         # specific
         x86_64: { type: :intel, bits: 64 },
+        arm64:  { type: :arm, bits: 64 },
       }.freeze
 
-      attr_accessor :java
-      attr_reader :arch, :cask, :formula, :macos, :x11
+      attr_reader :arch, :cask, :formula, :java, :macos, :x11
 
       def initialize
         super({})
@@ -60,11 +63,11 @@ module Cask
             MacOSRequirement.new([version.to_sym], comparator: comparator)
           elsif /^\s*(?<comparator><|>|[=<>]=)\s*(?<version>\S+)\s*$/ =~ args.first
             MacOSRequirement.new([version], comparator: comparator)
-          else
+          else # rubocop:disable Lint/DuplicateBranch
             MacOSRequirement.new([args.first], comparator: "==")
           end
-        rescue MacOSVersionError
-          raise "invalid 'depends_on macos' value: #{args.first.inspect}"
+        rescue MacOSVersionError => e
+          raise "invalid 'depends_on macos' value: #{e}"
         end
       end
 
@@ -79,8 +82,16 @@ module Cask
         @arch.concat(arches.map { |arch| VALID_ARCHES[arch] })
       end
 
+      def java=(arg)
+        odeprecated "depends_on :java", "depends_on a specific Java formula"
+
+        @java = arg
+      end
+
       def x11=(arg)
         raise "invalid 'depends_on x11' value: #{arg.inspect}" unless [true, false].include?(arg)
+
+        odeprecated "depends_on :x11", "depends_on specific X11 formula(e)"
 
         @x11 = arg
       end

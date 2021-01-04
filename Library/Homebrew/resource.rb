@@ -1,9 +1,11 @@
+# typed: true
 # frozen_string_literal: true
 
 require "download_strategy"
 require "checksum"
 require "version"
 require "mktemp"
+require "extend/on_os"
 
 # Resource is the fundamental representation of an external resource. The
 # primary formula download, along with other declared resources, are instances
@@ -11,15 +13,18 @@ require "mktemp"
 #
 # @api private
 class Resource
+  extend T::Sig
+
   include Context
   include FileUtils
+  include OnOS
 
   attr_reader :mirrors, :specs, :using, :source_modified_time, :patches, :owner
   attr_writer :version
   attr_accessor :download_strategy, :checksum
 
   # Formula name must be set after the DSL, as we have no access to the
-  # formula name before initialization of the formula
+  # formula name before initialization of the formula.
   attr_accessor :name
 
   def initialize(name = nil, &block)
@@ -31,7 +36,7 @@ class Resource
     @checksum = nil
     @using = nil
     @patches = []
-    instance_eval(&block) if block_given?
+    instance_eval(&block) if block
   end
 
   def owner=(owner)
@@ -44,9 +49,9 @@ class Resource
                                           mirrors: mirrors.dup, **specs)
   end
 
-  # Removes /s from resource names; this allows go package names
+  # Removes /s from resource names; this allows Go package names
   # to be used as resource names without confusing software that
-  # interacts with download_name, e.g. github.com/foo/bar
+  # interacts with {download_name}, e.g. `github.com/foo/bar`.
   def escaped_name
     name.tr("/", "-")
   end
@@ -145,13 +150,16 @@ class Resource
 
   def verify_download_integrity(fn)
     if fn.file?
-      ohai "Verifying #{fn.basename} checksum" if verbose?
+      ohai "Verifying checksum for '#{fn.basename}'." if verbose?
       fn.verify_checksum(checksum)
     end
   rescue ChecksumMissingError
-    opoo "Cannot verify integrity of #{fn.basename}"
-    puts "A checksum was not provided for this resource."
-    puts "For your reference the SHA-256 is: #{fn.sha256}"
+    opoo <<~EOS
+      Cannot verify integrity of '#{fn.basename}'.
+      No checksum was provided for this resource.
+      For your reference, the checksum is:
+        sha256 "#{fn.sha256}"
+    EOS
   end
 
   Checksum::TYPES.each do |type|
@@ -183,18 +191,6 @@ class Resource
     patches << p
   end
 
-  # Block only executed on macOS. No-op on Linux.
-  # <pre>on_macos do
-  #   url "mac_only_url"
-  # end</pre>
-  def on_macos(&_block); end
-
-  # Block only executed on Linux. No-op on macOS.
-  # <pre>on_linux do
-  #   url "linux_only_url"
-  # end</pre>
-  def on_linux(&_block); end
-
   protected
 
   def mktemp(prefix, &block)
@@ -217,8 +213,8 @@ class Resource
 
   # A resource containing a Go package.
   class Go < Resource
-    def stage(target)
-      super(target/name)
+    def stage(target, &block)
+      super(target/name, &block)
     end
   end
 
@@ -246,17 +242,19 @@ class Resource
   end
 end
 
-# The context in which a {Resource.stage} occurs. Supports access to both
+# The context in which a {Resource#stage} occurs. Supports access to both
 # the {Resource} and associated {Mktemp} in a single block argument. The interface
 # is back-compatible with {Resource} itself as used in that context.
 #
 # @api private
 class ResourceStageContext
+  extend T::Sig
+
   extend Forwardable
 
-  # The {Resource} that is being staged
+  # The {Resource} that is being staged.
   attr_reader :resource
-  # The {Mktemp} in which {#resource} is staged
+  # The {Mktemp} in which {#resource} is staged.
   attr_reader :staging
 
   def_delegators :@resource, :version, :url, :mirrors, :specs, :using, :source_modified_time
@@ -267,9 +265,8 @@ class ResourceStageContext
     @staging = staging
   end
 
+  sig { returns(String) }
   def to_s
     "<#{self.class}: resource=#{resource} staging=#{staging}>"
   end
 end
-
-require "extend/os/resource"

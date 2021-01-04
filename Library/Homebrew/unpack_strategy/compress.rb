@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require_relative "tar"
@@ -5,8 +6,11 @@ require_relative "tar"
 module UnpackStrategy
   # Strategy for unpacking compress archives.
   class Compress < Tar
+    extend T::Sig
+
     using Magic
 
+    sig { returns(T::Array[String]) }
     def self.extensions
       [".Z"]
     end

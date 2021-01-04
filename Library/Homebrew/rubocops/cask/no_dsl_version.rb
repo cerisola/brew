@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require "forwardable"
@@ -18,6 +19,8 @@ module RuboCop
       #     ...
       #   end
       class NoDslVersion < Cop
+        extend T::Sig
+
         extend Forwardable
         include CaskHelp
 
@@ -55,6 +58,7 @@ module RuboCop
                                                 message:  error_msg)
         end
 
+        sig { returns(String) }
         def error_msg
           format(MESSAGE, preferred: preferred_header_str, current: header_str)
         end

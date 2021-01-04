@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "requirement"
@@ -6,21 +7,17 @@ require "requirement"
 #
 # @api private
 class MacOSRequirement < Requirement
+  extend T::Sig
+
   fatal true
 
   attr_reader :comparator, :version
 
   def initialize(tags = [], comparator: ">=")
-    begin
-      @version = if comparator == "==" && tags.first.respond_to?(:map)
-        tags.shift.map { |s| MacOS::Version.from_symbol(s) }
-      else
-        MacOS::Version.from_symbol(tags.shift) unless tags.empty?
-      end
-    rescue MacOSVersionError => e
-      raise if e.version != :mavericks
-
-      odisabled "depends_on :macos => :mavericks"
+    @version = if comparator == "==" && tags.first.respond_to?(:map)
+      tags.shift.map { |s| MacOS::Version.from_symbol(s) }
+    else
+      MacOS::Version.from_symbol(tags.shift) unless tags.empty?
     end
 
     @comparator = comparator
@@ -40,11 +37,11 @@ class MacOSRequirement < Requirement
   end
 
   def message(type: :formula)
-    return "macOS is required." unless version_specified?
+    return "macOS is required for this software." unless version_specified?
 
     case @comparator
     when ">="
-      "macOS #{@version.pretty_name} or newer is required."
+      "macOS #{@version.pretty_name} or newer is required for this software."
     when "<="
       case type
       when :formula
@@ -58,21 +55,29 @@ class MacOSRequirement < Requirement
     else
       if @version.respond_to?(:to_ary)
         *versions, last = @version.map(&:pretty_name)
-        return "macOS #{versions.join(", ")} or #{last} is required."
+        return "macOS #{versions.join(", ")} or #{last} is required for this software."
       end
 
-      "macOS #{@version.pretty_name} is required."
+      "macOS #{@version.pretty_name} is required for this software."
     end
   end
 
+  sig { returns(String) }
   def inspect
-    "#<#{self.class.name}: #{tags.inspect} version#{@comparator}#{@version}>"
+    "#<#{self.class.name}: version#{@comparator}#{@version.to_s.inspect} #{tags.inspect}>"
   end
 
+  sig { returns(String) }
   def display_s
-    return "macOS is required" unless version_specified?
-
-    "macOS #{@comparator} #{@version}"
+    if version_specified?
+      if @version.respond_to?(:to_ary)
+        "macOS #{@comparator} #{version.join(" / ")}"
+      else
+        "macOS #{@comparator} #{@version}"
+      end
+    else
+      "macOS"
+    end
   end
 
   def to_json(*args)

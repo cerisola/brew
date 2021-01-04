@@ -1,11 +1,15 @@
+# typed: false
 # frozen_string_literal: true
 
 require "formula"
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def log_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -24,8 +28,9 @@ module Homebrew
              description: "Print only one commit."
       flag   "-n", "--max-count=",
              description: "Print only a specified number of commits."
-      max_named 1
+
       conflicts "-1", "--max-count"
+      max_named 1
     end
   end
 

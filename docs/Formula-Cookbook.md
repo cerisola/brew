@@ -191,7 +191,7 @@ As a general rule, [`conflicts_with`](https://rubydoc.brew.sh/Formula#conflicts_
 The syntax for a conflict that can’t be worked around is:
 
 ```ruby
-conflicts_with "blueduck", :because => "yellowduck also ships a duck binary"
+conflicts_with "blueduck", because: "yellowduck also ships a duck binary"
 ```
 
 ### Formulae revisions
@@ -749,6 +749,40 @@ Homebrew provides two formula DSL methods for launchd plist files:
 * [`plist_name`](https://rubydoc.brew.sh/Formula#plist_name-instance_method) will return e.g. `homebrew.mxcl.<formula>`
 * [`plist_path`](https://rubydoc.brew.sh/Formula#plist_path-instance_method) will return e.g. `/usr/local/Cellar/foo/0.1/homebrew.mxcl.foo.plist`
 
+There is two ways to add plists to a formula, so that [`brew services`](https://github.com/Homebrew/homebrew-services) can pick it up:
+1. If the formula already provides a plist file the formula can install it into the prefix like so.
+
+```ruby
+prefix.install_symlink "file.plist" => "#{plist_name}.plist"
+```
+
+1. If the formula does not provide a plist you can add a plist using the following stanzas.
+This will define what the user can run manually instead of the launchd service.
+```ruby
+  plist_options manual: "#{HOMEBREW_PREFIX}/var/some/bin/stuff run"
+```
+
+This provides the actual plist file, see [Apple's plist(5) man page](https://www.unix.com/man-page/mojave/5/plist/) for more information.
+```ruby
+  def plist
+    <<~EOS
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+        <dict>
+          <key>Label</key>
+          <string>#{plist_name}</string>
+          <key>ProgramArguments</key>
+          <array>
+            <string>#{var}/some/bin/stuff</string>
+            <string>run</string>
+          </array>
+        </dict>
+      </plist>
+    EOS
+  end
+```
+
 ### Using environment variables
 
 Homebrew has multiple levels of environment variable filtering which affects variables available to formulae.
@@ -757,7 +791,13 @@ Firstly, the overall environment in which Homebrew runs is filtered to avoid env
 
 The second level of filtering removes sensitive environment variables (such as credentials like keys, passwords or tokens) to avoid malicious subprocesses obtaining them (<https://github.com/Homebrew/brew/pull/2524>). This has the effect of preventing any such variables from reaching a formula's Ruby code as they are filtered before it is called. The specific implementation can be seen in the [`ENV.clear_sensitive_environment!` method](https://github.com/Homebrew/brew/blob/HEAD/Library/Homebrew/extend/ENV.rb).
 
+You can set environment variables in a formula's `install` method using `ENV["VARIABLE_NAME"] = "VALUE"`. An example can be seen in [the `gh` formula](https://github.com/Homebrew/homebrew-core/blob/fd9ad29f8e3ca9476f838ebb13794ddb7dafba00/Formula/gh.rb#L22). Environment variables can also be set temporarily using the `with_env` method; any variables defined in the call to that method will be restored to their original values at the end of the block. An example can be seen in [the `csound` formula](https://github.com/Homebrew/homebrew-core/blob/c3feaff8cdb578331385676620c865796cfc3388/Formula/csound.rb#L155-L157).
+
 In summary, environment variables used by a formula need to conform to these filtering rules in order to be available.
+
+### Deprecating and disabling a formula
+
+See our [Deprecating, Disabling, and Removing Formulae](Deprecating-Disabling-and-Removing-Formulae.md) documentation for more information about how and when to deprecate or disable a formula.
 
 ## Updating formulae
 

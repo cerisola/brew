@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "rubocops/text"
@@ -244,61 +245,6 @@ describe RuboCop::Cop::FormulaAudit::Text do
           def install
             ohai "foo \#{bar + "baz"}"
                       ^^^^^^^^^^^^^^ Do not concatenate paths in string interpolation
-          end
-        end
-      RUBY
-    end
-
-    it "When using JAVA_HOME without a java dependency" do
-      expect_offense(<<~RUBY)
-        class Foo < Formula
-          def install
-            ohai "JAVA_HOME"
-                 ^^^^^^^^^^^ Use `depends_on :java` to set JAVA_HOME
-          end
-        end
-      RUBY
-    end
-
-    it "When using JAVA_HOME with an openjdk dependency" do
-      expect_no_offenses(<<~RUBY)
-        class Foo < Formula
-          depends_on "openjdk"
-          def install
-            ohai "JAVA_HOME"
-          end
-        end
-      RUBY
-    end
-
-    it "When using JAVA_HOME with an openjdk build dependency" do
-      expect_no_offenses(<<~RUBY)
-        class Foo < Formula
-          depends_on "openjdk" => :build
-          def install
-            ohai "JAVA_HOME"
-          end
-        end
-      RUBY
-    end
-
-    it "When using JAVA_HOME with a java dependency" do
-      expect_no_offenses(<<~RUBY)
-        class Foo < Formula
-          depends_on :java
-          def install
-            ohai "JAVA_HOME"
-          end
-        end
-      RUBY
-    end
-
-    it "When using JAVA_HOME with a java build dependency" do
-      expect_no_offenses(<<~RUBY)
-        class Foo < Formula
-          depends_on :java => :build
-          def install
-            ohai "JAVA_HOME"
           end
         end
       RUBY

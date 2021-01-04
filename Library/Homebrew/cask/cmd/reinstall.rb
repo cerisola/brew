@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 module Cask
@@ -6,10 +7,14 @@ module Cask
     #
     # @api private
     class Reinstall < Install
+      extend T::Sig
+
+      sig { returns(String) }
       def self.description
         "Reinstalls the given <cask>."
       end
 
+      sig { void }
       def run
         self.class.reinstall_casks(
           *casks,
@@ -24,9 +29,9 @@ module Cask
 
       def self.reinstall_casks(
         *casks,
-        verbose: false,
-        force: false,
-        skip_cask_deps: false,
+        verbose: nil,
+        force: nil,
+        skip_cask_deps: nil,
         binaries: nil,
         require_sha: nil,
         quarantine: nil

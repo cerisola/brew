@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "formula"
@@ -6,8 +7,11 @@ require "cli/parser"
 require "commands"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def options_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS

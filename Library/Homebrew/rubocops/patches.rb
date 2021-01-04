@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require "rubocops/extend/formula"
@@ -6,8 +7,10 @@ require "extend/string"
 module RuboCop
   module Cop
     module FormulaAudit
-      # This cop audits patches in Formulae.
+      # This cop audits `patch`es in formulae.
       class Patches < FormulaCop
+        extend T::Sig
+
         def audit_formula(node, _class_node, _parent_class_node, body)
           @full_source_content = source_buffer(node).source
 
@@ -45,6 +48,20 @@ module RuboCop
 
           if regex_match_group(patch, %r{.*gitlab.*/merge_request.*})
             problem "Use a commit hash URL rather than an unstable merge request URL: #{patch_url}"
+          end
+
+          if regex_match_group(patch, %r{https://github.com/[^/]*/[^/]*/commit/[a-fA-F0-9]*\.diff})
+            problem <<~EOS.chomp
+              GitHub patches should end with .patch, not .diff:
+                #{patch_url}
+            EOS
+          end
+
+          if regex_match_group(patch, %r{.*gitlab.*/commit/[a-fA-F0-9]*\.diff})
+            problem <<~EOS.chomp
+              GitLab patches should end with .patch, not .diff:
+                #{patch_url}
+            EOS
           end
 
           gh_patch_param_pattern = %r{https?://github\.com/.+/.+/(?:commit|pull)/[a-fA-F0-9]*.(?:patch|diff)}
@@ -106,6 +123,7 @@ module RuboCop
           (send nil? :patch (:sym :DATA))
         AST
 
+        sig { returns(T::Boolean) }
         def patch_end?
           /^__END__$/.match?(@full_source_content)
         end

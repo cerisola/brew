@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "utils/github/actions"
@@ -8,6 +9,9 @@ module Cask
     #
     # @api private
     class Audit < AbstractCommand
+      extend T::Sig
+
+      sig { returns(String) }
       def self.description
         <<~EOS
           Check <cask> for Homebrew coding style violations. This should be run before
@@ -36,47 +40,83 @@ module Cask
         end
       end
 
+      sig { void }
       def run
-        require "cask/auditor"
+        casks = args.named.flat_map do |name|
+          next name if File.exist?(name)
+          next Tap.fetch(name).cask_files if name.count("/") == 1
 
-        Homebrew.auditing = true
+          name
+        end
+        casks = casks.map { |c| CaskLoader.load(c, config: Config.from_args(args)) }
+        casks = Cask.to_a if casks.empty?
 
+        results = self.class.audit_casks(
+          *casks,
+          download:        args.download?,
+          appcast:         args.appcast?,
+          online:          args.online?,
+          strict:          args.strict?,
+          new_cask:        args.new_cask?,
+          token_conflicts: args.token_conflicts?,
+          quarantine:      args.quarantine?,
+          language:        args.language,
+        )
+
+        self.class.print_annotations(results)
+
+        failed_casks = results.reject { |_, result| result[:errors].empty? }.map(&:first)
+        return if failed_casks.empty?
+
+        raise CaskError, "audit failed for casks: #{failed_casks.join(" ")}"
+      end
+
+      def self.audit_casks(
+        *casks,
+        download: nil,
+        appcast: nil,
+        online: nil,
+        strict: nil,
+        new_cask: nil,
+        token_conflicts: nil,
+        quarantine: nil,
+        language: nil
+      )
         options = {
-          audit_download:        args.download?,
-          audit_appcast:         args.appcast?,
-          audit_online:          args.online?,
-          audit_strict:          args.strict?,
-          audit_new_cask:        args.new_cask?,
-          audit_token_conflicts: args.token_conflicts?,
-          quarantine:            args.quarantine?,
-          language:              args.language,
+          audit_download:        download,
+          audit_appcast:         appcast,
+          audit_online:          online,
+          audit_strict:          strict,
+          audit_new_cask:        new_cask,
+          audit_token_conflicts: token_conflicts,
+          quarantine:            quarantine,
+          language:              language,
         }.compact
 
         options[:quarantine] = true if options[:quarantine].nil?
 
-        failed_casks = casks(alternative: -> { Cask.to_a })
-                       .reject do |cask|
+        Homebrew.auditing = true
+
+        require "cask/auditor"
+
+        casks.map do |cask|
           odebug "Auditing Cask #{cask}"
-          result = Auditor.audit(cask, **options)
+          [cask, Auditor.audit(cask, **options)]
+        end.to_h
+      end
 
-          next true if result[:warnings].empty? && result[:errors].empty?
+      def self.print_annotations(results)
+        return unless ENV["GITHUB_ACTIONS"]
 
-          if ENV["GITHUB_ACTIONS"]
-            cask_path = cask.sourcefile_path
-            annotations = (result[:warnings].map { |w| [:warning, w] } + result[:errors].map { |e| [:error, e] })
-                          .map { |type, message| GitHub::Actions::Annotation.new(type, message, file: cask_path) }
+        results.each do |cask, result|
+          cask_path = cask.sourcefile_path
+          annotations = (result[:warnings].map { |w| [:warning, w] } + result[:errors].map { |e| [:error, e] })
+                        .map { |type, message| GitHub::Actions::Annotation.new(type, message, file: cask_path) }
 
-            annotations.each do |annotation|
-              puts annotation if annotation.relevant?
-            end
+          annotations.each do |annotation|
+            puts annotation if annotation.relevant?
           end
-
-          false
         end
-
-        return if failed_casks.empty?
-
-        raise CaskError, "audit failed for casks: #{failed_casks.join(" ")}"
       end
     end
   end

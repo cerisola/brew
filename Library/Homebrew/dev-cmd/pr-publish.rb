@@ -1,11 +1,15 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cli/parser"
 require "utils/github"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def pr_publish_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -14,6 +18,12 @@ module Homebrew
         Publish bottles for a pull request with GitHub Actions.
         Requires write access to the repository.
       EOS
+      switch "--autosquash",
+             description: "If supported on the target tap, automatically reformat and reword commits "\
+                          "in the pull request to our preferred format."
+      flag   "--message=",
+             depends_on:  "--autosquash",
+             description: "Message to include when autosquashing revision bumps, deletions, and rebuilds."
       flag   "--tap=",
              description: "Target tap repository (default: `homebrew/core`)."
       flag   "--workflow=",
@@ -30,6 +40,11 @@ module Homebrew
     workflow = args.workflow || "publish-commit-bottles.yml"
     ref = "master"
 
+    extra_args = []
+    extra_args << "--autosquash" if args.autosquash?
+    extra_args << "--message='#{args.message}'" if args.message.presence
+    dispatch_args = extra_args.join " "
+
     args.named.uniq.each do |arg|
       arg = "#{tap.default_remote}/pull/#{arg}" if arg.to_i.positive?
       url_match = arg.match HOMEBREW_PULL_OR_COMMIT_URL_REGEX
@@ -40,7 +55,7 @@ module Homebrew
       end
 
       ohai "Dispatching #{tap} pull request ##{issue}"
-      GitHub.workflow_dispatch_event(user, repo, workflow, ref, pull_request: issue)
+      GitHub.workflow_dispatch_event(user, repo, workflow, ref, pull_request: issue, args: dispatch_args)
     end
   end
 end

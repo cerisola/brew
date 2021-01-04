@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 # These tests assume the needed SDKs are correctly installed, i.e. `brew doctor` passes.
@@ -38,7 +39,7 @@ describe "pkg-config" do
                   .grep(/^#define XML_(MAJOR|MINOR|MICRO)_VERSION (\d+)$/) do
                     { Regexp.last_match(1).downcase => Regexp.last_match(2) }
                   end
-                  .inject(:merge!)
+                  .reduce(:merge!)
     version = "#{version["major"]}.#{version["minor"]}.#{version["micro"]}"
 
     expect(pc_version("expat")).to eq(version)
@@ -99,7 +100,7 @@ describe "pkg-config" do
                   .grep(/^#define NCURSES_VERSION_(MAJOR|MINOR|PATCH) (\d+)$/) do
                     { Regexp.last_match(1).downcase => Regexp.last_match(2) }
                   end
-                  .inject(:merge!)
+                  .reduce(:merge!)
     version = "#{version["major"]}.#{version["minor"]}.#{version["patch"]}"
 
     expect(pc_version("ncurses")).to eq(version)

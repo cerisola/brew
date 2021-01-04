@@ -1,9 +1,12 @@
+# typed: true
 # frozen_string_literal: true
 
 require "compilers"
 
 # Combination of C++ standard library and compiler.
 class CxxStdlib
+  extend T::Sig
+
   include CompilerConstants
 
   # Error for when a formula's dependency was built with a different C++ standard library.
@@ -17,7 +20,7 @@ class CxxStdlib
   end
 
   def self.create(type, compiler)
-    raise ArgumentError, "Invalid C++ stdlib type: #{type}" if type && ![:libstdcxx, :libcxx].include?(type)
+    raise ArgumentError, "Invalid C++ stdlib type: #{type}" if type && [:libstdcxx, :libcxx].exclude?(type)
 
     apple_compiler = compiler.to_s.match?(GNU_GCC_REGEXP) ? false : true
     CxxStdlib.new(type, compiler, apple_compiler)
@@ -46,7 +49,7 @@ class CxxStdlib
   # If either package doesn't use C++, all is well.
   # libstdc++ and libc++ aren't ever intercompatible.
   # libstdc++ is compatible across Apple compilers, but
-  # not between Apple and GNU compilers, or between GNU compiler versions.
+  # not between Apple and GNU compilers, nor between GNU compiler versions.
   def compatible_with?(other)
     return true if type.nil? || other.type.nil?
 
@@ -71,6 +74,7 @@ class CxxStdlib
     type.to_s.gsub(/cxx$/, "c++")
   end
 
+  sig { returns(String) }
   def inspect
     "#<#{self.class.name}: #{compiler} #{type}>"
   end

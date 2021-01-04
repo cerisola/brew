@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 # This script is loaded by formula_installer as a separate instance.
@@ -52,11 +53,7 @@ class Build
   def expand_reqs
     formula.recursive_requirements do |dependent, req|
       build = effective_build_options_for(dependent)
-      if req.prune_from_option?(build)
-        Requirement.prune
-      elsif req.prune_if_build_and_not_dependent?(dependent, formula)
-        Requirement.prune
-      elsif req.test?
+      if req.prune_from_option?(build) || req.prune_if_build_and_not_dependent?(dependent, formula) || req.test?
         Requirement.prune
       end
     end
@@ -65,14 +62,12 @@ class Build
   def expand_deps
     formula.recursive_dependencies do |dependent, dep|
       build = effective_build_options_for(dependent)
-      if dep.prune_from_option?(build)
-        Dependency.prune
-      elsif dep.prune_if_build_and_not_dependent?(dependent, formula)
+      if dep.prune_from_option?(build) ||
+         dep.prune_if_build_and_not_dependent?(dependent, formula) ||
+         (dep.test? && !dep.build?)
         Dependency.prune
       elsif dep.build?
         Dependency.keep_but_prune_recursive_deps
-      elsif dep.test?
-        Dependency.prune
       end
     end
   end
@@ -92,7 +87,6 @@ class Build
       ENV.keg_only_deps = keg_only_deps
       ENV.deps = formula_deps
       ENV.run_time_deps = run_time_deps
-      ENV.x11 = reqs.any? { |rq| rq.is_a?(X11Requirement) }
       ENV.setup_build_environment(
         formula:      formula,
         cc:           args.cc,
@@ -218,7 +212,7 @@ begin
   args = Homebrew.install_args.parse
   Context.current = args.context
 
-  error_pipe = UNIXSocket.open(ENV["HOMEBREW_ERROR_PIPE"], &:recv_io)
+  error_pipe = UNIXSocket.open(ENV.fetch("HOMEBREW_ERROR_PIPE"), &:recv_io)
   error_pipe.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC)
 
   trap("INT", old_trap)

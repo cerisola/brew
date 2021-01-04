@@ -63,8 +63,7 @@ Homebrew's other current maintainers are [Claudia Pellegrino](https://github.com
 Former maintainers with significant contributions include [Jan Viljanen](https://github.com/javian), [JCount](https://github.com/jcount), [commitay](https://github.com/commitay), [Dominyk Tiller](https://github.com/DomT4), [Tim Smith](https://github.com/tdsmith), [Baptiste Fontaine](https://github.com/bfontaine), [Xu Cheng](https://github.com/xu-cheng), [Martin Afanasjew](https://github.com/UniqMartin), [Brett Koonce](https://github.com/asparagui), [Charlie Sharpsteen](https://github.com/Sharpie), [Jack Nagel](https://github.com/jacknagel), [Adam Vandenberg](https://github.com/adamv), [Andrew Janke](https://github.com/apjanke), [Alex Dunn](https://github.com/dunn), [neutric](https://github.com/neutric), [Tomasz Pajor](https://github.com/nijikon), [Uladzislau Shablinski](https://github.com/vladshablinsky), [Alyssa Ross](https://github.com/alyssais), [ilovezfs](https://github.com/ilovezfs), [Chongyu Zhu](https://github.com/lembacon) and Homebrew's creator: [Max Howell](https://github.com/mxcl).
 
 ## Community
-- [discourse.brew.sh (forum)](https://discourse.brew.sh)
-- [freenode.net\#machomebrew (IRC)](irc://irc.freenode.net/#machomebrew)
+- [Homebrew/discussions (forum)](https://github.com/homebrew/discussions/discussions)
 - [@MacHomebrew (Twitter)](https://twitter.com/MacHomebrew)
 
 ## License
@@ -76,17 +75,16 @@ Our macOS continuous integration infrastructure is hosted by [MacStadium's Orka]
 
 [![Powered by MacStadium](https://cloud.githubusercontent.com/assets/125011/22776032/097557ac-eea6-11e6-8ba8-eff22dfd58f1.png)](https://www.macstadium.com)
 
-
 Our bottles (binary packages) are hosted by [Bintray](https://bintray.com/homebrew).
 
 [![Downloads by Bintray](https://bintray.com/docs/images/downloads_by_bintray_96.png)](https://bintray.com/homebrew)
 
-Secure password storage and syncing is provided by [1Password for Teams](https://1password.com/teams/) by [AgileBits](https://agilebits.com).
+Secure password storage and syncing is provided by [1Password for Teams](https://1password.com/teams/).
 
-[![AgileBits](https://da36klfizjv29.cloudfront.net/assets/branding/agilebits-fcca96e9b8e815c5c48c6b3e98156cb5.png)](https://agilebits.com)
+[![1Password](https://1password.com/img/press/logo.e5bf08b08157e08a1b9112fcd58a54b6.svg)](https://1password.com)
 
 Homebrew is a member of the [Software Freedom Conservancy](https://sfconservancy.org).
 
 [![Software Freedom Conservancy](https://sfconservancy.org/img/conservancy_64x64.png)](https://sfconservancy.org)
 
-Homebrew is generously supported by [Randy Reddig](https://github.com/ydnar) and 271 users via [GitHub Sponsors](https://github.com/sponsors/Homebrew).
+Homebrew is generously supported by [Randy Reddig](https://github.com/ydnar) and 439 other users via [GitHub Sponsors](https://github.com/sponsors/Homebrew).

@@ -1,9 +1,17 @@
+# typed: strict
 # frozen_string_literal: true
 
 require_relative "load_path"
 
+require "active_support/core_ext/array/conversions"
+
+require "utils/sorbet"
+
 require "rubocop-performance"
+require "rubocop-rails"
 require "rubocop-rspec"
+require "rubocop-sorbet"
+
 require "rubocops/formula_desc"
 require "rubocops/components_order"
 require "rubocops/components_redundancy"
@@ -17,6 +25,7 @@ require "rubocops/conflicts"
 require "rubocops/options"
 require "rubocops/urls"
 require "rubocops/lines"
+require "rubocops/livecheck"
 require "rubocops/class"
 require "rubocops/uses_from_macos"
 require "rubocops/files"

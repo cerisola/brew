@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 module Cask
@@ -6,14 +7,19 @@ module Cask
     #
     # @api private
     class Help < AbstractCommand
+      extend T::Sig
+
+      sig { override.returns(T.nilable(Integer)) }
       def self.max_named
         1
       end
 
+      sig { returns(String) }
       def self.description
         "Print help for `cask` commands."
       end
 
+      sig { void }
       def run
         if args.named.empty?
           puts Cmd.parser.generate_help_text
@@ -29,7 +35,7 @@ module Cask
       end
 
       def self.commands
-        Cmd.command_classes.select(&:visible?).map { |klass| [klass.command_name, klass] }.to_h
+        Cmd.command_classes.select(&:visible?).index_by(&:command_name)
       end
     end
   end

@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "missing_formula"
@@ -22,8 +23,6 @@ describe Homebrew::MissingFormula do
     it { is_expected.to disallow("pil") }
     it { is_expected.to disallow("macruby") }
     it { is_expected.to disallow("lzma") }
-    it { is_expected.to disallow("gtest") }
-    it { is_expected.to disallow("gmock") }
     it { is_expected.to disallow("sshpass") }
     it { is_expected.to disallow("gsutil") }
     it { is_expected.to disallow("gfortran") }
@@ -98,7 +97,7 @@ describe Homebrew::MissingFormula do
       let(:show_info) { false }
 
       it { is_expected.to match(/Found a cask named "local-caffeine" instead./) }
-      it { is_expected.to match(/Try\n  brew cask install local-caffeine/) }
+      it { is_expected.to match(/Try\n  brew install --cask local-caffeine/) }
     end
 
     context "with a formula name that is a cask and show_info: true" do
@@ -124,7 +123,7 @@ describe Homebrew::MissingFormula do
       let(:command) { "install" }
 
       it { is_expected.to match(/Found a cask named "local-caffeine" instead./) }
-      it { is_expected.to match(/Try\n  brew cask install local-caffeine/) }
+      it { is_expected.to match(/Try\n  brew install --cask local-caffeine/) }
     end
 
     context "brew uninstall" do
@@ -139,7 +138,7 @@ describe Homebrew::MissingFormula do
         end
 
         it { is_expected.to match(/Found a cask named "local-caffeine" instead./) }
-        it { is_expected.to match(/Try\n  brew cask uninstall local-caffeine/) }
+        it { is_expected.to match(/Try\n  brew uninstall --cask local-caffeine/) }
       end
     end
 

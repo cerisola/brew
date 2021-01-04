@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require "rubocops/extend/formula"
@@ -109,7 +110,7 @@ module RuboCop
         end
       end
 
-      # This cop makes sure that options are used idiomatically.
+      # This cop makes sure that `option`s are used idiomatically.
       #
       # @api private
       class OptionDeclarations < FormulaCop
@@ -305,13 +306,54 @@ module RuboCop
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           license_node = find_node_method_by_name(body_node, :license)
           return unless license_node
+          return if license_node.source.include?("\n")
 
-          license = parameters(license_node).first
-          return unless license.hash_type?
-          return unless license.each_descendant(:hash).count.positive?
-          return if license.source.include?("\n")
+          parameters(license_node).first.each_descendant(:hash).each do |license_hash|
+            next if license_exception? license_hash
 
-          problem "Split nested license declarations onto multiple lines"
+            problem "Split nested license declarations onto multiple lines"
+          end
+        end
+
+        def_node_matcher :license_exception?, <<~EOS
+          (hash (pair (sym :with) str))
+        EOS
+      end
+
+      # This cop makes sure that Python versions are consistent.
+      #
+      # @api private
+      class PythonVersions < FormulaCop
+        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          python_formula_node = find_every_method_call_by_name(body_node, :depends_on).find do |dep|
+            string_content(parameters(dep).first).start_with? "python@"
+          end
+
+          return if python_formula_node.blank?
+
+          python_version = string_content(parameters(python_formula_node).first).split("@").last
+
+          find_strings(body_node).each do |str|
+            string_content = string_content(str)
+
+            next unless match = string_content.match(/^python(@)?(\d\.\d+)$/)
+            next if python_version == match[2]
+
+            @fix = if match[1]
+              "python@#{python_version}"
+            else
+              "python#{python_version}"
+            end
+
+            offending_node(str)
+            problem "References to `#{string_content}` should match the specified python dependency (`#{@fix}`)"
+          end
+        end
+
+        def autocorrect(node)
+          lambda do |corrector|
+            corrector.replace(node.source_range, "\"#{@fix}\"")
+          end
         end
       end
 
@@ -401,7 +443,7 @@ module RuboCop
             next if key.nil? || value.nil?
             next unless match = regex_match_group(value, /^(lua|perl|python|ruby)(\d*)/)
 
-            problem "#{match[1]} modules should be vendored rather than use deprecated #{method.source}`"
+            problem "#{match[1]} modules should be vendored rather than use deprecated `#{method.source}`"
           end
 
           find_every_method_call_by_name(body_node, :system).each do |method|
@@ -509,10 +551,6 @@ module RuboCop
             problem "macOS has been 64-bit only since 10.6 so ENV.universal_binary is deprecated."
           end
 
-          find_instance_method_call(body_node, "ENV", :x11) do
-            problem 'Use "depends_on :x11" instead of "ENV.x11"'
-          end
-
           find_every_method_call_by_name(body_node, :depends_on).each do |method|
             next unless method_called?(method, :new)
 
@@ -581,33 +619,13 @@ module RuboCop
       #
       # @api private
       class MakeCheck < FormulaCop
-        MAKE_CHECK_ALLOWLIST = %w[
-          beecrypt
-          ccrypt
-          git
-          gmp
-          gnupg
-          gnupg@1.4
-          google-sparsehash
-          jemalloc
-          jpeg-turbo
-          mpfr
-          nettle
-          open-mpi
-          openssl@1.1
-          pcre
-          protobuf
-          wolfssl
-          xz
-        ].freeze
-
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           return if formula_tap != "homebrew-core"
 
           # Avoid build-time checks in homebrew/core
           find_every_method_call_by_name(body_node, :system).each do |method|
             next if @formula_name.start_with?("lib")
-            next if MAKE_CHECK_ALLOWLIST.include?(@formula_name)
+            next if tap_style_exception? :make_check_allowlist
 
             params = parameters(method)
             next unless node_equals?(params[0], "make")
@@ -620,6 +638,23 @@ module RuboCop
                       "should not run build-time checks"
             end
           end
+        end
+      end
+
+      # This cop ensures that new formulae depending on Requirements are not introduced in homebrew/core.
+      class CoreRequirements < FormulaCop
+        def audit_formula(_node, _class_node, _parent_class_node, _body_node)
+          return if formula_tap != "homebrew-core"
+
+          if depends_on? :java
+            problem "Formulae in homebrew/core should depend on a versioned `openjdk` instead of :java"
+          end
+
+          if depends_on? :x11
+            problem "Formulae in homebrew/core should depend on specific X libraries instead of :x11"
+          end
+
+          problem ":osxfuse is deprecated in homebrew/core" if depends_on? :osxfuse
         end
       end
 

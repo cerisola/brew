@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cli/parser"
@@ -75,8 +76,11 @@ ensure
 end
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def extract_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -100,13 +104,13 @@ module Homebrew
   def extract
     args = extract_args.parse
 
-    if args.named.first !~ HOMEBREW_TAP_FORMULA_REGEX
+    if (match = args.named.first.match(HOMEBREW_TAP_FORMULA_REGEX))
+      name = match[3].downcase
+      source_tap = Tap.fetch(match[1], match[2])
+      raise TapFormulaUnavailableError.new(source_tap, name) unless source_tap.installed?
+    else
       name = args.named.first.downcase
       source_tap = CoreTap.instance
-    else
-      name = Regexp.last_match(3).downcase
-      source_tap = Tap.fetch(Regexp.last_match(1), Regexp.last_match(2))
-      raise TapFormulaUnavailableError.new(source_tap, name) unless source_tap.installed?
     end
 
     destination_tap = Tap.fetch(args.named.second)

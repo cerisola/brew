@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "formula"
@@ -6,12 +7,15 @@ require "ostruct"
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
   SOURCE_PATH = (HOMEBREW_LIBRARY_PATH/"manpages").freeze
   TARGET_MAN_PATH = (HOMEBREW_REPOSITORY/"manpages").freeze
   TARGET_DOC_PATH = (HOMEBREW_REPOSITORY/"docs").freeze
 
+  sig { returns(CLI::Parser) }
   def man_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -26,6 +30,7 @@ module Homebrew
                           "comparison without factoring in the date)."
       switch "--link",
              description: "This is now done automatically by `brew update`."
+
       max_named 0
     end
   end
@@ -38,9 +43,14 @@ module Homebrew
     Commands.rebuild_internal_commands_completion_list
     regenerate_man_pages(preserve_date: args.fail_if_changed?, quiet: args.quiet?)
 
-    if system "git", "-C", HOMEBREW_REPOSITORY, "diff", "--quiet", "docs/Manpage.md", "manpages", "completions"
+    diff = system_command "git", args: [
+      "-C", HOMEBREW_REPOSITORY, "diff", "--exit-code", "docs/Manpage.md", "manpages", "completions"
+    ]
+    if diff.status.success?
       puts "No changes to manpage or completions output detected."
     elsif args.fail_if_changed?
+      puts "Changes to manpage or completions detected:"
+      puts diff.stdout
       Homebrew.failed = true
     end
   end
@@ -57,10 +67,11 @@ module Homebrew
     template = (SOURCE_PATH/"brew.1.md.erb").read
     variables = OpenStruct.new
 
-    variables[:commands] = generate_cmd_manpages(Commands.internal_commands_paths)
+    variables[:commands] = generate_cmd_manpages(Commands.internal_commands_paths(cask: false))
     variables[:developer_commands] = generate_cmd_manpages(Commands.internal_developer_commands_paths)
     variables[:official_external_commands] =
       generate_cmd_manpages(Commands.official_external_commands_paths(quiet: quiet))
+    variables[:global_cask_options] = global_cask_options_manpage
     variables[:global_options] = global_options_manpage
     variables[:environment_variables] = env_vars_manpage
 
@@ -125,6 +136,8 @@ module Homebrew
       when "--markdown"
         ronn_output = ronn_output.gsub(%r{<var>(.*?)</var>}, "*`\\1`*")
                                  .gsub(/\n\n\n+/, "\n\n")
+                                 .gsub(/^(- `[^`]+`):/, "\\1") # drop trailing colons from definition lists
+                                 .gsub(/(?<=\n\n)([\[`].+):\n/, "\\1\n<br>") # replace colons with <br> on subcommands
       when "--roff"
         ronn_output = ronn_output.gsub(%r{<code>(.*?)</code>}, "\\fB\\1\\fR")
                                  .gsub(%r{<var>(.*?)</var>}, "\\fI\\1\\fR")
@@ -166,7 +179,12 @@ module Homebrew
   def cmd_parser_manpage_lines(cmd_parser)
     lines = [format_usage_banner(cmd_parser.usage_banner_text)]
     lines += cmd_parser.processed_options.map do |short, long, _, desc|
-      next if !long.nil? && Homebrew::CLI::Parser.global_options.include?([short, long, desc])
+      if long.present?
+        next if Homebrew::CLI::Parser.global_options.include?([short, long, desc])
+        next if Homebrew::CLI::Parser.global_cask_options.any? do |_, option, description:, **|
+                  [long, "#{long}="].include?(option) && description == desc
+                end
+      end
 
       generate_option_doc(short, long, desc)
     end.reject(&:blank?)
@@ -198,6 +216,17 @@ module Homebrew
     lines
   end
 
+  sig { returns(String) }
+  def global_cask_options_manpage
+    lines = ["These options are applicable to the `install`, `reinstall`, and `upgrade` " \
+             "subcommands with the `--cask` flag.\n"]
+    lines += Homebrew::CLI::Parser.global_cask_options.map do |_, long, description:, **|
+      generate_option_doc(nil, long.chomp("="), description)
+    end
+    lines.join("\n")
+  end
+
+  sig { returns(String) }
   def global_options_manpage
     lines = ["These options are applicable across multiple subcommands.\n"]
     lines += Homebrew::CLI::Parser.global_options.map do |short, long, desc|
@@ -206,12 +235,13 @@ module Homebrew
     lines.join("\n")
   end
 
+  sig { returns(String) }
   def env_vars_manpage
     lines = Homebrew::EnvConfig::ENVS.flat_map do |env, hash|
-      entry = "  * `#{env}`:\n    #{hash[:description]}\n"
+      entry = "- `#{env}`:\n  <br>#{hash[:description]}\n"
       default = hash[:default_text]
       default ||= "`#{hash[:default]}`." if hash[:default]
-      entry += "\n\n    *Default:* #{default}\n" if default
+      entry += "\n\n  *Default:* #{default}\n" if default
 
       entry
     end

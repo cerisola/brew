@@ -1,15 +1,21 @@
+# typed: false
 # frozen_string_literal: true
 
 require "hardware"
 require "software_spec"
 require "development_tools"
 require "extend/ENV"
+require "system_command"
 
 # Helper module for querying information about the system configuration.
 #
 # @api private
 module SystemConfig
   class << self
+    extend T::Sig
+
+    include SystemCommand::Mixin
+
     def clang
       @clang ||= if DevelopmentTools.installed?
         DevelopmentTools.clang_version
@@ -26,34 +32,42 @@ module SystemConfig
       end
     end
 
+    sig { returns(String) }
     def head
       HOMEBREW_REPOSITORY.git_head || "(none)"
     end
 
+    sig { returns(String) }
     def last_commit
       HOMEBREW_REPOSITORY.git_last_commit || "never"
     end
 
+    sig { returns(String) }
     def origin
       HOMEBREW_REPOSITORY.git_origin || "(none)"
     end
 
+    sig { returns(String) }
     def core_tap_head
       CoreTap.instance.git_head || "(none)"
     end
 
+    sig { returns(String) }
     def core_tap_last_commit
       CoreTap.instance.git_last_commit || "never"
     end
 
+    sig { returns(String) }
     def core_tap_branch
       CoreTap.instance.git_branch || "(none)"
     end
 
+    sig { returns(String) }
     def core_tap_origin
       CoreTap.instance.remote || "(none)"
     end
 
+    sig { returns(String) }
     def describe_clang
       return "N/A" if clang.null?
 
@@ -72,6 +86,7 @@ module SystemConfig
       end
     end
 
+    sig { returns(String) }
     def describe_homebrew_ruby_version
       case RUBY_VERSION
       when /^1\.[89]/, /^2\.0/
@@ -81,20 +96,24 @@ module SystemConfig
       end
     end
 
+    sig { returns(String) }
     def describe_homebrew_ruby
       "#{describe_homebrew_ruby_version} => #{RUBY_PATH}"
     end
 
+    sig { returns(T.nilable(String)) }
     def hardware
       return if Hardware::CPU.type == :dunno
 
       "CPU: #{Hardware.cores_as_words}-core #{Hardware::CPU.bits}-bit #{Hardware::CPU.family}"
     end
 
+    sig { returns(String) }
     def kernel
       `uname -m`.chomp
     end
 
+    sig { returns(String) }
     def describe_java
       return "N/A" unless which "java"
 
@@ -104,12 +123,14 @@ module SystemConfig
       err[/java version "([\d._]+)"/, 1] || "N/A"
     end
 
+    sig { returns(String) }
     def describe_git
       return "N/A" unless Utils::Git.available?
 
       "#{Utils::Git.version} => #{Utils::Git.path}"
     end
 
+    sig { returns(String) }
     def describe_curl
       out, = system_command(curl_executable, args: ["--version"])
 

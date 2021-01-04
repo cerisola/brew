@@ -1,10 +1,14 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def tap_info_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -76,7 +80,7 @@ module Homebrew
           end
           info += ", private" if tap.private?
           info += "\n#{tap.path} (#{tap.path.abv})"
-          info += "\nFrom: #{tap.remote.blank? ? "N/A" : tap.remote}"
+          info += "\nFrom: #{tap.remote.presence || "N/A"}"
         else
           info += "Not installed"
         end

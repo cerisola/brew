@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "formula"
@@ -7,6 +8,8 @@ require "cli/parser"
 require "search"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
   extend Search
@@ -24,6 +27,7 @@ module Homebrew
     },
   }.freeze
 
+  sig { returns(CLI::Parser) }
   def search_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -45,13 +49,22 @@ module Homebrew
       switch "--desc",
              description: "Search for formulae with a description matching <text> and casks with "\
                           "a name matching <text>."
-
+      switch "--pull-request",
+             description: "Search for GitHub pull requests containing <text>."
+      switch "--open",
+             depends_on:  "--pull-request",
+             description: "Search for only open GitHub pull requests"
+      switch "--closed",
+             depends_on:  "--pull-request",
+             description: "Search for only closed GitHub pull requests"
+      conflicts "--open", "--closed"
       package_manager_switches = PACKAGE_MANAGERS.keys.map { |name| "--#{name}" }
       package_manager_switches.each do |s|
         switch s,
                description: "Search for <text> in the given package manager's list."
       end
 
+      conflicts("--desc", "--pull-request")
       conflicts(*package_manager_switches)
     end
   end
@@ -71,6 +84,7 @@ module Homebrew
 
         puts Formatter.columns(Cask::Cask.to_a.map(&:full_name).sort)
       else
+        odeprecated "'brew search' with no arguments to output formulae", "'brew formulae'"
         puts Formatter.columns(Formula.full_names.sort)
       end
 
@@ -82,6 +96,14 @@ module Homebrew
 
     if args.desc?
       search_descriptions(string_or_regex)
+    elsif args.pull_request?
+      only = if args.open? && !args.closed?
+        "open"
+      elsif args.closed? && !args.open?
+        "closed"
+      end
+
+      GitHub.print_pull_requests_matching(query, only)
     else
       remote_results = search_taps(query, silent: true)
 
@@ -107,20 +129,17 @@ module Homebrew
         puts Formatter.columns(all_casks)
       end
 
-      if $stdout.tty?
-        count = all_formulae.count + all_casks.count
+      count = all_formulae.count + all_casks.count
 
-        if (reason = MissingFormula.reason(query, silent: true)) && !local_casks.include?(query)
-          if count.positive?
-            puts
-            puts "If you meant #{query.inspect} specifically:"
-          end
-          puts reason
-        elsif count.zero?
-          puts "No formula or cask found for #{query.inspect}."
-          GitHub.print_pull_requests_matching(query)
+      if $stdout.tty? && (reason = MissingFormula.reason(query, silent: true)) && local_casks.exclude?(query)
+        if count.positive?
+          puts
+          puts "If you meant #{query.inspect} specifically:"
         end
+        puts reason
       end
+
+      raise "No formulae or casks found for #{query.inspect}." if count.zero?
     end
 
     return unless $stdout.tty?

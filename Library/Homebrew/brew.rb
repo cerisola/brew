@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 if ENV["HOMEBREW_STACKPROF"]
@@ -45,6 +46,11 @@ end
 begin
   trap("INT", std_trap) # restore default CTRL-C handler
 
+  if ENV["CI"]
+    $stdout.sync = true
+    $stderr.sync = true
+  end
+
   empty_argv = ARGV.empty?
   help_flag_list = %w[-h --help --usage -?]
   help_flag = !ENV["HOMEBREW_HELP"].nil?
@@ -58,7 +64,7 @@ begin
       # Command-style help: `help <cmd>` is fine, but `<cmd> help` is not.
       help_flag = true
       help_cmd_index = i
-    elsif !cmd && !help_flag_list.include?(arg)
+    elsif !cmd && help_flag_list.exclude?(arg)
       cmd = ARGV.delete_at(i)
       cmd = Commands::HOMEBREW_INTERNAL_COMMAND_ALIASES.fetch(cmd, cmd)
     end
@@ -67,7 +73,6 @@ begin
   ARGV.delete_at(help_cmd_index) if help_cmd_index
 
   args = Homebrew::CLI::Parser.new.parse(ARGV.dup.freeze, ignore_invalid_options: true)
-  Homebrew.args = args
   Context.current = args.context
 
   path = PATH.new(ENV["PATH"])
@@ -164,7 +169,7 @@ rescue BuildError => e
   if e.formula.head? || e.formula.deprecated? || e.formula.disabled?
     $stderr.puts <<~EOS
       Please create pull requests instead of asking for help on Homebrew's GitHub,
-      Discourse, Twitter or IRC.
+      Twitter or any other official channels.
     EOS
   end
 

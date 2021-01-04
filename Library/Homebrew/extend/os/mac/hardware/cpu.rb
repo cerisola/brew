@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "macho"
@@ -21,40 +22,17 @@ module Hardware
       end
 
       def family
-        case sysctl_int("hw.cpufamily")
-        when 0x73d67300 # Yonah: Core Solo/Duo
-          :core
-        when 0x426f69ef # Merom: Core 2 Duo
-          :core2
-        when 0x78ea4fbc # Penryn
-          :penryn
-        when 0x6b5a4cd2 # Nehalem
-          :nehalem
-        when 0x573B5EEC # Arrandale
-          :arrandale
-        when 0x5490B78C # Sandy Bridge
-          :sandybridge
-        when 0x1F65E835 # Ivy Bridge
-          :ivybridge
-        when 0x10B282DC # Haswell
-          :haswell
-        when 0x582ed09c # Broadwell
-          :broadwell
-        when 0x37fc219f # Skylake
-          :skylake
-        when 0x0f817246 # Kaby Lake
-          :kabylake
-        when 0x38435547 # Ice Lake
-          :icelake
-        when 0x07d34b9f # ARMv8.3-A (Vortex, Tempest)
-          :arm_vortex_tempest
+        if arm?
+          arm_family
+        elsif intel?
+          intel_family
         else
           :dunno
         end
       end
 
-      # Returns an array that's been extended with ArchitectureListExtension,
-      # which provides helpers like #as_arch_flags and #as_cmake_arch_flags.
+      # Returns an array that's been extended with {ArchitectureListExtension},
+      # which provides helpers like `#as_arch_flags`.
       def universal_archs
         # Amazingly, this order (64, then 32) matters. It shouldn't, but it
         # does. GCC (some versions? some systems?) can blow up if the other
@@ -63,12 +41,12 @@ module Hardware
         [arch_64_bit, arch_32_bit].extend ArchitectureListExtension
       end
 
-      # True when running under an Intel-based shell via Rosetta on an
+      # True when running under an Intel-based shell via Rosetta 2 on an
       # Apple Silicon Mac. This can be detected via seeing if there's a
-      # conflict between what `uname` report and the underlying `sysctl` flags,
-      # since the `sysctl` flags don't change behaviour under Rosetta.
-      def in_rosetta?
-        intel? && physical_cpu_arm64?
+      # conflict between what `uname` reports and the underlying `sysctl` flags,
+      # since the `sysctl` flags don't change behaviour under Rosetta 2.
+      def in_rosetta2?
+        sysctl_bool("sysctl.proc_translated")
       end
 
       def features
@@ -76,7 +54,7 @@ module Hardware
           "machdep.cpu.features",
           "machdep.cpu.extfeatures",
           "machdep.cpu.leaf7_features",
-        ).split(" ").map { |s| s.downcase.to_sym }
+        ).split.map { |s| s.downcase.to_sym }
       end
 
       def sse4?
@@ -115,12 +93,64 @@ module Hardware
         sysctl_bool("hw.optional.sse4_2")
       end
 
-      private
-
-      # Note: this is more reliable than checking uname.
-      # `sysctl` returns the right answer even when running in Rosetta.
+      # NOTE: this is more reliable than checking uname.
+      # `sysctl` returns the right answer even when running in Rosetta 2.
       def physical_cpu_arm64?
         sysctl_bool("hw.optional.arm64")
+      end
+
+      private
+
+      def arm_family
+        case sysctl_int("hw.cpufamily")
+        when 0x2c91a47e             # ARMv8.0-A (Typhoon)
+          :arm_typhoon
+        when 0x92fb37c8             # ARMv8.0-A (Twister)
+          :arm_twister
+        when 0x67ceee93             # ARMv8.1-A (Hurricane, Zephyr)
+          :arm_hurricane_zephyr
+        when 0xe81e7ef6             # ARMv8.2-A (Monsoon, Mistral)
+          :arm_monsoon_mistral
+        when 0x07d34b9f             # ARMv8.3-A (Vortex, Tempest)
+          :arm_vortex_tempest
+        when 0x462504d2             # ARMv8.4-A (Lightning, Thunder)
+          :arm_lightning_thunder
+        when 0x573b5eec, 0x1b588bb3 # ARMv8.4-A (Firestorm, Icestorm)
+          :arm_firestorm_icestorm
+        else
+          :dunno
+        end
+      end
+
+      def intel_family
+        case sysctl_int("hw.cpufamily")
+        when 0x73d67300 # Yonah: Core Solo/Duo
+          :core
+        when 0x426f69ef # Merom: Core 2 Duo
+          :core2
+        when 0x78ea4fbc # Penryn
+          :penryn
+        when 0x6b5a4cd2 # Nehalem
+          :nehalem
+        when 0x573b5eec # Westmere
+          :westmere
+        when 0x5490b78c # Sandy Bridge
+          :sandybridge
+        when 0x1f65e835 # Ivy Bridge
+          :ivybridge
+        when 0x10b282dc # Haswell
+          :haswell
+        when 0x582ed09c # Broadwell
+          :broadwell
+        when 0x37fc219f # Skylake
+          :skylake
+        when 0x0f817246 # Kaby Lake
+          :kabylake
+        when 0x38435547 # Ice Lake
+          :icelake
+        else
+          :dunno
+        end
       end
 
       def sysctl_bool(key)

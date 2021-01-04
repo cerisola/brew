@@ -12,11 +12,13 @@
 abv
 analytics
 audit
+autoremove
 bottle
 bump
 bump-cask-pr
 bump-formula-pr
 bump-revision
+bump-unversioned-casks
 cask
 cat
 cleanup
@@ -27,6 +29,7 @@ configure
 create
 deps
 desc
+dispatch-build-bottle
 diy
 doctor
 dr
@@ -35,6 +38,7 @@ environment
 extract
 fetch
 formula
+formulae
 gist-logs
 help
 home
@@ -65,7 +69,6 @@ pr-publish
 pr-pull
 pr-upload
 prof
-pull
 readall
 reinstall
 release-notes
@@ -81,9 +84,11 @@ switch
 tap
 tap-info
 tap-new
+tc
 test
 tests
 typecheck
+unbottled
 uninstal
 uninstall
 unlink

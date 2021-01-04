@@ -24,6 +24,7 @@
 # Ignore Bundler files
 **/.bundle/bin
 **/.bundle/cache
+**/vendor/bundle/ruby/*/bundler.lock
 **/vendor/bundle/ruby/*/bin
 **/vendor/bundle/ruby/*/build_info/
 **/vendor/bundle/ruby/*/cache
@@ -34,7 +35,9 @@
 # Unignore vendored gems
 !**/vendor/bundle/ruby/*/gems/*/lib
 !**/vendor/bundle/ruby/*/gems/rubocop-performance-*/config
+!**/vendor/bundle/ruby/*/gems/rubocop-rails-*/config
 !**/vendor/bundle/ruby/*/gems/rubocop-rspec-*/config
+!**/vendor/bundle/ruby/*/gems/rubocop-sorbet-*/config
 
 # Ignore partially included gems where we don't need all files
 **/vendor/bundle/ruby/*/gems/activesupport-*/lib/active_support.rb
@@ -126,17 +129,19 @@
 **/vendor/bundle/ruby/*/gems/rspec-mocks-*/
 **/vendor/bundle/ruby/*/gems/rspec-retry-*/
 **/vendor/bundle/ruby/*/gems/rspec-support-*/
+**/vendor/bundle/ruby/*/gems/rspec-sorbet-*/
 **/vendor/bundle/ruby/*/gems/rspec-wait-*/
-**/vendor/bundle/ruby/*/gems/rubocop-0*/
+**/vendor/bundle/ruby/*/gems/rubocop-1*/
 **/vendor/bundle/ruby/*/gems/rubocop-ast-*/
 **/vendor/bundle/ruby/*/gems/ruby-prof-*/
-**/vendor/bundle/ruby/*/gems/ruby-progressbar-*/
 **/vendor/bundle/ruby/*/gems/simplecov-*/
 **/vendor/bundle/ruby/*/gems/simplecov-html-*/
 **/vendor/bundle/ruby/*/gems/sorbet-*/
 **/vendor/bundle/ruby/*/gems/sorbet-runtime-*/
+!**/vendor/bundle/ruby/*/gems/sorbet-runtime-stub-*/
 **/vendor/bundle/ruby/*/gems/spoom-*/
 **/vendor/bundle/ruby/*/gems/stackprof-*/
+**/vendor/bundle/ruby/*/gems/strscan-*/
 **/vendor/bundle/ruby/*/gems/tapioca-*/
 **/vendor/bundle/ruby/*/gems/thor-*/
 **/vendor/bundle/ruby/*/gems/unf_ext-*/

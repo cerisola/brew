@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 # Cleans a newly installed keg.
@@ -12,12 +13,12 @@
 class Cleaner
   include Context
 
-  # Create a cleaner for the given formula
+  # Create a cleaner for the given formula.
   def initialize(f)
     @f = f
   end
 
-  # Clean the keg of formula @f
+  # Clean the keg of the formula.
   def clean
     ObserverPathnameExtension.reset_counts!
 
@@ -75,6 +76,12 @@ class Cleaner
     path.text_executable? || path.executable?
   end
 
+  # Both these files are completely unnecessary to package and cause
+  # pointless conflicts with other formulae. They are removed by Debian,
+  # Arch & MacPorts amongst other packagers as well. The files are
+  # created as part of installing any Perl module.
+  PERL_BASENAMES = Set.new(%w[perllocal.pod .packlist]).freeze
+
   # Clean a top-level (bin, sbin, lib) directory, recursively, by fixing file
   # permissions and removing .la files, unless the files (or parent
   # directories) are protected by skip_clean.
@@ -92,18 +99,10 @@ class Cleaner
 
       next if path.directory?
 
-      if path.extname == ".la"
+      if path.extname == ".la" || PERL_BASENAMES.include?(path.basename.to_s)
         path.unlink
       elsif path.symlink?
         # Skip it.
-      elsif path.basename.to_s == "perllocal.pod"
-        # Both this file & the .packlist one below are completely unnecessary
-        # to package & causes pointless conflict with other formulae. They are
-        # removed by Debian, Arch & MacPorts amongst other packagers as well.
-        # The files are created as part of installing any Perl module.
-        path.unlink
-      elsif path.basename.to_s == ".packlist" # Hidden file, not file extension!
-        path.unlink
       else
         # Set permissions for executables and non-executables
         perms = if executable_path?(path)

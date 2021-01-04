@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "rubocops/extend/formula"
@@ -5,7 +6,7 @@ require "rubocops/extend/formula"
 module RuboCop
   module Cop
     module FormulaAudit
-      # This cop audits deprecate! date and disable! date
+      # This cop audits `deprecate!` and `disable!` dates.
       class DeprecateDisableDate < FormulaCop
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           [:deprecate!, :disable!].each do |method|
@@ -35,15 +36,17 @@ module RuboCop
         EOS
       end
 
-      # This cop audits deprecate! reason
+      # This cop audits `deprecate!` and `disable!` reasons.
       class DeprecateDisableReason < FormulaCop
+        PUNCTUATION_MARKS = %w[. ! ?].freeze
+
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           [:deprecate!, :disable!].each do |method|
             node = find_node_method_by_name(body_node, method)
 
             next if node.nil?
 
-            reason_found = false
+            reason_found = T.let(false, T::Boolean)
             reason(node) do |reason_node|
               reason_found = true
               next if reason_node.sym_type?
@@ -53,7 +56,7 @@ module RuboCop
 
               problem "Do not start the reason with `it`" if reason_string.start_with?("it ")
 
-              problem "Do not end the reason with a punctuation mark" if %w[. ! ?].include?(reason_string[-1])
+              problem "Do not end the reason with a punctuation mark" if PUNCTUATION_MARKS.include?(reason_string[-1])
             end
 
             next if reason_found
@@ -73,7 +76,7 @@ module RuboCop
           lambda do |corrector|
             reason = string_content(node)
             reason = reason[3..] if reason.start_with?("it ")
-            reason.chop! if %w[. ! ?].include?(reason[-1])
+            reason.chop! if PUNCTUATION_MARKS.include?(reason[-1])
             corrector.replace(node.source_range, "\"#{reason}\"")
           end
         end

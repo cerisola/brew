@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 module Cask
@@ -5,9 +6,10 @@ module Cask
   #
   # @api private
   module Cache
-    module_function
+    extend T::Sig
 
-    def path
+    sig { returns(Pathname) }
+    def self.path
       @path ||= HOMEBREW_CACHE/"Cask"
     end
   end

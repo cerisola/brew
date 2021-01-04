@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cmd/shared_examples/args_parse"
@@ -7,7 +8,7 @@ describe "brew bump" do
     it_behaves_like "parseable arguments"
   end
 
-  describe "formula", :integration_test do
+  describe "formula", :integration_test, :needs_network do
     it "returns data for single valid specified formula" do
       install_test_formula "testball"
 

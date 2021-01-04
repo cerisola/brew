@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "reinstall"
@@ -66,20 +67,23 @@ module Homebrew
       options |= f.build.used_options
       options &= f.options
 
-      fi = FormulaInstaller.new(f, force_bottle: args.force_bottle?,
-                                   build_from_source_formulae: args.build_from_source_formulae,
-                                   debug: args.debug?, quiet: args.quiet?, verbose: args.verbose?)
-      fi.options = options
-      fi.force = args.force?
-      fi.keep_tmp = args.keep_tmp?
-      fi.build_bottle = args.build_bottle?
-      fi.installed_on_request = args.named.present?
-      fi.link_keg           ||= keg_was_linked if keg_had_linked_opt
-      if tab
-        fi.build_bottle          ||= tab.built_bottle?
-        fi.installed_as_dependency = tab.installed_as_dependency
-        fi.installed_on_request  ||= tab.installed_on_request
-      end
+      fi = FormulaInstaller.new(
+        f,
+        **{
+          options:                    options,
+          link_keg:                   keg_had_linked_opt ? keg_was_linked : nil,
+          installed_as_dependency:    tab&.installed_as_dependency,
+          installed_on_request:       args.named.present? || tab&.installed_on_request,
+          build_bottle:               args.build_bottle? || tab&.built_bottle?,
+          force_bottle:               args.force_bottle?,
+          build_from_source_formulae: args.build_from_source_formulae,
+          keep_tmp:                   args.keep_tmp?,
+          force:                      args.force?,
+          debug:                      args.debug?,
+          quiet:                      args.quiet?,
+          verbose:                    args.verbose?,
+        }.compact,
+      )
 
       upgrade_version = if f.optlinked?
         "#{Keg.new(f.opt_prefix).version} -> #{f.pkg_version}"
@@ -102,14 +106,12 @@ module Homebrew
       # We already attempted to upgrade f as part of the dependency tree of
       # another formula. In that case, don't generate an error, just move on.
       nil
-    rescue CannotInstallFormulaError => e
+    rescue CannotInstallFormulaError, DownloadError => e
       ofail e
     rescue BuildError => e
       e.dump(verbose: args.verbose?)
       puts
       Homebrew.failed = true
-    rescue DownloadError => e
-      ofail e
     ensure
       # restore previous installation state if build failed
       begin
@@ -127,6 +129,7 @@ module Homebrew
                           .select do |f|
           keg = f.any_installed_keg
           next unless keg
+          next unless keg.directory?
 
           LinkageChecker.new(keg, cache_db: db)
                         .broken_library_linkage?
@@ -134,14 +137,17 @@ module Homebrew
       end
     end
 
-    def check_installed_dependents(args:)
-      installed_formulae = FormulaInstaller.installed.to_a
+    def check_installed_dependents(formulae, args:)
+      return if Homebrew::EnvConfig.no_installed_dependents_check?
+
+      installed_formulae = args.dry_run? ? formulae : FormulaInstaller.installed.to_a
       return if installed_formulae.empty?
 
       already_broken_dependents = check_broken_dependents(installed_formulae)
 
       outdated_dependents =
         installed_formulae.flat_map(&:runtime_installed_formula_dependents)
+                          .uniq
                           .select(&:outdated?)
       return if outdated_dependents.blank? && already_broken_dependents.blank?
 
@@ -181,6 +187,9 @@ module Homebrew
       end
 
       upgrade_formulae(upgradeable_dependents, args: args)
+
+      # Update installed formulae after upgrading
+      installed_formulae = FormulaInstaller.installed.to_a
 
       # Assess the dependents tree again now we've upgraded.
       oh1 "Checking for dependents of upgraded formulae..." unless args.dry_run?
@@ -233,14 +242,12 @@ module Homebrew
         # We already attempted to reinstall f as part of the dependency tree of
         # another formula. In that case, don't generate an error, just move on.
         nil
-      rescue CannotInstallFormulaError => e
+      rescue CannotInstallFormulaError, DownloadError => e
         ofail e
       rescue BuildError => e
         e.dump(verbose: args.verbose?)
         puts
         Homebrew.failed = true
-      rescue DownloadError => e
-        ofail e
       end
     end
 

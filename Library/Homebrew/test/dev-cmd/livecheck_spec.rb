@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cmd/shared_examples/args_parse"
@@ -19,5 +20,12 @@ describe "brew livecheck", :integration_test do
       .to output(/test : /).to_stdout
       .and not_to_output.to_stderr
       .and be_a_success
+  end
+
+  it "gives an error when no arguments are given and there's no watchlist" do
+    expect { brew "livecheck" }
+      .to output(/Invalid usage: A watchlist file is required when no arguments are given\./).to_stderr
+      .and not_to_output.to_stdout
+      .and be_a_failure
   end
 end

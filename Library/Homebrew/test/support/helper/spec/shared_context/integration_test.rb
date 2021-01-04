@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "open3"
@@ -12,7 +13,8 @@ RSpec.shared_context "integration test" do
   matcher :be_a_success do
     match do |actual|
       status = actual.is_a?(Proc) ? actual.call : actual
-      status.respond_to?(:success?) && status.success?
+      expect(status).to respond_to(:success?)
+      status.success?
     end
 
     def supports_block_expectations?
@@ -121,7 +123,7 @@ RSpec.shared_context "integration test" do
     end
   end
 
-  def setup_test_formula(name, content = nil)
+  def setup_test_formula(name, content = nil, bottle_block: nil)
     case name
     when /^testball/
       tarball = if OS.linux?
@@ -136,7 +138,7 @@ RSpec.shared_context "integration test" do
         sha256 "#{tarball.sha256}"
 
         option "with-foo", "Build with foo"
-
+        #{bottle_block}
         def install
           (prefix/"foo"/"test").write("test") if build.with? "foo"
           prefix.install Dir["*"]
@@ -150,7 +152,7 @@ RSpec.shared_context "integration test" do
 
         # something here
       RUBY
-    when "foo"
+    when "foo", "patchelf"
       content = <<~RUBY
         url "https://brew.sh/#{name}-1.0"
       RUBY
@@ -159,11 +161,6 @@ RSpec.shared_context "integration test" do
         url "https://brew.sh/#{name}-1.0"
         depends_on "foo"
       RUBY
-    when "patchelf"
-      content = <<~RUBY
-        url "https://brew.sh/#{name}-1.0"
-      RUBY
-
     when "package_license"
       content = <<~RUBY
         url "https://brew.sh/#patchelf-1.0"
@@ -174,7 +171,7 @@ RSpec.shared_context "integration test" do
     Formulary.core_path(name).tap do |formula_path|
       formula_path.write <<~RUBY
         class #{Formulary.class_s(name)} < Formula
-          #{content}
+        #{content.indent(2)}
         end
       RUBY
     end
@@ -182,8 +179,7 @@ RSpec.shared_context "integration test" do
 
   def install_test_formula(name, content = nil, build_bottle: false)
     setup_test_formula(name, content)
-    fi = FormulaInstaller.new(Formula[name])
-    fi.build_bottle = build_bottle
+    fi = FormulaInstaller.new(Formula[name], build_bottle: build_bottle)
     fi.prelude
     fi.fetch
     fi.install

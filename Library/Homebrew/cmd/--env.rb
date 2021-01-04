@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "extend/ENV"
@@ -6,8 +7,11 @@ require "utils/shell"
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def __env_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -26,6 +30,7 @@ module Homebrew
     end
   end
 
+  sig { void }
   def __env
     args = __env_args.parse
 
@@ -43,12 +48,11 @@ module Homebrew
       Utils::Shell.from_path(args.shell)
     end
 
-    env_keys = BuildEnvironment.keys(ENV)
     if shell.nil?
       BuildEnvironment.dump ENV
     else
-      env_keys.each do |key|
-        puts Utils::Shell.export_value(key, ENV[key], shell)
+      BuildEnvironment.keys(ENV).each do |key|
+        puts Utils::Shell.export_value(key, ENV.fetch(key), shell)
       end
     end
   end

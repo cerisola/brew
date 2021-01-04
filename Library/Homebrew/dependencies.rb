@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "delegate"
@@ -6,7 +7,9 @@ require "cask_dependent"
 # A collection of dependencies.
 #
 # @api private
-class Dependencies < DelegateClass(Array)
+class Dependencies < SimpleDelegator
+  extend T::Sig
+
   def initialize(*args)
     super(args)
   end
@@ -33,6 +36,7 @@ class Dependencies < DelegateClass(Array)
     build + required + recommended
   end
 
+  sig { returns(String) }
   def inspect
     "#<#{self.class.name}: #{to_a}>"
   end
@@ -41,7 +45,9 @@ end
 # A collection of requirements.
 #
 # @api private
-class Requirements < DelegateClass(Set)
+class Requirements < SimpleDelegator
+  extend T::Sig
+
   def initialize(*args)
     super(Set.new(args))
   end
@@ -58,6 +64,7 @@ class Requirements < DelegateClass(Set)
     self
   end
 
+  sig { returns(String) }
   def inspect
     "#<#{self.class.name}: {#{to_a.join(", ")}}>"
   end

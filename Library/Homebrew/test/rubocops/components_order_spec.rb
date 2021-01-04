@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "rubocops/components_order"
@@ -224,6 +225,31 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
       corrected_source = autocorrect_source(source)
       expect(corrected_source).to eq(correct_source)
     end
+
+    it "When `depends_on` precedes `deprecate!`" do
+      source = <<~RUBY
+        class Foo < Formula
+          url "https://brew.sh/foo-1.0.tgz"
+
+          depends_on "openssl"
+
+          deprecate! because: "has been replaced by bar"
+        end
+      RUBY
+
+      correct_source = <<~RUBY
+        class Foo < Formula
+          url "https://brew.sh/foo-1.0.tgz"
+
+          deprecate! because: "has been replaced by bar"
+
+          depends_on "openssl"
+        end
+      RUBY
+
+      corrected_source = autocorrect_source(source)
+      expect(corrected_source).to eq(correct_source)
+    end
   end
 
   context "no on_os_block" do
@@ -298,6 +324,7 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
           homepage "https://brew.sh"
 
           on_macos do
+            disable! because: :does_not_build
             depends_on "readline"
           end
 
@@ -315,6 +342,7 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
           homepage "https://brew.sh"
 
           on_linux do
+            deprecate! because: "it's deprecated"
             depends_on "readline"
           end
 
@@ -362,9 +390,9 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
       class Foo < Formula
         url "https://brew.sh/foo-1.0.tgz"
         on_macos do
-        ^^^^^^^^^^^ `on_macos` can only include `depends_on`, `patch` and `resource` nodes.
           depends_on "readline"
           uses_from_macos "ncurses"
+          ^^^^^^^^^^^^^^^^^^^^^^^^^ `on_macos` cannot include `uses_from_macos`. [...]
         end
       end
     RUBY
@@ -375,16 +403,16 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
       class Foo < Formula
         url "https://brew.sh/foo-1.0.tgz"
         on_linux do
-        ^^^^^^^^^^^ `on_linux` can only include `depends_on`, `patch` and `resource` nodes.
           depends_on "readline"
           uses_from_macos "ncurses"
+          ^^^^^^^^^^^^^^^^^^^^^^^^^ `on_linux` cannot include `uses_from_macos`. [...]
         end
       end
     RUBY
   end
 
-  context "resource" do
-    it "correctly uses an on_macos and on_linux block" do
+  context "in a resource block" do
+    it "reports no offenses for a valid on_macos and on_linux block" do
       expect_no_offenses(<<~RUBY)
         class Foo < Formula
           homepage "https://brew.sh"
@@ -404,7 +432,29 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
       RUBY
     end
 
-    it "there are two on_macos blocks, which is not allowed" do
+    it "reports no offenses for a valid on_macos and on_linux block with versions" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          homepage "https://brew.sh"
+
+          resource do
+            on_macos do
+              url "https://brew.sh/resource1.tar.gz"
+              version "1.2.3"
+              sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+            end
+
+            on_linux do
+              url "https://brew.sh/resource2.tar.gz"
+              version "1.2.3"
+              sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+            end
+          end
+        end
+      RUBY
+    end
+
+    it "reports an offense if there are two on_macos blocks" do
       expect_offense(<<~RUBY)
         class Foo < Formula
           url "https://brew.sh/foo-1.0.tgz"
@@ -425,7 +475,7 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
       RUBY
     end
 
-    it "there are two on_linux blocks, which is not allowed" do
+    it "reports an offense if there are two on_linux blocks" do
       expect_offense(<<~RUBY)
         class Foo < Formula
           url "https://brew.sh/foo-1.0.tgz"
@@ -446,7 +496,7 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
       RUBY
     end
 
-    it "there is a on_macos block but no on_linux block" do
+    it "reports no offenses if there is an on_macos block but no on_linux block" do
       expect_no_offenses(<<~RUBY)
         class Foo < Formula
           url "https://brew.sh/foo-1.0.tgz"
@@ -460,7 +510,7 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
       RUBY
     end
 
-    it "there is a on_linux block but no on_macos block" do
+    it "reports no offenses if there is an on_linux block but no on_macos block" do
       expect_no_offenses(<<~RUBY)
         class Foo < Formula
           url "https://brew.sh/foo-1.0.tgz"
@@ -474,13 +524,13 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
       RUBY
     end
 
-    it "the content of the on_macos block is wrong in a resource block" do
+    it "reports an offense if the content of an on_macos block is improperly formatted" do
       expect_offense(<<~RUBY)
         class Foo < Formula
           url "https://brew.sh/foo-1.0.tgz"
 
           resource do
-          ^^^^^^^^^^^ only an url and a sha256 (in the right order) are allowed in a `on_macos` block within a resource block.
+          ^^^^^^^^^^^ `on_macos` blocks within resource blocks must contain only a url and sha256 or a url, version, and sha256 (in those orders).
             on_macos do
               sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
               url "https://brew.sh/resource2.tar.gz"
@@ -495,13 +545,64 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
       RUBY
     end
 
-    it "the content of the on_linux block is wrong in a resource block" do
+    it "reports no offenses if an on_macos block has if-else branches that are properly formatted" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          url "https://brew.sh/foo-1.0.tgz"
+
+          resource do
+            on_macos do
+              if foo == :bar
+                url "https://brew.sh/resource2.tar.gz"
+                sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+              else
+                url "https://brew.sh/resource1.tar.gz"
+                sha256 "686372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+              end
+            end
+
+            on_linux do
+              url "https://brew.sh/resource2.tar.gz"
+              sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+            end
+          end
+        end
+      RUBY
+    end
+
+    it "reports an offense if an on_macos block has if-else branches that aren't properly formatted" do
       expect_offense(<<~RUBY)
         class Foo < Formula
           url "https://brew.sh/foo-1.0.tgz"
 
           resource do
-          ^^^^^^^^^^^ only an url and a sha256 (in the right order) are allowed in a `on_linux` block within a resource block.
+          ^^^^^^^^^^^ `on_macos` blocks within resource blocks must contain only a url and sha256 or a url, version, and sha256 (in those orders).
+            on_macos do
+              if foo == :bar
+                url "https://brew.sh/resource2.tar.gz"
+                sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+              else
+                sha256 "686372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+                url "https://brew.sh/resource1.tar.gz"
+              end
+            end
+
+            on_linux do
+              url "https://brew.sh/resource2.tar.gz"
+              sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+            end
+          end
+        end
+      RUBY
+    end
+
+    it "reports an offense if the content of an on_linux block is improperly formatted" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          url "https://brew.sh/foo-1.0.tgz"
+
+          resource do
+          ^^^^^^^^^^^ `on_linux` blocks within resource blocks must contain only a url and sha256 or a url, version, and sha256 (in those orders).
             on_macos do
               url "https://brew.sh/resource2.tar.gz"
               sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
@@ -516,6 +617,55 @@ describe RuboCop::Cop::FormulaAudit::ComponentsOrder do
       RUBY
     end
 
-    include_examples "formulae exist", described_class::COMPONENT_ALLOWLIST
+    it "reports no offenses if an on_linux block has if-else branches that are properly formatted" do
+      expect_no_offenses(<<~RUBY)
+        class Foo < Formula
+          url "https://brew.sh/foo-1.0.tgz"
+
+          resource do
+            on_macos do
+              url "https://brew.sh/resource2.tar.gz"
+              sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+            end
+
+            on_linux do
+              if foo == :bar
+                url "https://brew.sh/resource2.tar.gz"
+                sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+              else
+                url "https://brew.sh/resource1.tar.gz"
+                sha256 "686372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+              end
+            end
+          end
+        end
+      RUBY
+    end
+
+    it "reports an offense if an on_linux block has if-else branches that aren't properly formatted" do
+      expect_offense(<<~RUBY)
+        class Foo < Formula
+          url "https://brew.sh/foo-1.0.tgz"
+
+          resource do
+          ^^^^^^^^^^^ `on_linux` blocks within resource blocks must contain only a url and sha256 or a url, version, and sha256 (in those orders).
+            on_macos do
+              url "https://brew.sh/resource2.tar.gz"
+              sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+            end
+
+            on_linux do
+              if foo == :bar
+                url "https://brew.sh/resource2.tar.gz"
+                sha256 "586372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+              else
+                sha256 "686372eb92059873e29eba4f9dec8381541b4d3834660707faf8ba59146dfc35"
+                url "https://brew.sh/resource1.tar.gz"
+              end
+            end
+          end
+        end
+      RUBY
+    end
   end
 end

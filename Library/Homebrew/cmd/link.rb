@@ -1,12 +1,17 @@
+# typed: true
 # frozen_string_literal: true
 
 require "ostruct"
 require "caveats"
 require "cli/parser"
+require "unlink"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def link_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS
@@ -65,25 +70,31 @@ module Homebrew
         next
       end
 
+      formula = begin
+        keg.to_formula
+      rescue FormulaUnavailableError
+        # Not all kegs may belong to formulae e.g. with `brew diy`
+        nil
+      end
+
       if keg_only
-        if Homebrew.default_prefix?
-          f = keg.to_formula
-          if f.keg_only_reason.by_macos?
-            caveats = Caveats.new(f)
-            opoo <<~EOS
-              Refusing to link macOS provided/shadowed software: #{keg.name}
-              #{caveats.keg_only_text(skip_reason: true).strip}
-            EOS
-            next
-          end
+        if Homebrew.default_prefix? && formula.present? && formula.keg_only_reason.by_macos?
+          caveats = Caveats.new(formula)
+          opoo <<~EOS
+            Refusing to link macOS provided/shadowed software: #{keg.name}
+            #{caveats.keg_only_text(skip_reason: true).strip}
+          EOS
+          next
         end
 
-        unless args.force?
+        if !args.force? && (formula.blank? || !formula.keg_only_reason.versioned_formula?)
           opoo "#{keg.name} is keg-only and must be linked with --force"
           puts_keg_only_path_message(keg)
           next
         end
       end
+
+      Unlink.unlink_versioned_formulae(formula, verbose: args.verbose?) if formula
 
       keg.lock do
         print "Linking #{keg}... "

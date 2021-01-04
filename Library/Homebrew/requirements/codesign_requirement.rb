@@ -1,9 +1,12 @@
+# typed: false
 # frozen_string_literal: true
 
 # A requirement on a code-signing identity.
 #
 # @api private
 class CodesignRequirement < Requirement
+  extend T::Sig
+
   fatal true
 
   def initialize(tags)
@@ -25,6 +28,7 @@ class CodesignRequirement < Requirement
     end
   end
 
+  sig { returns(String) }
   def message
     message = "#{@identity} identity must be available to build with #{@with}"
     message += ":\n#{@url}" if @url.present?

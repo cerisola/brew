@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 describe Cask::Artifact::Binary, :cask do
@@ -7,10 +8,16 @@ describe Cask::Artifact::Binary, :cask do
     end
   }
   let(:artifacts) { cask.artifacts.select { |a| a.is_a?(described_class) } }
-  let(:expected_path) { cask.config.binarydir.join("binary") }
+  let(:binarydir) { cask.config.binarydir }
+  let(:expected_path) { binarydir.join("binary") }
 
-  after do
-    FileUtils.rm expected_path if expected_path.exist?
+  around do |example|
+    binarydir.mkpath
+
+    example.run
+  ensure
+    FileUtils.rm_f expected_path
+    FileUtils.rmdir binarydir
   end
 
   context "when --no-binaries is specified" do
@@ -80,7 +87,7 @@ describe Cask::Artifact::Binary, :cask do
   end
 
   it "creates parent directory if it doesn't exist" do
-    FileUtils.rmdir Cask::Config.global.binarydir
+    FileUtils.rmdir binarydir
 
     artifacts.each do |artifact|
       artifact.install_phase(command: NeverSudoSystemCommand, force: false)

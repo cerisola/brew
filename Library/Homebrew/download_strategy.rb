@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "json"
@@ -10,10 +11,14 @@ require "lock_file"
 require "mechanize/version"
 require "mechanize/http/content_disposition_parser"
 
+require "utils/curl"
+
 # @abstract Abstract superclass for all download strategies.
 #
 # @api private
 class AbstractDownloadStrategy
+  extend T::Sig
+
   extend Forwardable
   include FileUtils
   include Context
@@ -38,6 +43,7 @@ class AbstractDownloadStrategy
     @version = version
     @cache = meta.fetch(:cache, HOMEBREW_CACHE)
     @meta = meta
+    @quiet = false
     extend Pourable if meta[:bottle]
   end
 
@@ -51,8 +57,13 @@ class AbstractDownloadStrategy
   # TODO: Deprecate once we have an explicitly documented alternative.
   #
   # @api public
+  sig { void }
   def shutup!
     @quiet = true
+  end
+
+  def quiet?
+    Context.current.quiet? || @quiet
   end
 
   # Unpack {#cached_location} into the current working directory, and possibly
@@ -113,19 +124,25 @@ class AbstractDownloadStrategy
     super(*args) unless quiet?
   end
 
-  def system_command(*args, **options)
-    super(*args, print_stderr: false, env: env, **options)
+  def silent_command(*args, **options)
+    system_command(*args, print_stderr: false, env: env, **options)
   end
 
-  def system_command!(*args, **options)
-    super(
+  def command!(*args, **options)
+    system_command!(
       *args,
+      env: env.merge(options.fetch(:env, {})),
+      **command_output_options,
+      **options,
+    )
+  end
+
+  def command_output_options
+    {
       print_stdout: !quiet?,
       print_stderr: !quiet?,
       verbose:      verbose? && !quiet?,
-      env:          env,
-      **options,
-    )
+    }
   end
 
   def env
@@ -241,7 +258,7 @@ class AbstractFileDownloadStrategy < AbstractDownloadStrategy
     @symlink_location = @cache/"#{name}--#{version}#{ext}"
   end
 
-  # Path for storing the completed download .
+  # Path for storing the completed download.
   #
   # @api public
   def cached_location
@@ -316,6 +333,8 @@ end
 #
 # @api public
 class CurlDownloadStrategy < AbstractFileDownloadStrategy
+  include Utils::Curl
+
   attr_reader :mirrors
 
   def initialize(url, name, version, **meta)
@@ -337,7 +356,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
 
       ohai "Downloading #{url}"
 
-      resolved_url, _, url_time = resolve_url_basename_time(url)
+      resolved_url, _, url_time, = resolve_url_basename_time_file_size(url)
 
       fresh = if cached_location.exist? && url_time
         url_time <= cached_location.mtime
@@ -379,14 +398,19 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
     rm_rf(temporary_path)
   end
 
+  def resolved_time_file_size
+    _, _, time, file_size = resolve_url_basename_time_file_size(url)
+    [time, file_size]
+  end
+
   private
 
   def resolved_url_and_basename
-    resolved_url, basename, = resolve_url_basename_time(url)
+    resolved_url, basename, = resolve_url_basename_time_file_size(url)
     [resolved_url, basename]
   end
 
-  def resolve_url_basename_time(url)
+  def resolve_url_basename_time_file_size(url)
     @resolved_info_cache ||= {}
     return @resolved_info_cache[url] if @resolved_info_cache.include?(url)
 
@@ -439,9 +463,15 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
            .map { |t| t.match?(/^\d+$/) ? Time.at(t.to_i) : Time.parse(t) }
            .last
 
+    file_size =
+      lines.map { |line| line[/^Content-Length:\s*(\d+)/i, 1] }
+           .compact
+           .map(&:to_i)
+           .last
+
     basename = filenames.last || parse_basename(redirect_url)
 
-    @resolved_info_cache[url] = [redirect_url, basename, time]
+    @resolved_info_cache[url] = [redirect_url, basename, time, file_size]
   end
 
   def _fetch(url:, resolved_url:)
@@ -484,7 +514,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
 
   def curl(*args, **options)
     args << "--connect-timeout" << "15" unless mirrors.empty?
-    super(*_curl_args, *args, **_curl_opts, **options)
+    super(*_curl_args, *args, **_curl_opts, **command_output_options, **options)
   end
 end
 
@@ -493,6 +523,12 @@ end
 # @api public
 class CurlApacheMirrorDownloadStrategy < CurlDownloadStrategy
   def mirrors
+    combined_mirrors
+  end
+
+  private
+
+  def combined_mirrors
     return @combined_mirrors if defined?(@combined_mirrors)
 
     backup_mirrors = apache_mirrors.fetch("backup", [])
@@ -501,9 +537,7 @@ class CurlApacheMirrorDownloadStrategy < CurlDownloadStrategy
     @combined_mirrors = [*@mirrors, *backup_mirrors]
   end
 
-  private
-
-  def resolve_url_basename_time(url)
+  def resolve_url_basename_time_file_size(url)
     if url == self.url
       super("#{apache_mirrors["preferred"]}#{apache_mirrors["path_info"]}")
     else
@@ -566,6 +600,8 @@ end
 #
 # @api public
 class SubversionDownloadStrategy < VCSDownloadStrategy
+  extend T::Sig
+
   def initialize(url, name, version, **meta)
     super
     @url = @url.sub("svn+http://", "")
@@ -575,19 +611,20 @@ class SubversionDownloadStrategy < VCSDownloadStrategy
   #
   # @api public
   def fetch
-    if @url.chomp("/") != repo_url || !system_command("svn", args: ["switch", @url, cached_location]).success?
+    if @url.chomp("/") != repo_url || !silent_command("svn", args: ["switch", @url, cached_location]).success?
       clear_cache
     end
     super
   end
 
   # (see AbstractDownloadStrategy#source_modified_time)
+  sig { returns(Time) }
   def source_modified_time
     time = if Version.create(Utils::Svn.version) >= Version.create("1.9")
-      out, = system_command("svn", args: ["info", "--show-item", "last-changed-date"], chdir: cached_location)
+      out, = silent_command("svn", args: ["info", "--show-item", "last-changed-date"], chdir: cached_location)
       out
     else
-      out, = system_command("svn", args: ["info"], chdir: cached_location)
+      out, = silent_command("svn", args: ["info"], chdir: cached_location)
       out[/^Last Changed Date: (.+)$/, 1]
     end
     Time.parse time
@@ -595,19 +632,19 @@ class SubversionDownloadStrategy < VCSDownloadStrategy
 
   # (see VCSDownloadStrategy#source_modified_time)
   def last_commit
-    out, = system_command("svn", args: ["info", "--show-item", "revision"], chdir: cached_location)
+    out, = silent_command("svn", args: ["info", "--show-item", "revision"], chdir: cached_location)
     out.strip
   end
 
   private
 
   def repo_url
-    out, = system_command("svn", args: ["info"], chdir: cached_location)
+    out, = silent_command("svn", args: ["info"], chdir: cached_location)
     out.strip[/^URL: (.+)$/, 1]
   end
 
   def externals
-    out, = system_command("svn", args: ["propget", "svn:externals", @url])
+    out, = silent_command("svn", args: ["propget", "svn:externals", @url])
     out.chomp.split("\n").each do |line|
       name, url = line.split(/\s+/)
       yield name, url
@@ -634,12 +671,13 @@ class SubversionDownloadStrategy < VCSDownloadStrategy
     end
 
     if target.directory?
-      system_command!("svn", args: ["update", *args], chdir: target.to_s)
+      command!("svn", args: ["update", *args], chdir: target.to_s)
     else
-      system_command!("svn", args: ["checkout", url, target, *args])
+      command!("svn", args: ["checkout", url, target, *args])
     end
   end
 
+  sig { returns(String) }
   def cache_tag
     head? ? "svn-HEAD" : "svn"
   end
@@ -686,23 +724,26 @@ class GitDownloadStrategy < VCSDownloadStrategy
   end
 
   # (see AbstractDownloadStrategy#source_modified_time)
+  sig { returns(Time) }
   def source_modified_time
-    out, = system_command("git", args: ["--git-dir", git_dir, "show", "-s", "--format=%cD"])
+    out, = silent_command("git", args: ["--git-dir", git_dir, "show", "-s", "--format=%cD"])
     Time.parse(out)
   end
 
   # (see VCSDownloadStrategy#source_modified_time)
   def last_commit
-    out, = system_command("git", args: ["--git-dir", git_dir, "rev-parse", "--short=7", "HEAD"])
+    out, = silent_command("git", args: ["--git-dir", git_dir, "rev-parse", "--short=7", "HEAD"])
     out.chomp
   end
 
   private
 
+  sig { returns(String) }
   def cache_tag
     "git"
   end
 
+  sig { returns(Integer) }
   def cache_version
     0
   end
@@ -732,24 +773,25 @@ class GitDownloadStrategy < VCSDownloadStrategy
   end
 
   def ref?
-    system_command("git",
+    silent_command("git",
                    args: ["--git-dir", git_dir, "rev-parse", "-q", "--verify", "#{@ref}^{commit}"])
       .success?
   end
 
   def current_revision
-    out, = system_command("git", args: ["--git-dir", git_dir, "rev-parse", "-q", "--verify", "HEAD"])
+    out, = silent_command("git", args: ["--git-dir", git_dir, "rev-parse", "-q", "--verify", "HEAD"])
     out.strip
   end
 
   def repo_valid?
-    system_command("git", args: ["--git-dir", git_dir, "status", "-s"]).success?
+    silent_command("git", args: ["--git-dir", git_dir, "status", "-s"]).success?
   end
 
   def submodules?
     (cached_location/".gitmodules").exist?
   end
 
+  sig { returns(T::Array[String]) }
   def clone_args
     args = %w[clone]
     args << "--depth" << "1" if shallow_clone?
@@ -763,6 +805,7 @@ class GitDownloadStrategy < VCSDownloadStrategy
     args << @url << cached_location
   end
 
+  sig { returns(String) }
   def refspec
     case @ref_type
     when :branch then "+refs/heads/#{@ref}:refs/remotes/origin/#{@ref}"
@@ -772,44 +815,44 @@ class GitDownloadStrategy < VCSDownloadStrategy
   end
 
   def config_repo
-    system_command! "git",
-                    args:  ["config", "remote.origin.url", @url],
-                    chdir: cached_location
-    system_command! "git",
-                    args:  ["config", "remote.origin.fetch", refspec],
-                    chdir: cached_location
-    system_command! "git",
-                    args:  ["config", "remote.origin.tagOpt", "--no-tags"],
-                    chdir: cached_location
+    command! "git",
+             args:  ["config", "remote.origin.url", @url],
+             chdir: cached_location
+    command! "git",
+             args:  ["config", "remote.origin.fetch", refspec],
+             chdir: cached_location
+    command! "git",
+             args:  ["config", "remote.origin.tagOpt", "--no-tags"],
+             chdir: cached_location
   end
 
   def update_repo
     return unless @ref_type == :branch || !ref?
 
     if !shallow_clone? && shallow_dir?
-      system_command! "git",
-                      args:  ["fetch", "origin", "--unshallow"],
-                      chdir: cached_location
+      command! "git",
+               args:  ["fetch", "origin", "--unshallow"],
+               chdir: cached_location
     else
-      system_command! "git",
-                      args:  ["fetch", "origin"],
-                      chdir: cached_location
+      command! "git",
+               args:  ["fetch", "origin"],
+               chdir: cached_location
     end
   end
 
   def clone_repo
-    system_command! "git", args: clone_args
+    command! "git", args: clone_args
 
-    system_command! "git",
-                    args:  ["config", "homebrew.cacheversion", cache_version],
-                    chdir: cached_location
+    command! "git",
+             args:  ["config", "homebrew.cacheversion", cache_version],
+             chdir: cached_location
     checkout
     update_submodules if submodules?
   end
 
   def checkout
     ohai "Checking out #{@ref_type} #{@ref}" if @ref_type && @ref
-    system_command! "git", args: ["checkout", "-f", @ref, "--"], chdir: cached_location
+    command! "git", args: ["checkout", "-f", @ref, "--"], chdir: cached_location
   end
 
   def reset
@@ -820,18 +863,18 @@ class GitDownloadStrategy < VCSDownloadStrategy
       @ref
     end
 
-    system_command! "git",
-                    args:  ["reset", "--hard", *ref, "--"],
-                    chdir: cached_location
+    command! "git",
+             args:  ["reset", "--hard", *ref, "--"],
+             chdir: cached_location
   end
 
   def update_submodules
-    system_command! "git",
-                    args:  ["submodule", "foreach", "--recursive", "git submodule sync"],
-                    chdir: cached_location
-    system_command! "git",
-                    args:  ["submodule", "update", "--init", "--recursive"],
-                    chdir: cached_location
+    command! "git",
+             args:  ["submodule", "foreach", "--recursive", "git submodule sync"],
+             chdir: cached_location
+    command! "git",
+             args:  ["submodule", "update", "--init", "--recursive"],
+             chdir: cached_location
     fix_absolute_submodule_gitdir_references!
   end
 
@@ -843,9 +886,9 @@ class GitDownloadStrategy < VCSDownloadStrategy
   # in 2.8.3. Clones created with affected version remain broken.)
   # See https://github.com/Homebrew/homebrew-core/pull/1520 for an example.
   def fix_absolute_submodule_gitdir_references!
-    submodule_dirs = system_command!("git",
-                                     args:  ["submodule", "--quiet", "foreach", "--recursive", "pwd"],
-                                     chdir: cached_location).stdout
+    submodule_dirs = command!("git",
+                              args:  ["submodule", "--quiet", "foreach", "--recursive", "pwd"],
+                              chdir: cached_location).stdout
 
     submodule_dirs.lines.map(&:chomp).each do |submodule_dir|
       work_dir = Pathname.new(submodule_dir)
@@ -913,9 +956,7 @@ class GitHubGitDownloadStrategy < GitDownloadStrategy
 
   def commit_outdated?(commit)
     @last_commit ||= github_last_commit
-    if !@last_commit
-      super
-    else
+    if @last_commit
       return true unless commit
       return true unless @last_commit.start_with?(commit)
 
@@ -925,6 +966,8 @@ class GitHubGitDownloadStrategy < GitDownloadStrategy
         version.update_commit(commit)
         false
       end
+    else
+      super
     end
   end
 end
@@ -933,6 +976,8 @@ end
 #
 # @api public
 class CVSDownloadStrategy < VCSDownloadStrategy
+  extend T::Sig
+
   def initialize(url, name, version, **meta)
     super
     @url = @url.sub(%r{^cvs://}, "")
@@ -947,6 +992,7 @@ class CVSDownloadStrategy < VCSDownloadStrategy
   end
 
   # (see AbstractDownloadStrategy#source_modified_time)
+  sig { returns(Time) }
   def source_modified_time
     # Filter CVS's files because the timestamp for each of them is the moment
     # of clone.
@@ -967,6 +1013,7 @@ class CVSDownloadStrategy < VCSDownloadStrategy
     { "PATH" => PATH.new("/usr/bin", Formula["cvs"].opt_bin, ENV["PATH"]) }
   end
 
+  sig { returns(String) }
   def cache_tag
     "cvs"
   end
@@ -981,17 +1028,17 @@ class CVSDownloadStrategy < VCSDownloadStrategy
 
   def clone_repo
     # Login is only needed (and allowed) with pserver; skip for anoncvs.
-    system_command! "cvs", args: [*quiet_flag, "-d", @url, "login"] if @url.include? "pserver"
+    command! "cvs", args: [*quiet_flag, "-d", @url, "login"] if @url.include? "pserver"
 
-    system_command! "cvs",
-                    args:  [*quiet_flag, "-d", @url, "checkout", "-d", cached_location.basename, @module],
-                    chdir: cached_location.dirname
+    command! "cvs",
+             args:  [*quiet_flag, "-d", @url, "checkout", "-d", cached_location.basename, @module],
+             chdir: cached_location.dirname
   end
 
   def update
-    system_command! "cvs",
-                    args:  [*quiet_flag, "update"],
-                    chdir: cached_location
+    command! "cvs",
+             args:  [*quiet_flag, "update"],
+             chdir: cached_location
   end
 
   def split_url(in_url)
@@ -1006,14 +1053,17 @@ end
 #
 # @api public
 class MercurialDownloadStrategy < VCSDownloadStrategy
+  extend T::Sig
+
   def initialize(url, name, version, **meta)
     super
     @url = @url.sub(%r{^hg://}, "")
   end
 
   # (see AbstractDownloadStrategy#source_modified_time)
+  sig { returns(Time) }
   def source_modified_time
-    out, = system_command("hg",
+    out, = silent_command("hg",
                           args: ["tip", "--template", "{date|isodate}", "-R", cached_location])
 
     Time.parse(out)
@@ -1021,7 +1071,7 @@ class MercurialDownloadStrategy < VCSDownloadStrategy
 
   # (see VCSDownloadStrategy#source_modified_time)
   def last_commit
-    out, = system_command("hg", args: ["parent", "--template", "{node|short}", "-R", cached_location])
+    out, = silent_command("hg", args: ["parent", "--template", "{node|short}", "-R", cached_location])
     out.chomp
   end
 
@@ -1031,6 +1081,7 @@ class MercurialDownloadStrategy < VCSDownloadStrategy
     { "PATH" => PATH.new(Formula["mercurial"].opt_bin, ENV["PATH"]) }
   end
 
+  sig { returns(String) }
   def cache_tag
     "hg"
   end
@@ -1040,11 +1091,11 @@ class MercurialDownloadStrategy < VCSDownloadStrategy
   end
 
   def clone_repo
-    system_command! "hg", args: ["clone", @url, cached_location]
+    command! "hg", args: ["clone", @url, cached_location]
   end
 
   def update
-    system_command! "hg", args: ["--cwd", cached_location, "pull", "--update"]
+    command! "hg", args: ["--cwd", cached_location, "pull", "--update"]
 
     update_args = if @ref_type && @ref
       ohai "Checking out #{@ref_type} #{@ref}"
@@ -1053,7 +1104,7 @@ class MercurialDownloadStrategy < VCSDownloadStrategy
       ["--clean"]
     end
 
-    system_command! "hg", args: ["--cwd", cached_location, "update", *update_args]
+    command! "hg", args: ["--cwd", cached_location, "update", *update_args]
   end
 end
 
@@ -1061,14 +1112,17 @@ end
 #
 # @api public
 class BazaarDownloadStrategy < VCSDownloadStrategy
+  extend T::Sig
+
   def initialize(url, name, version, **meta)
     super
     @url.sub!(%r{^bzr://}, "")
   end
 
   # (see AbstractDownloadStrategy#source_modified_time)
+  sig { returns(Time) }
   def source_modified_time
-    out, = system_command("bzr", args: ["log", "-l", "1", "--timezone=utc", cached_location])
+    out, = silent_command("bzr", args: ["log", "-l", "1", "--timezone=utc", cached_location])
     timestamp = out.chomp
     raise "Could not get any timestamps from bzr!" if timestamp.blank?
 
@@ -1077,7 +1131,7 @@ class BazaarDownloadStrategy < VCSDownloadStrategy
 
   # (see VCSDownloadStrategy#source_modified_time)
   def last_commit
-    out, = system_command("bzr", args: ["revno", cached_location])
+    out, = silent_command("bzr", args: ["revno", cached_location])
     out.chomp
   end
 
@@ -1090,6 +1144,7 @@ class BazaarDownloadStrategy < VCSDownloadStrategy
     }
   end
 
+  sig { returns(String) }
   def cache_tag
     "bzr"
   end
@@ -1100,14 +1155,14 @@ class BazaarDownloadStrategy < VCSDownloadStrategy
 
   def clone_repo
     # "lightweight" means history-less
-    system_command! "bzr",
-                    args: ["checkout", "--lightweight", @url, cached_location]
+    command! "bzr",
+             args: ["checkout", "--lightweight", @url, cached_location]
   end
 
   def update
-    system_command! "bzr",
-                    args:  ["update"],
-                    chdir: cached_location
+    command! "bzr",
+             args:  ["update"],
+             chdir: cached_location
   end
 end
 
@@ -1115,25 +1170,28 @@ end
 #
 # @api public
 class FossilDownloadStrategy < VCSDownloadStrategy
+  extend T::Sig
+
   def initialize(url, name, version, **meta)
     super
     @url = @url.sub(%r{^fossil://}, "")
   end
 
   # (see AbstractDownloadStrategy#source_modified_time)
+  sig { returns(Time) }
   def source_modified_time
-    out, = system_command("fossil", args: ["info", "tip", "-R", cached_location])
+    out, = silent_command("fossil", args: ["info", "tip", "-R", cached_location])
     Time.parse(out[/^uuid: +\h+ (.+)$/, 1])
   end
 
   # (see VCSDownloadStrategy#source_modified_time)
   def last_commit
-    out, = system_command("fossil", args: ["info", "tip", "-R", cached_location])
+    out, = silent_command("fossil", args: ["info", "tip", "-R", cached_location])
     out[/^uuid: +(\h+) .+$/, 1]
   end
 
   def repo_valid?
-    system_command("fossil", args: ["branch", "-R", cached_location]).success?
+    silent_command("fossil", args: ["branch", "-R", cached_location]).success?
   end
 
   private
@@ -1142,16 +1200,17 @@ class FossilDownloadStrategy < VCSDownloadStrategy
     { "PATH" => PATH.new(Formula["fossil"].opt_bin, ENV["PATH"]) }
   end
 
+  sig { returns(String) }
   def cache_tag
     "fossil"
   end
 
   def clone_repo
-    system_command!("fossil", args: ["clone", @url, cached_location])
+    silent_command!("fossil", args: ["clone", @url, cached_location])
   end
 
   def update
-    system_command!("fossil", args: ["pull", "-R", cached_location])
+    silent_command!("fossil", args: ["pull", "-R", cached_location])
   end
 end
 
@@ -1177,7 +1236,8 @@ class DownloadStrategyDetector
     when %r{^https?://github\.com/[^/]+/[^/]+\.git$}
       GitHubGitDownloadStrategy
     when %r{^https?://.+\.git$},
-         %r{^git://}
+         %r{^git://},
+         %r{^https?://git\.sr\.ht/[^/]+/[^/]+$}
       GitDownloadStrategy
     when %r{^https?://www\.apache\.org/dyn/closer\.cgi},
          %r{^https?://www\.apache\.org/dyn/closer\.lua}
@@ -1185,22 +1245,20 @@ class DownloadStrategyDetector
     when %r{^https?://(.+?\.)?googlecode\.com/svn},
          %r{^https?://svn\.},
          %r{^svn://},
+         %r{^svn\+http://},
+         %r{^http://svn\.apache\.org/repos/},
          %r{^https?://(.+?\.)?sourceforge\.net/svnroot/}
       SubversionDownloadStrategy
     when %r{^cvs://}
       CVSDownloadStrategy
     when %r{^hg://},
-         %r{^https?://(.+?\.)?googlecode\.com/hg}
+         %r{^https?://(.+?\.)?googlecode\.com/hg},
+         %r{^https?://(.+?\.)?sourceforge\.net/hgweb/}
       MercurialDownloadStrategy
     when %r{^bzr://}
       BazaarDownloadStrategy
     when %r{^fossil://}
       FossilDownloadStrategy
-    when %r{^svn\+http://},
-         %r{^http://svn\.apache\.org/repos/}
-      SubversionDownloadStrategy
-    when %r{^https?://(.+?\.)?sourceforge\.net/hgweb/}
-      MercurialDownloadStrategy
     else
       CurlDownloadStrategy
     end

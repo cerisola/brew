@@ -1,11 +1,15 @@
+# typed: true
 # frozen_string_literal: true
 
 require "readall"
 require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def readall_args
     Homebrew::CLI::Parser.new do
       usage_banner <<~EOS

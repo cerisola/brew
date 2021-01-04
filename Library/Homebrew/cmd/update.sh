@@ -37,8 +37,7 @@ git_init_if_necessary() {
     fi
     git config remote.origin.url "$HOMEBREW_BREW_GIT_REMOTE"
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
-    latest_tag="$(git ls-remote --tags --refs -q origin | tail -n1 | cut -f2)"
-    git fetch --force origin --shallow-since="$latest_tag"
+    git fetch --force --tags origin
     git remote set-head origin --auto >/dev/null
     git reset --hard origin/master
     SKIP_FETCH_BREW_REPOSITORY=1
@@ -60,7 +59,7 @@ git_init_if_necessary() {
     fi
     git config remote.origin.url "$HOMEBREW_CORE_GIT_REMOTE"
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
-    git fetch --force --depth=1 origin refs/heads/master:refs/remotes/origin/master
+    git fetch --force origin refs/heads/master:refs/remotes/origin/master
     git remote set-head origin --auto >/dev/null
     git reset --hard origin/master
     SKIP_FETCH_CORE_REPOSITORY=1
@@ -373,21 +372,54 @@ EOS
   if [[ -n "$HOMEBREW_FORCE_BREWED_CURL" &&
       ! -x "$HOMEBREW_PREFIX/opt/curl/bin/curl" ]]
   then
-    brew install curl
+    # we cannot install a Homebrew cURL if homebrew/core is unavailable.
+    if [[ ! -d "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core" ]] || ! brew install curl
+    then
+      odie "Curl must be installed and in your PATH!"
+    fi
   fi
 
   if ! git --version &>/dev/null ||
      [[ -n "$HOMEBREW_FORCE_BREWED_GIT" &&
       ! -x "$HOMEBREW_PREFIX/opt/git/bin/git" ]]
   then
-    # we cannot install brewed git if homebrew/core is unavailable.
-    [[ -d "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core" ]] && brew install git
-    unset GIT_EXECUTABLE
-    if ! git --version &>/dev/null
+    # we cannot install a Homebrew Git if homebrew/core is unavailable.
+    if [[ ! -d "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core" ]] || ! brew install git
     then
       odie "Git must be installed and in your PATH!"
     fi
   fi
+
+  [[ -f "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core/.git/shallow" ]] && HOMEBREW_CORE_SHALLOW=1
+  [[ -f "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-cask/.git/shallow" ]] && HOMEBREW_CASK_SHALLOW=1
+  if [[ -n $HOMEBREW_CORE_SHALLOW && -n $HOMEBREW_CASK_SHALLOW ]]
+  then
+    SHALLOW_COMMAND_PHRASE="These commands"
+    SHALLOW_REPO_PHRASE="repositories"
+  else
+    SHALLOW_COMMAND_PHRASE="This command"
+    SHALLOW_REPO_PHRASE="repository"
+  fi
+
+  if [[ -n $HOMEBREW_CORE_SHALLOW || -n $HOMEBREW_CASK_SHALLOW ]]
+  then
+    odie <<EOS
+${HOMEBREW_CORE_SHALLOW:+
+  homebrew-core is a shallow clone.}${HOMEBREW_CASK_SHALLOW:+
+  homebrew-cask is a shallow clone.}
+To \`brew update\`, first run:${HOMEBREW_CORE_SHALLOW:+
+  git -C "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core" fetch --unshallow}${HOMEBREW_CASK_SHALLOW:+
+  git -C "$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-cask" fetch --unshallow}
+${SHALLOW_COMMAND_PHRASE} may take a few minutes to run due to the large size of the ${SHALLOW_REPO_PHRASE}.
+This restriction has been made on GitHub's request because updating shallow
+clones is an extremely expensive operation due to the tree layout and traffic of
+Homebrew/homebrew-core and Homebrew/homebrew-cask. We don't do this for you
+automatically to avoid repeatedly performing an expensive unshallow operation in
+CI systems (which should instead be fixed to not use shallow clones). Sorry for
+the inconvenience!
+EOS
+  fi
+
   export GIT_TERMINAL_PROMPT="0"
   export GIT_SSH_COMMAND="ssh -oBatchMode=yes"
 
@@ -428,12 +460,7 @@ EOS
     echo "HOMEBREW_BREW_GIT_REMOTE set: using $HOMEBREW_BREW_GIT_REMOTE for Homebrew/brew Git remote."
     git remote set-url origin "$HOMEBREW_BREW_GIT_REMOTE"
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
-    latest_tag="$(git ls-remote --tags --refs -q origin |
-                  cut -d/ -f3 | 
-                  sort --numeric-sort --field-separator=. --key=1,1 --key=2,2 --key=3,3 |
-                  tail -n1)"
-    latest_ref="refs/tags/$latest_tag"
-    git fetch --force origin --shallow-since="$latest_ref"
+    git fetch --force --tags origin
   fi
 
   if [[ "$HOMEBREW_CORE_DEFAULT_GIT_REMOTE" != "$HOMEBREW_CORE_GIT_REMOTE" ]] &&
@@ -443,7 +470,7 @@ EOS
     echo "HOMEBREW_CORE_GIT_REMOTE set: using $HOMEBREW_CORE_GIT_REMOTE for Homebrew/brew Git remote."
     git remote set-url origin "$HOMEBREW_CORE_GIT_REMOTE"
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
-    git fetch --force --depth=1 origin refs/heads/master:refs/remotes/origin/master
+    git fetch --force origin refs/heads/master:refs/remotes/origin/master
   fi
 
   safe_cd "$HOMEBREW_REPOSITORY"

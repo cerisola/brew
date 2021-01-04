@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 describe Cask::DSL, :cask do
@@ -6,7 +7,7 @@ describe Cask::DSL, :cask do
 
   context "stanzas" do
     it "lets you set url, homepage, and version" do
-      expect(cask.url.to_s).to eq("https://brew.sh/TestCask.dmg")
+      expect(cask.url.to_s).to eq("https://brew.sh/TestCask-1.2.3.dmg")
       expect(cask.homepage).to eq("https://brew.sh/")
       expect(cask.version.to_s).to eq("1.2.3")
     end
@@ -65,7 +66,7 @@ describe Cask::DSL, :cask do
 
       it "does not require a DSL version in the header" do
         expect(cask.token).to eq("no-dsl-version")
-        expect(cask.url.to_s).to eq("https://brew.sh/TestCask.dmg")
+        expect(cask.url.to_s).to eq("https://brew.sh/TestCask-1.2.3.dmg")
         expect(cask.homepage).to eq("https://brew.sh/")
         expect(cask.version.to_s).to eq("1.2.3")
       end
@@ -409,14 +410,6 @@ describe Cask::DSL, :cask do
   end
 
   describe "depends_on x11" do
-    context "valid" do
-      let(:token) { "with-depends-on-x11" }
-
-      it "is allowed to be specified" do
-        expect(cask.depends_on.x11).not_to be nil
-      end
-    end
-
     context "invalid depends_on x11 value" do
       let(:token) { "invalid/invalid-depends-on-x11-value" }
 
@@ -503,16 +496,15 @@ describe Cask::DSL, :cask do
     end
 
     it "does not include a trailing slash" do
-      original_appdir = Cask::Config.global.appdir
-      Cask::Config.global.appdir = "#{original_appdir}/"
+      config = Cask::Config.new(explicit: {
+                                  appdir: "/Applications/",
+                                })
 
-      cask = Cask::Cask.new("appdir-trailing-slash") do
+      cask = Cask::Cask.new("appdir-trailing-slash", config: config) do
         binary "#{appdir}/some/path"
       end
 
-      expect(cask.artifacts.first.source).to eq(original_appdir/"some/path")
-    ensure
-      Cask::Config.global.appdir = original_appdir
+      expect(cask.artifacts.first.source).to eq(Pathname("/Applications/some/path"))
     end
   end
 

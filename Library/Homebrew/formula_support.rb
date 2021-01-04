@@ -1,11 +1,14 @@
+# typed: true
 # frozen_string_literal: true
 
 # Used to track formulae that cannot be installed at the same time.
 FormulaConflict = Struct.new(:name, :reason)
 
-# Used to annotate formulae that duplicate macOS provided software
+# Used to annotate formulae that duplicate macOS-provided software
 # or cause conflicts when linked in.
 class KegOnlyReason
+  extend T::Sig
+
   attr_reader :reason
 
   def initialize(reason, explanation)
@@ -29,6 +32,7 @@ class KegOnlyReason
     provided_by_macos? || shadowed_by_macos?
   end
 
+  sig { returns(T::Boolean) }
   def applicable?
     # macOS reasons aren't applicable on other OSs
     # (see extend/os/mac/formula_support for override on macOS)

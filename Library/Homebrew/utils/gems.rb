@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 # Never `require` anything in this file (except English). It needs to be able to
@@ -7,8 +8,8 @@
 require "English"
 
 module Homebrew
-  # Keep in sync with the Gemfile.lock's BUNDLED WITH.
-  HOMEBREW_BUNDLER_VERSION = "1.17.2"
+  # Keep in sync with the `Gemfile.lock`'s BUNDLED WITH.
+  HOMEBREW_BUNDLER_VERSION = "1.17.3"
 
   module_function
 
@@ -16,16 +17,20 @@ module Homebrew
     "#{RbConfig::CONFIG["prefix"]}/bin"
   end
 
+  def gem_user_dir
+    ENV["HOMEBREW_TESTS_GEM_USER_DIR"] || Gem.user_dir
+  end
+
   def gem_user_bindir
     require "rubygems"
-    "#{Gem.user_dir}/bin"
+    "#{gem_user_dir}/bin"
   end
 
   def ohai_if_defined(message)
     if defined?(ohai)
-      ohai message
+      $stderr.ohai message
     else
-      puts "==> #{message}"
+      $stderr.puts "==> #{message}"
     end
   end
 
@@ -54,9 +59,9 @@ module Homebrew
     Gem.clear_paths
     Gem::Specification.reset
 
-    # Add necessary Ruby and Gem binary directories to PATH.
+    # Add necessary Ruby and Gem binary directories to `PATH`.
     gem_bindir ||= Gem.bindir
-    paths = ENV["PATH"].split(":")
+    paths = ENV.fetch("PATH").split(":")
     paths.unshift(gem_bindir) unless paths.include?(gem_bindir)
     paths.unshift(ruby_bindir) unless paths.include?(ruby_bindir)
     ENV["PATH"] = paths.compact.join(":")
@@ -84,14 +89,14 @@ module Homebrew
   end
 
   def find_in_path(executable)
-    ENV["PATH"].split(":").find do |path|
-      File.executable?("#{path}/#{executable}")
+    ENV.fetch("PATH").split(":").find do |path|
+      File.executable?(File.join(path, executable))
     end
   end
 
   def install_bundler!
     require "rubygems"
-    setup_gem_environment!(gem_home: Gem.user_dir, gem_bindir: gem_user_bindir)
+    setup_gem_environment!(gem_home: gem_user_dir, gem_bindir: gem_user_bindir)
     install_gem_setup_path!(
       "bundler",
       version:               HOMEBREW_BUNDLER_VERSION,
@@ -103,9 +108,9 @@ module Homebrew
   def install_bundler_gems!
     install_bundler!
 
-    ENV["BUNDLE_GEMFILE"] = "#{ENV["HOMEBREW_LIBRARY"]}/Homebrew/Gemfile"
+    ENV["BUNDLE_GEMFILE"] = File.join(ENV.fetch("HOMEBREW_LIBRARY"), "Homebrew", "Gemfile")
     @bundle_installed ||= begin
-      bundle = "#{find_in_path(:bundle)}/bundle"
+      bundle = File.join(find_in_path("bundle"), "bundle")
       bundle_check_output = `#{bundle} check 2>&1`
       bundle_check_failed = !$CHILD_STATUS.success?
 

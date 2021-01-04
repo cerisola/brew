@@ -1,10 +1,11 @@
+# typed: true
 # frozen_string_literal: true
 
 # Formula information drawn from an external `brew info --json` call.
 #
 # @api private
 class FormulaInfo
-  # The whole info structure parsed from the JSON
+  # The whole info structure parsed from the JSON.
   attr_accessor :info
 
   def initialize(info)

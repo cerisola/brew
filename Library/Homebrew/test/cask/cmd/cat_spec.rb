@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require_relative "shared_examples/requires_cask_token"
@@ -9,15 +10,30 @@ describe Cask::Cmd::Cat, :cask do
 
   describe "given a basic Cask" do
     let(:basic_cask_content) {
-      <<~RUBY
+      <<~'RUBY'
         cask "basic-cask" do
           version "1.2.3"
           sha256 "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
 
-          url "https://brew.sh/TestCask.dmg"
+          url "https://brew.sh/TestCask-#{version}.dmg"
+          name "Basic Cask"
+          desc "Cask for testing basic functionality"
           homepage "https://brew.sh/"
 
           app "TestCask.app"
+        end
+      RUBY
+    }
+    let(:caffeine_content) {
+      <<~'RUBY'
+        cask "local-caffeine" do
+          version "1.2.3"
+          sha256 "67cdb8a02803ef37fdbf7e0be205863172e41a561ca446cd84f0d7ab35a99d94"
+
+          url "file://#{TEST_FIXTURE_DIR}/cask/caffeine.zip"
+          homepage "https://brew.sh/"
+
+          app "Caffeine.app"
         end
       RUBY
     }
@@ -30,8 +46,8 @@ describe Cask::Cmd::Cat, :cask do
 
     it "can display multiple Casks" do
       expect {
-        described_class.run("basic-cask", "basic-cask")
-      }.to output(basic_cask_content * 2).to_stdout
+        described_class.run("basic-cask", "local-caffeine")
+      }.to output(basic_cask_content + caffeine_content).to_stdout
     end
   end
 

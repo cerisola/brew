@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "requirement"
@@ -16,6 +17,6 @@ class X11Requirement < Requirement
   end
 
   def message
-    "XQuartz #{min_version} (or newer) is required to install this formula. #{super}"
+    "XQuartz #{min_version} (or newer) is required for this software. #{super}"
   end
 end

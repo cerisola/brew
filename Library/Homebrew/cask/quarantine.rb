@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "development_tools"
@@ -8,6 +9,8 @@ module Cask
   #
   # @api private
   module Quarantine
+    extend T::Sig
+
     module_function
 
     QUARANTINE_ATTRIBUTE = "com.apple.quarantine"
@@ -24,6 +27,7 @@ module Cask
     end
     private :xattr
 
+    sig { returns(Symbol) }
     def check_quarantine_support
       odebug "Checking quarantine support"
 

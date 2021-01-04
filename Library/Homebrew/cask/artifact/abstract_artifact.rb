@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 module Cask
@@ -6,6 +7,8 @@ module Cask
     #
     # @api private
     class AbstractArtifact
+      extend T::Sig
+
       include Comparable
       extend Predicable
 
@@ -45,7 +48,7 @@ module Cask
 
       def <=>(other)
         return unless other.class < AbstractArtifact
-        return 0 if self.class == other.class
+        return 0 if instance_of?(other.class)
 
         @@sort_order ||= [ # rubocop:disable Style/ClassVars
           PreflightBlock,
@@ -131,6 +134,7 @@ module Cask
         cask.config
       end
 
+      sig { returns(String) }
       def to_s
         "#{summarize} (#{self.class.english_name})"
       end

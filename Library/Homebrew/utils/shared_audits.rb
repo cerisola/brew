@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require "utils/curl"
@@ -6,6 +7,9 @@ require "utils/curl"
 #
 # @api private
 module SharedAudits
+  include Utils::Curl
+  extend Utils::Curl
+
   module_function
 
   def github_repo_data(user, repo)
@@ -27,31 +31,20 @@ module SharedAudits
     nil
   end
 
-  GITHUB_PRERELEASE_ALLOWLIST = {
-    "amd-power-gadget" => :all,
-    "elm-format"       => "0.8.3",
-    "gitless"          => "0.8.8",
-    "infrakit"         => "0.5",
-    "pock"             => :all,
-    "riff"             => "0.5.0",
-    "telegram-cli"     => "1.3.1",
-    "volta"            => "0.8.6",
-  }.freeze
-
   def github_release(user, repo, tag, formula: nil, cask: nil)
     release = github_release_data(user, repo, tag)
     return unless release
 
-    if cask && GITHUB_PRERELEASE_ALLOWLIST[cask.token] == :all
-      return if release["prerelease"]
-
-      return "#{tag} is not a GitHub pre-release but cask '#{cask.token}' is in GITHUB_PRERELEASE_ALLOWLIST."
+    exception, name, version = if formula
+      [tap_audit_exception(:github_prerelease_allowlist, formula.tap, formula.name), formula.name, formula.version]
+    elsif cask
+      [tap_audit_exception(:github_prerelease_allowlist, cask.tap, cask.token), cask.token, cask.version]
     end
 
-    if release["prerelease"]
-      return if formula && GITHUB_PRERELEASE_ALLOWLIST[formula.name] == formula.version
+    return "#{tag} is a GitHub pre-release." if release["prerelease"] && [version, "all"].exclude?(exception)
 
-      return "#{tag} is a GitHub pre-release."
+    if !release["prerelease"] && exception
+      return "#{tag} is not a GitHub pre-release but '#{name}' is in the GitHub prerelease allowlist."
     end
 
     return "#{tag} is a GitHub draft." if release["draft"]
@@ -60,54 +53,44 @@ module SharedAudits
   def gitlab_repo_data(user, repo)
     @gitlab_repo_data ||= {}
     @gitlab_repo_data["#{user}/#{repo}"] ||= begin
-      out, _, status= curl_output("--request", "GET", "https://gitlab.com/api/v4/projects/#{user}%2F#{repo}")
-      return unless status.success?
-
-      JSON.parse(out)
+      out, _, status = curl_output("https://gitlab.com/api/v4/projects/#{user}%2F#{repo}")
+      JSON.parse(out) if status.success?
     end
-
-    @gitlab_repo_data["#{user}/#{repo}"]
   end
 
   def gitlab_release_data(user, repo, tag)
     id = "#{user}/#{repo}/#{tag}"
     @gitlab_release_data ||= {}
     @gitlab_release_data[id] ||= begin
-      out, _, status= curl_output(
+      out, _, status = curl_output(
         "https://gitlab.com/api/v4/projects/#{user}%2F#{repo}/releases/#{tag}", "--fail"
       )
-      return unless status.success?
-
-      JSON.parse(out)
+      JSON.parse(out) if status.success?
     end
-
-    @gitlab_release_data[id]
   end
 
-  GITLAB_PRERELEASE_ALLOWLIST = {}.freeze
-
-  def gitlab_release(user, repo, tag, formula: nil)
+  def gitlab_release(user, repo, tag, formula: nil, cask: nil)
     release = gitlab_release_data(user, repo, tag)
     return unless release
 
     return if Date.parse(release["released_at"]) <= Date.today
-    return if formula && GITLAB_PRERELEASE_ALLOWLIST[formula.name] == formula.version
+
+    exception, version = if formula
+      [tap_audit_exception(:gitlab_prerelease_allowlist, formula.tap, formula.name), formula.version]
+    elsif cask
+      [tap_audit_exception(:gitlab_prerelease_allowlist, cask.tap, cask.token), cask.version]
+    end
+    return if [version, "all"].include?(exception)
 
     "#{tag} is a GitLab pre-release."
   end
-
-  GITHUB_FORK_ALLOWLIST = %w[
-    variar/klogg
-  ].freeze
 
   def github(user, repo)
     metadata = github_repo_data(user, repo)
 
     return if metadata.nil?
 
-    if metadata["fork"] && !GITHUB_FORK_ALLOWLIST.include?("#{user}/#{repo}")
-      return "GitHub fork (not canonical repository)"
-    end
+    return "GitHub fork (not canonical repository)" if metadata["fork"]
 
     if (metadata["forks_count"] < 30) && (metadata["subscribers_count"] < 30) &&
        (metadata["stargazers_count"] < 75)
@@ -160,7 +143,7 @@ module SharedAudits
     watcher_metadata = JSON.parse(watcher_out)
     return if watcher_metadata.nil?
 
-    return if (forks_metadata["size"] < 30) && (watcher_metadata["size"] < 75)
+    return if forks_metadata["size"] >= 30 || watcher_metadata["size"] >= 75
 
     "Bitbucket repository not notable enough (<30 forks and <75 watchers)"
   end
@@ -181,5 +164,22 @@ module SharedAudits
     url.match(%r{^https://gitlab\.com/[\w-]+/[\w-]+/-/archive/([^/]+)/})
        .to_a
        .second
+  end
+
+  def tap_audit_exception(list, tap, formula_or_cask, value = nil)
+    return false if tap.audit_exceptions.blank?
+    return false unless tap.audit_exceptions.key? list
+
+    list = tap.audit_exceptions[list]
+
+    case list
+    when Array
+      list.include? formula_or_cask
+    when Hash
+      return false if list.exclude? formula_or_cask
+      return list[formula_or_cask] if value.blank?
+
+      list[formula_or_cask] == value
+    end
   end
 end

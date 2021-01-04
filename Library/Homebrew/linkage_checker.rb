@@ -1,3 +1,4 @@
+# typed: true
 # frozen_string_literal: true
 
 require "keg"
@@ -9,6 +10,8 @@ require "fiddle"
 #
 # @api private
 class LinkageChecker
+  extend T::Sig
+
   attr_reader :undeclared_deps, :keg, :formula, :store
 
   def initialize(keg, formula = nil, cache_db:, rebuild_cache: false)
@@ -65,18 +68,9 @@ class LinkageChecker
     display_items "Broken dependencies", @broken_deps, puts_output: puts_output
     display_items "Unwanted system libraries", @unwanted_system_dylibs, puts_output: puts_output
     display_items "Conflicting libraries", @version_conflict_deps, puts_output: puts_output
-
-    if @broken_dylibs.empty?
-      puts "No broken library linkage detected"
-    elsif unexpected_broken_dylibs.empty?
-      puts "No unexpected broken library linkage detected."
-    else
-      puts "Unexpected missing library linkage detected"
-    end
-
-    puts "Unexpected non-missing linkage detected" if unexpected_present_dylibs.present?
   end
 
+  sig { returns(T::Boolean) }
   def broken_library_linkage?
     issues = [@broken_deps, @unwanted_system_dylibs, @version_conflict_deps]
     [issues, unexpected_broken_dylibs, unexpected_present_dylibs].flatten.any?(&:present?)
@@ -125,7 +119,7 @@ class LinkageChecker
   private
 
   def dylib_to_dep(dylib)
-    dylib =~ %r{#{Regexp.escape(HOMEBREW_PREFIX)}/(opt|Cellar)/([\w+-.@]+)/}
+    dylib =~ %r{#{Regexp.escape(HOMEBREW_PREFIX)}/(opt|Cellar)/([\w+-.@]+)/}o
     Regexp.last_match(2)
   end
 
@@ -276,9 +270,9 @@ class LinkageChecker
 
   def sort_by_formula_full_name!(arr)
     arr.sort! do |a, b|
-      if a.include?("/") && !b.include?("/")
+      if a.include?("/") && b.exclude?("/")
         1
-      elsif !a.include?("/") && b.include?("/")
+      elsif a.exclude?("/") && b.include?("/")
         -1
       else
         a <=> b
@@ -291,14 +285,16 @@ class LinkageChecker
   def harmless_broken_link?(dylib)
     # libgcc_s_* is referenced by programs that use the Java Service Wrapper,
     # and is harmless on x86(_64) machines
-    [
+    return true if [
       "/usr/lib/libgcc_s_ppc64.1.dylib",
       "/opt/local/lib/libgcc/libgcc_s.1.dylib",
     ].include?(dylib)
+
+    dylib.start_with?("/System/Library/Frameworks/")
   end
 
   # Display a list of things.
-  # Things may either be an array, or a hash of (label -> array)
+  # Things may either be an array, or a hash of (label -> array).
   def display_items(label, things, puts_output: true)
     return if things.empty?
 
