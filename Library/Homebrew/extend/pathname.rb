@@ -85,12 +85,12 @@ class Pathname
   BOTTLE_EXTNAME_RX = /(\.[a-z0-9_]+\.bottle\.(\d+\.)?tar\.gz)$/.freeze
 
   # Moves a file from the original location to the {Pathname}'s.
-  sig do
+  sig {
     params(sources: T.any(
       Resource, Resource::Partial, String, Pathname,
       T::Array[T.any(String, Pathname)], T::Hash[T.any(String, Pathname), String]
     )).void
-  end
+  }
   def install(*sources)
     sources.each do |src|
       case src
@@ -100,13 +100,13 @@ class Pathname
         src.resource.stage { install(*src.files) }
       when Array
         if src.empty?
-          opoo "tried to install empty array to #{self}"
+          opoo "Tried to install empty array to #{self}"
           break
         end
         src.each { |s| install_p(s, File.basename(s)) }
       when Hash
         if src.empty?
-          opoo "tried to install empty hash to #{self}"
+          opoo "Tried to install empty hash to #{self}"
           break
         end
         src.each { |s, new_basename| install_p(s, new_basename) }
@@ -118,9 +118,9 @@ class Pathname
 
   sig { params(src: T.any(String, Pathname), new_basename: String).void }
   def install_p(src, new_basename)
-    raise Errno::ENOENT, src.to_s unless File.symlink?(src) || File.exist?(src)
-
     src = Pathname(src)
+    raise Errno::ENOENT, src.to_s if !src.symlink? && !src.exist?
+
     dst = join(new_basename)
     dst = yield(src, dst) if block_given?
     return unless dst
@@ -140,11 +140,11 @@ class Pathname
   private :install_p
 
   # Creates symlinks to sources in this folder.
-  sig do
+  sig {
     params(
       sources: T.any(String, Pathname, T::Array[T.any(String, Pathname)], T::Hash[T.any(String, Pathname), String]),
     ).void
-  end
+  }
   def install_symlink(*sources)
     sources.each do |src|
       case src
@@ -303,17 +303,17 @@ class Pathname
   def verify_checksum(expected)
     raise ChecksumMissingError if expected.blank?
 
-    actual = Checksum.new(expected.hash_type, send(expected.hash_type).downcase)
+    actual = Checksum.new(sha256.downcase)
     raise ChecksumMismatchError.new(self, expected, actual) unless expected == actual
   end
 
   alias to_str to_s
 
-  sig do
+  sig {
     type_parameters(:U).params(
       _block: T.proc.params(path: Pathname).returns(T.type_parameter(:U)),
     ).returns(T.type_parameter(:U))
-  end
+  }
   def cd(&_block)
     Dir.chdir(self) { yield self }
   end
@@ -372,7 +372,7 @@ class Pathname
   def write_exec_script(*targets)
     targets.flatten!
     if targets.empty?
-      opoo "tried to write exec scripts to #{self} for an empty list of targets"
+      opoo "Tried to write exec scripts to #{self} for an empty list of targets"
       return
     end
     mkpath
@@ -413,14 +413,14 @@ class Pathname
   end
 
   # Writes an exec script that invokes a Java jar.
-  sig do
+  sig {
     params(
       target_jar:   T.any(String, Pathname),
       script_name:  T.any(String, Pathname),
       java_opts:    String,
       java_version: T.nilable(String),
     ).returns(Integer)
-  end
+  }
   def write_jar_script(target_jar, script_name, java_opts = "", java_version: nil)
     (self/script_name).write <<~EOS
       #!/bin/bash

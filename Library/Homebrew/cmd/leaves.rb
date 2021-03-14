@@ -12,13 +12,11 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def leaves_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `leaves`
-
+      description <<~EOS
         List installed formulae that are not dependencies of another installed formula.
       EOS
 
-      max_named 0
+      named_args :none
     end
   end
 

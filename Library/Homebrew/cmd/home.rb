@@ -12,9 +12,7 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def home_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `home` [<formula>|<cask>]
-
+      description <<~EOS
         Open a <formula> or <cask>'s homepage in a browser, or open
         Homebrew's own homepage if no argument is provided.
       EOS
@@ -22,7 +20,10 @@ module Homebrew
              description: "Treat all named arguments as formulae."
       switch "--cask", "--casks",
              description: "Treat all named arguments as casks."
+
       conflicts "--formula", "--cask"
+
+      named_args [:formula, :cask]
     end
   end
 

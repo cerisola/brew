@@ -42,14 +42,20 @@ module Homebrew
       # Convert named arguments to {Formula} or {Cask} objects.
       # If both a formula and cask with the same name exist, returns
       # the formula and prints a warning unless `only` is specified.
-      sig do
+      sig {
         params(only: T.nilable(Symbol), ignore_unavailable: T.nilable(T::Boolean), method: T.nilable(Symbol))
           .returns(T::Array[T.any(Formula, Keg, Cask::Cask)])
-      end
+      }
       def to_formulae_and_casks(only: parent&.only_formula_or_cask, ignore_unavailable: nil, method: nil)
         @to_formulae_and_casks ||= {}
         @to_formulae_and_casks[only] ||= downcased_unique_named.flat_map do |name|
           load_formula_or_cask(name, only: only, method: method)
+        rescue FormulaUnreadableError, FormulaClassUnavailableError,
+               TapFormulaUnreadableError, TapFormulaClassUnavailableError,
+               Cask::CaskUnreadableError
+          # Need to rescue before `*UnavailableError` (superclass of this)
+          # The formula/cask was found, but there's a problem with its implementation
+          raise
         rescue NoSuchKegError, FormulaUnavailableError, Cask::CaskUnavailableError
           ignore_unavailable ? [] : raise
         end.uniq.freeze
@@ -72,6 +78,8 @@ module Homebrew
       end
 
       def load_formula_or_cask(name, only: nil, method: nil)
+        unreadable_error = nil
+
         if only != :cask
           begin
             formula = case method
@@ -90,6 +98,11 @@ module Homebrew
 
             warn_if_cask_conflicts(name, "formula") unless only == :formula
             return formula
+          rescue FormulaUnreadableError, FormulaClassUnavailableError,
+                 TapFormulaUnreadableError, TapFormulaClassUnavailableError => e
+            # Need to rescue before `FormulaUnavailableError` (superclass of this)
+            # The formula was found, but there's a problem with its implementation
+            unreadable_error ||= e
           rescue NoSuchKegError, FormulaUnavailableError => e
             raise e if only == :formula
           end
@@ -97,12 +110,32 @@ module Homebrew
 
         if only != :formula
           begin
-            return Cask::CaskLoader.load(name, config: Cask::Config.from_args(@parent))
-          rescue Cask::CaskUnavailableError => e
-            retry if Tap.install_default_cask_tap_if_necessary
+            cask = Cask::CaskLoader.load(name, config: Cask::Config.from_args(@parent))
 
+            if unreadable_error.present?
+              onoe <<~EOS
+                Failed to load formula: #{name}
+                #{unreadable_error}
+              EOS
+              opoo "Treating #{name} as a cask."
+            end
+
+            return cask
+          rescue Cask::CaskUnreadableError => e
+            # Need to rescue before `CaskUnavailableError` (superclass of this)
+            # The cask was found, but there's a problem with its implementation
+            unreadable_error ||= e
+          rescue Cask::CaskUnavailableError => e
             raise e if only == :cask
           end
+        end
+
+        raise unreadable_error if unreadable_error.present?
+
+        user, repo, short_name = name.downcase.split("/", 3)
+        if repo.present? && short_name.present?
+          tap = Tap.fetch(user, repo)
+          raise TapFormulaOrCaskUnavailableError.new(tap, short_name)
         end
 
         raise FormulaOrCaskUnavailableError, name
@@ -175,10 +208,10 @@ module Homebrew
         end
       end
 
-      sig do
+      sig {
         params(only: T.nilable(Symbol), ignore_unavailable: T.nilable(T::Boolean), all_kegs: T.nilable(T::Boolean))
           .returns([T::Array[Keg], T::Array[Cask::Cask]])
-      end
+      }
       def to_kegs_to_casks(only: parent&.only_formula_or_cask, ignore_unavailable: nil, all_kegs: nil)
         method = all_kegs ? :kegs : :keg
         @to_kegs_to_casks ||= {}
@@ -186,6 +219,18 @@ module Homebrew
           to_formulae_and_casks(only: only, ignore_unavailable: ignore_unavailable, method: method)
           .partition { |o| o.is_a?(Keg) }
           .map(&:freeze).freeze
+      end
+
+      sig { returns(T::Array[Tap]) }
+      def to_taps
+        @to_taps ||= downcased_unique_named.map { |name| Tap.fetch name }.uniq.freeze
+      end
+
+      sig { returns(T::Array[Tap]) }
+      def to_installed_taps
+        @to_installed_taps ||= to_taps.each do |tap|
+          raise TapUnavailableError, tap.name unless tap.installed?
+        end.uniq.freeze
       end
 
       sig { returns(T::Array[String]) }
@@ -226,28 +271,24 @@ module Homebrew
         opt_prefix = HOMEBREW_PREFIX/"opt/#{rack.basename}"
 
         begin
-          if opt_prefix.symlink? && opt_prefix.directory?
-            Keg.new(opt_prefix.resolved_path)
-          elsif linked_keg_ref.symlink? && linked_keg_ref.directory?
-            Keg.new(linked_keg_ref.resolved_path)
-          elsif dirs.length == 1
-            Keg.new(dirs.first)
+          return Keg.new(opt_prefix.resolved_path) if opt_prefix.symlink? && opt_prefix.directory?
+          return Keg.new(linked_keg_ref.resolved_path) if linked_keg_ref.symlink? && linked_keg_ref.directory?
+          return Keg.new(dirs.first) if dirs.length == 1
+
+          f = if name.include?("/") || File.exist?(name)
+            Formulary.factory(name)
           else
-            f = if name.include?("/") || File.exist?(name)
-              Formulary.factory(name)
-            else
-              Formulary.from_rack(rack)
-            end
-
-            unless (prefix = f.latest_installed_prefix).directory?
-              raise MultipleVersionsInstalledError, <<~EOS
-                #{rack.basename} has multiple installed versions
-                Run `brew uninstall --force #{rack.basename}` to remove all versions.
-              EOS
-            end
-
-            Keg.new(prefix)
+            Formulary.from_rack(rack)
           end
+
+          unless (prefix = f.latest_installed_prefix).directory?
+            raise MultipleVersionsInstalledError, <<~EOS
+              #{rack.basename} has multiple installed versions
+              Run `brew uninstall --force #{rack.basename}` to remove all versions.
+            EOS
+          end
+
+          Keg.new(prefix)
         rescue FormulaUnavailableError
           raise MultipleVersionsInstalledError, <<~EOS
             Multiple kegs installed to #{rack}
@@ -258,12 +299,22 @@ module Homebrew
       end
 
       def warn_if_cask_conflicts(ref, loaded_type)
-        cask = Cask::CaskLoader.load ref
         message = "Treating #{ref} as a #{loaded_type}."
-        message += " For the cask, use #{cask.tap.name}/#{cask.token}" if cask.tap.present?
+        begin
+          cask = Cask::CaskLoader.load ref
+          message += " For the cask, use #{cask.tap.name}/#{cask.token}" if cask.tap.present?
+        rescue Cask::CaskUnreadableError => e
+          # Need to rescue before `CaskUnavailableError` (superclass of this)
+          # The cask was found, but there's a problem with its implementation
+          onoe <<~EOS
+            Failed to load cask: #{ref}
+            #{e}
+          EOS
+        rescue Cask::CaskUnavailableError
+          # No ref conflict with a cask, do nothing
+          return
+        end
         opoo message.freeze
-      rescue Cask::CaskUnavailableError
-        # No ref conflict with a cask, do nothing
       end
     end
   end

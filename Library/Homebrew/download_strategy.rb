@@ -13,6 +13,8 @@ require "mechanize/http/content_disposition_parser"
 
 require "utils/curl"
 
+require "github_packages"
+
 # @abstract Abstract superclass for all download strategies.
 #
 # @api private
@@ -66,30 +68,38 @@ class AbstractDownloadStrategy
     Context.current.quiet? || @quiet
   end
 
-  # Unpack {#cached_location} into the current working directory, and possibly
-  # chdir into the newly-unpacked directory.
-  # Unlike {Resource#stage}, this does not take a block.
+  # Unpack {#cached_location} into the current working directory.
+  #
+  # Additionally, if a block is given, the working directory was previously empty
+  # and a single directory is extracted from the archive, the block will be called
+  # with the working directory changed to that directory. Otherwise this method
+  # will return, or the block will be called, without changing the current working
+  # directory.
   #
   # @api public
-  def stage
+  def stage(&block)
     UnpackStrategy.detect(cached_location,
                           prioritise_extension: true,
                           ref_type: @ref_type, ref: @ref)
                   .extract_nestedly(basename:             basename,
                                     prioritise_extension: true,
                                     verbose:              verbose? && !quiet?)
-    chdir
+    chdir(&block) if block
   end
 
-  def chdir
+  def chdir(&block)
     entries = Dir["*"]
     raise "Empty archive" if entries.length.zero?
-    return if entries.length != 1
 
-    begin
-      Dir.chdir entries.first
-    rescue
-      nil
+    if entries.length != 1
+      yield
+      return
+    end
+
+    if File.directory? entries.first
+      Dir.chdir(entries.first, &block)
+    else
+      yield
     end
   end
   private :chdir
@@ -182,9 +192,7 @@ class VCSDownloadStrategy < AbstractDownloadStrategy
 
     version.update_commit(last_commit) if head?
 
-    return unless @ref_type == :tag
-    return unless @revision && current_revision
-    return if current_revision == @revision
+    return if @ref_type != :tag || @revision.blank? || current_revision.blank? || current_revision == @revision
 
     raise <<~EOS
       #{@ref} tag should be #{@revision}
@@ -443,16 +451,19 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
     content_disposition_parser = Mechanize::HTTP::ContentDispositionParser.new
 
     parse_content_disposition = lambda do |line|
-      next unless content_disposition = content_disposition_parser.parse(line.sub(/; *$/, ""), true)
+      next unless (content_disposition = content_disposition_parser.parse(line.sub(/; *$/, ""), true))
 
       filename = nil
 
-      if filename_with_encoding = content_disposition.parameters["filename*"]
+      if (filename_with_encoding = content_disposition.parameters["filename*"])
         encoding, encoded_filename = filename_with_encoding.split("''", 2)
         filename = URI.decode_www_form_component(encoded_filename).encode(encoding) if encoding && encoded_filename
       end
 
-      filename || content_disposition.filename
+      # Servers may include '/' in their Content-Disposition filename header. Take only the basename of this, because:
+      # - Unpacking code assumes this is a single file - not something living in a subdirectory.
+      # - Directory traversal attacks are possible without limiting this to just the basename.
+      (filename || content_disposition.filename).rpartition("/")[-1]
     end
 
     filenames = lines.map(&parse_content_disposition).compact
@@ -515,6 +526,25 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
   def curl(*args, **options)
     args << "--connect-timeout" << "15" unless mirrors.empty?
     super(*_curl_args, *args, **_curl_opts, **command_output_options, **options)
+  end
+end
+
+# Strategy for downloading a file from an GitHub Packages URL.
+#
+# @api public
+class CurlGitHubPackagesDownloadStrategy < CurlDownloadStrategy
+  attr_accessor :checksum, :name
+
+  private
+
+  def _fetch(url:, resolved_url:)
+    raise "Empty checksum" if checksum.blank?
+    raise "Empty name" if name.blank?
+
+    _, org, repo, = *url.match(GitHubPackages::URL_REGEX)
+
+    blob_url = "https://ghcr.io/v2/#{org}/#{repo}/#{name}/blobs/sha256:#{checksum}"
+    curl_download(blob_url, "--header", "Authorization: Bearer", to: temporary_path)
   end
 end
 
@@ -584,6 +614,7 @@ class NoUnzipCurlDownloadStrategy < CurlDownloadStrategy
     UnpackStrategy::Uncompressed.new(cached_location)
                                 .extract(basename: basename,
                                          verbose:  verbose? && !quiet?)
+    yield if block_given?
   end
 end
 
@@ -827,7 +858,7 @@ class GitDownloadStrategy < VCSDownloadStrategy
   end
 
   def update_repo
-    return unless @ref_type == :branch || !ref?
+    return if @ref_type != :branch && ref?
 
     if !shallow_clone? && shallow_dir?
       command! "git",
@@ -1042,7 +1073,7 @@ class CVSDownloadStrategy < VCSDownloadStrategy
   end
 
   def split_url(in_url)
-    parts = in_url.split(/:/)
+    parts = in_url.split(":")
     mod = parts.pop
     url = parts.join(":")
     [mod, url]
@@ -1233,6 +1264,8 @@ class DownloadStrategyDetector
 
   def self.detect_from_url(url)
     case url
+    when GitHubPackages::URL_REGEX
+      CurlGitHubPackagesDownloadStrategy
     when %r{^https?://github\.com/[^/]+/[^/]+\.git$}
       GitHubGitDownloadStrategy
     when %r{^https?://.+\.git$},

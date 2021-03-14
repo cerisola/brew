@@ -48,13 +48,15 @@ HOMEBREW_TEMP="${HOMEBREW_TEMP:-${HOMEBREW_DEFAULT_TEMP}}"
 # Don't need shellcheck to follow these `source`.
 # shellcheck disable=SC1090
 case "$*" in
-  --prefix)            echo "$HOMEBREW_PREFIX"; exit 0 ;;
   --cellar)            echo "$HOMEBREW_CELLAR"; exit 0 ;;
   --repository|--repo) echo "$HOMEBREW_REPOSITORY"; exit 0 ;;
   --caskroom)          echo "$HOMEBREW_PREFIX/Caskroom"; exit 0 ;;
   --cache)             echo "$HOMEBREW_CACHE"; exit 0 ;;
   shellenv)            source "$HOMEBREW_LIBRARY/Homebrew/cmd/shellenv.sh"; homebrew-shellenv; exit 0 ;;
   formulae)            source "$HOMEBREW_LIBRARY/Homebrew/cmd/formulae.sh"; homebrew-formulae; exit 0 ;;
+  casks)               source "$HOMEBREW_LIBRARY/Homebrew/cmd/casks.sh"; homebrew-casks; exit 0 ;;
+  # falls back to cmd/prefix.rb on a non-zero return
+  --prefix*)           source "$HOMEBREW_LIBRARY/Homebrew/prefix.sh"; homebrew-prefix "$@" && exit 0 ;;
 esac
 
 #####
@@ -91,7 +93,7 @@ odie() {
 }
 
 safe_cd() {
-  cd "$@" >/dev/null || odie "Error: failed to cd to $*!"
+  cd "$@" >/dev/null || odie "Failed to cd to $*!"
 }
 
 brew() {
@@ -171,19 +173,24 @@ update-preinstall() {
 
   if [[ "$HOMEBREW_COMMAND" = "install" || "$HOMEBREW_COMMAND" = "upgrade" ||
         "$HOMEBREW_COMMAND" = "bump-formula-pr" || "$HOMEBREW_COMMAND" = "bump-cask-pr" ||
-        "$HOMEBREW_COMMAND" = "bundle" ||
+        "$HOMEBREW_COMMAND" = "bundle" || "$HOMEBREW_COMMAND" = "release" ||
         "$HOMEBREW_COMMAND" = "tap" && $HOMEBREW_ARG_COUNT -gt 1 ||
         "$HOMEBREW_CASK_COMMAND" = "install" || "$HOMEBREW_CASK_COMMAND" = "upgrade" ]]
   then
     export HOMEBREW_AUTO_UPDATING="1"
 
+    if [[ -z "$HOMEBREW_AUTO_UPDATE_SECS" ]]
+    then
+      HOMEBREW_AUTO_UPDATE_SECS="300"
+    fi
+
     # Skip auto-update if the cask/core tap has been updated in the
     # last $HOMEBREW_AUTO_UPDATE_SECS.
     if [[ "$HOMEBREW_COMMAND" = "cask" ]]
     then
-      tap_fetch_head="$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-cask/.git/FETCH_HEAD"
+      tap_fetch_head="$HOMEBREW_CASK_REPOSITORY/.git/FETCH_HEAD"
     else
-      tap_fetch_head="$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core/.git/FETCH_HEAD"
+      tap_fetch_head="$HOMEBREW_CORE_REPOSITORY/.git/FETCH_HEAD"
     fi
     if [[ -f "$tap_fetch_head" &&
           -n "$(find "$tap_fetch_head" -type f -mtime -"${HOMEBREW_AUTO_UPDATE_SECS}"s 2>/dev/null)" ]]
@@ -307,19 +314,40 @@ then
   HOMEBREW_USER_AGENT_VERSION="2.X.Y"
 fi
 
+HOMEBREW_CASK_REPOSITORY="$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-cask"
+HOMEBREW_CORE_REPOSITORY="$HOMEBREW_LIBRARY/Taps/homebrew/homebrew-core"
+
+# Don't need shellcheck to follow these `source`.
+# shellcheck disable=SC1090
+case "$*" in
+  --version|-v) source "$HOMEBREW_LIBRARY/Homebrew/cmd/--version.sh"; homebrew-version; exit 0 ;;
+esac
+
+if [[ -n "$HOMEBREW_SIMULATE_MACOS_ON_LINUX" ]]
+then
+  export HOMEBREW_FORCE_HOMEBREW_ON_LINUX="1"
+fi
+
 if [[ -n "$HOMEBREW_MACOS" ]]
 then
   HOMEBREW_PRODUCT="Homebrew"
   HOMEBREW_SYSTEM="Macintosh"
   [[ "$HOMEBREW_PROCESSOR" = "x86_64" ]] && HOMEBREW_PROCESSOR="Intel"
   HOMEBREW_MACOS_VERSION="$(/usr/bin/sw_vers -productVersion)"
-  HOMEBREW_OS_VERSION="macOS $HOMEBREW_MACOS_VERSION"
   # Don't change this from Mac OS X to match what macOS itself does in Safari on 10.12
   HOMEBREW_OS_USER_AGENT_VERSION="Mac OS X $HOMEBREW_MACOS_VERSION"
 
   # Intentionally set this variable by exploding another.
   # shellcheck disable=SC2086,SC2183
   printf -v HOMEBREW_MACOS_VERSION_NUMERIC "%02d%02d%02d" ${HOMEBREW_MACOS_VERSION//./ }
+
+  # Don't include minor versions for Big Sur and later.
+  if [[ "$HOMEBREW_MACOS_VERSION_NUMERIC" -gt "110000" ]]
+  then
+    HOMEBREW_OS_VERSION="macOS ${HOMEBREW_MACOS_VERSION%.*}"
+  else
+    HOMEBREW_OS_VERSION="macOS $HOMEBREW_MACOS_VERSION"
+  fi
 
   # Refuse to run on pre-Yosemite
   if [[ "$HOMEBREW_MACOS_VERSION_NUMERIC" -lt "101000" ]]
@@ -369,10 +397,10 @@ else
   curl_name_and_version="${curl_version_output%% (*}"
   if [[ $(numeric "${curl_name_and_version##* }") -lt $(numeric "$HOMEBREW_MINIMUM_CURL_VERSION") ]]
   then
-      message="Please update your system cURL.
+      message="Please update your system curl.
 Minimum required version: ${HOMEBREW_MINIMUM_CURL_VERSION}
-Your cURL version: ${curl_name_and_version##* }
-Your cURL executable: $(type -p $HOMEBREW_CURL)"
+Your curl version: ${curl_name_and_version##* }
+Your curl executable: $(type -p $HOMEBREW_CURL)"
 
     if [[ -z $HOMEBREW_CURL_PATH || -z $HOMEBREW_DEVELOPER ]]; then
       HOMEBREW_SYSTEM_CURL_TOO_OLD=1
@@ -426,13 +454,6 @@ curl_version_output="$("$HOMEBREW_CURL" --version 2>/dev/null)"
 curl_name_and_version="${curl_version_output%% (*}"
 HOMEBREW_USER_AGENT_CURL="$HOMEBREW_USER_AGENT ${curl_name_and_version// //}"
 
-# Declared in bin/brew
-export HOMEBREW_BREW_FILE
-export HOMEBREW_PREFIX
-export HOMEBREW_REPOSITORY
-export HOMEBREW_LIBRARY
-
-# Declared in brew.sh
 export HOMEBREW_VERSION
 export HOMEBREW_DEFAULT_CACHE
 export HOMEBREW_CACHE
@@ -554,16 +575,16 @@ then
   # Don't allow non-developers to customise Ruby warnings.
   unset HOMEBREW_RUBY_WARNINGS
 
-  # Disable Ruby options we don't need. RubyGems provides a decent speedup.
-  RUBY_DISABLE_OPTIONS="--disable=gems,did_you_mean,rubyopt"
+  # Disable Ruby options we don't need.
+  RUBY_DISABLE_OPTIONS="--disable=did_you_mean,rubyopt"
 else
   # Don't disable did_you_mean for developers as it's useful.
-  RUBY_DISABLE_OPTIONS="--disable=gems,rubyopt"
+  RUBY_DISABLE_OPTIONS="--disable=rubyopt"
 fi
 
 if [[ -z "$HOMEBREW_RUBY_WARNINGS" ]]
 then
-  export HOMEBREW_RUBY_WARNINGS="-W0"
+  export HOMEBREW_RUBY_WARNINGS="-W1"
 fi
 
 if [[ -z "$HOMEBREW_BOTTLE_DOMAIN" ]]

@@ -13,16 +13,15 @@ module Homebrew
   def cleanup_args
     Homebrew::CLI::Parser.new do
       days = Homebrew::EnvConfig::ENVS[:HOMEBREW_CLEANUP_MAX_AGE_DAYS][:default]
-      usage_banner <<~EOS
-        `cleanup` [<options>] [<formula>|<cask>]
-
+      description <<~EOS
         Remove stale lock files and outdated downloads for all formulae and casks,
         and remove old versions of installed formulae. If arguments are specified,
         only do this for the given formulae and casks. Removes all downloads more than
         #{days} days old. This can be adjusted with `HOMEBREW_CLEANUP_MAX_AGE_DAYS`.
       EOS
       flag   "--prune=",
-             description: "Remove all cache files older than specified <days>."
+             description: "Remove all cache files older than specified <days>. "\
+                          "If you want to remove everything, use `--prune=all`."
       switch "-n", "--dry-run",
              description: "Show what would be removed, but do not actually remove anything."
       switch "-s",
@@ -31,6 +30,8 @@ module Homebrew
                           "If you want to delete those too: `rm -rf \"$(brew --cache)\"`"
       switch "--prune-prefix",
              description: "Only prune the symlinks and directories from the prefix and remove no other files."
+
+      named_args [:formula, :cask]
     end
   end
 
@@ -44,7 +45,7 @@ module Homebrew
       when "all"
         0
       else
-        raise UsageError, "--prune= expects an integer or 'all'."
+        raise UsageError, "`--prune=` expects an integer or `all`."
       end
     end
 

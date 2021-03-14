@@ -7,10 +7,10 @@ require "utils/fork"
 require "utils/formatter"
 require "utils/gems"
 require "utils/git"
+require "utils/git_repository"
 require "utils/github"
 require "utils/inreplace"
 require "utils/link"
-require "utils/livecheck_formula"
 require "utils/popen"
 require "utils/repology"
 require "utils/svn"
@@ -111,6 +111,24 @@ module Kernel
     puts sput
   end
 
+  def ohai_stdout_or_stderr(message, *sput)
+    if $stdout.tty?
+      ohai(message, *sput)
+    else
+      $stderr.puts(ohai_title(message))
+      $stderr.puts(sput)
+    end
+  end
+
+  def puts_stdout_or_stderr(*message)
+    message = "\n" if message.empty?
+    if $stdout.tty?
+      puts(message)
+    else
+      $stderr.puts(message)
+    end
+  end
+
   def odebug(title, *sput, always_display: false)
     debug = if respond_to?(:debug)
       debug?
@@ -118,7 +136,7 @@ module Kernel
       Context.current.debug?
     end
 
-    return unless debug || always_display
+    return if !debug && !always_display
 
     puts Formatter.headline(title, color: :magenta)
     puts sput unless sput.empty?
@@ -205,7 +223,7 @@ module Kernel
     tap_message = T.let(nil, T.nilable(String))
 
     backtrace.each do |line|
-      next unless match = line.match(HOMEBREW_TAP_PATH_REGEX)
+      next unless (match = line.match(HOMEBREW_TAP_PATH_REGEX))
 
       tap = Tap.fetch(match[:user], match[:repo])
       tap_message = +"\nPlease report this issue to the #{tap} tap (not Homebrew/brew or Homebrew/core)"
@@ -384,6 +402,8 @@ module Kernel
 
   # Returns array of architectures that the given command or library is built for.
   def archs_for_command(cmd)
+    odeprecated "archs_for_command"
+
     cmd = which(cmd) unless Pathname.new(cmd).absolute?
     Pathname.new(cmd).archs
   end

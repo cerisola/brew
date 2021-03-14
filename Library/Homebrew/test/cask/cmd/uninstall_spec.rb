@@ -1,13 +1,7 @@
 # typed: false
 # frozen_string_literal: true
 
-require_relative "shared_examples/requires_cask_token"
-require_relative "shared_examples/invalid_option"
-
 describe Cask::Cmd::Uninstall, :cask do
-  it_behaves_like "a command that requires a Cask token"
-  it_behaves_like "a command that handles invalid options"
-
   it "displays the uninstallation progress" do
     caffeine = Cask::CaskLoader.load(cask_path("local-caffeine"))
 
@@ -15,8 +9,8 @@ describe Cask::Cmd::Uninstall, :cask do
 
     output = Regexp.new <<~EOS
       ==> Uninstalling Cask local-caffeine
-      ==> Backing App 'Caffeine.app' up to '.*Caffeine.app'.
-      ==> Removing App '.*Caffeine.app'.
+      ==> Backing App 'Caffeine.app' up to '.*Caffeine.app'
+      ==> Removing App '.*Caffeine.app'
       ==> Purging files for version 1.2.3 of Cask local-caffeine
     EOS
 

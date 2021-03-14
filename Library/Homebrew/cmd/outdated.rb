@@ -15,9 +15,7 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def outdated_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `outdated` [<options>] [<formula>|<cask>]
-
+      description <<~EOS
         List installed casks and formulae that have an updated version available. By default, version
         information is displayed in interactive shells, and suppressed otherwise.
       EOS
@@ -30,9 +28,9 @@ module Homebrew
       switch "--cask",
              description: "List only outdated casks."
       flag   "--json",
-             description: "Print output in JSON format. There are two versions: v1 and v2. " \
-                          "v1 is deprecated and is currently the default if no version is specified. " \
-                          "v2 prints outdated formulae and casks. "
+             description: "Print output in JSON format. There are two versions: `v1` and `v2`. " \
+                          "`v1` is deprecated and is currently the default if no version is specified. " \
+                          "`v2` prints outdated formulae and casks. "
       switch "--fetch-HEAD",
              description: "Fetch the upstream repository to detect if the HEAD installation of the "\
                           "formula is outdated. Otherwise, the repository's HEAD will only be checked for "\
@@ -42,15 +40,17 @@ module Homebrew
 
       conflicts "--quiet", "--verbose", "--json"
       conflicts "--formula", "--cask"
+
+      named_args [:formula, :cask]
     end
   end
 
   def outdated
     args = outdated_args.parse
 
-    case (j = json_version(args.json))
+    case json_version(args.json)
     when :v1
-      odisabled "brew outdated --json#{j == :v1 ? "=v1" : ""}", "brew outdated --json=v2"
+      odie "`brew outdated --json=v1` is no longer supported. Use brew outdated --json=v2 instead."
     when :v2, :default
       formulae, casks = if args.formula?
         [outdated_formulae(args: args), []]

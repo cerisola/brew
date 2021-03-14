@@ -15,6 +15,7 @@ module RuboCop
           bzip2
           cups
           curl
+          cyrus-sasl
           dyld-headers
           ed
           expat
@@ -22,6 +23,7 @@ module RuboCop
           flex
           gcore
           gnu-getopt
+          gperf
           icu4c
           krb5
           libarchive
@@ -38,8 +40,10 @@ module RuboCop
           ncompress
           ncurses
           net-snmp
+          netcat
           openldap
           openlibm
+          pcsc-lite
           pod2man
           rpcgen
           ruby

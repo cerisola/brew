@@ -4,9 +4,6 @@ module Homebrew
   module CLI
     class Args < OpenStruct
       sig { returns(T.nilable(T::Boolean)) }
-      def devel?; end
-
-      sig { returns(T.nilable(T::Boolean)) }
       def HEAD?; end
 
       sig { returns(T.nilable(T::Boolean)) }
@@ -141,6 +138,12 @@ module Homebrew
       sig { returns(T.nilable(T::Boolean)) }
       def reset_cache?; end
 
+      sig { returns(T.nilable(T::Boolean)) }
+      def major?; end
+
+      sig { returns(T.nilable(T::Boolean)) }
+      def minor?; end
+
       sig { returns(T.nilable(String)) }
       def tag; end
 
@@ -229,6 +232,48 @@ module Homebrew
 
       sig { returns(T.nilable(T::Boolean)) }
       def s?; end
+
+      sig { returns(T.nilable(String)) }
+      def appdir; end
+
+      sig { returns(T.nilable(String)) }
+      def fontdir; end
+
+      sig { returns(T.nilable(String)) }
+      def colorpickerdir; end
+
+      sig { returns(T.nilable(String)) }
+      def prefpanedir; end
+
+      sig { returns(T.nilable(String)) }
+      def qlplugindir; end
+
+      sig { returns(T.nilable(String)) }
+      def dictionarydir; end
+
+      sig { returns(T.nilable(String)) }
+      def servicedir; end
+
+      sig { returns(T.nilable(String)) }
+      def input_methoddir; end
+
+      sig { returns(T.nilable(String)) }
+      def mdimporterdir; end
+
+      sig { returns(T.nilable(String)) }
+      def internet_plugindir; end
+
+      sig { returns(T.nilable(String)) }
+      def audio_unit_plugindir; end
+
+      sig { returns(T.nilable(String)) }
+      def vst_plugindir; end
+
+      sig { returns(T.nilable(String)) }
+      def vst3_plugindir; end
+
+      sig { returns(T.nilable(String)) }
+      def screen_saverdir; end
     end
   end
 end

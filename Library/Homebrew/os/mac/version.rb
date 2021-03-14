@@ -13,6 +13,7 @@ module OS
     class Version < ::Version
       extend T::Sig
 
+      sig { returns(Symbol) }
       attr_reader :arch
 
       SYMBOLS = {
@@ -33,17 +34,21 @@ module OS
         new(str, arch: arch)
       end
 
-      sig { params(value: T.any(String, Symbol)).returns(T::Array[String]) }
+      sig { params(value: T.any(String, Symbol)).returns(T.any([], [String, T.nilable(String)])) }
       def self.version_arch(value)
         @all_archs_regex ||= begin
           all_archs = Hardware::CPU::ALL_ARCHS.map(&:to_s)
-          /^((#{Regexp.union(all_archs)})_)?([\w.]+)(-(#{Regexp.union(all_archs)}))?$/
+          /
+            ^((?<prefix_arch>#{Regexp.union(all_archs)})_)?
+            (?<version>[\w.]+)
+            (-(?<suffix_arch>#{Regexp.union(all_archs)}))?$
+          /x
         end
-        match = @all_archs_regex.match(value)
+        match = @all_archs_regex.match(value.to_s)
         return [] unless match
 
-        version = match[3]
-        arch = match[2] || match[5]
+        version = match[:version]
+        arch = match[:prefix_arch] || match[:suffix_arch]
         [version, arch]
       end
 
@@ -61,6 +66,7 @@ module OS
         @comparison_cache = {}
       end
 
+      sig { override.params(other: T.untyped).returns(T.nilable(Integer)) }
       def <=>(other)
         @comparison_cache.fetch(other) do
           if SYMBOLS.key?(other) && to_sym == other
@@ -72,17 +78,19 @@ module OS
         end
       end
 
+      sig { returns(T.self_type) }
+      def strip_patch
+        # Big Sur is 11.x but Catalina is 10.15.x.
+        if major >= 11
+          self.class.new(major.to_s)
+        else
+          major_minor
+        end
+      end
+
       sig { returns(Symbol) }
       def to_sym
-        @to_sym ||= begin
-          # Big Sur is 11.x but Catalina is 10.15.
-          major_macos = if major >= 11
-            major
-          else
-            major_minor
-          end.to_s
-          SYMBOLS.invert.fetch(major_macos, :dunno)
-        end
+        @to_sym ||= SYMBOLS.invert.fetch(strip_patch.to_s, :dunno)
       end
 
       sig { returns(String) }

@@ -25,13 +25,13 @@ module OS
     # This can be compared to numerics, strings, or symbols
     # using the standard Ruby Comparable methods.
     def version
-      @version ||= Version.from_symbol(full_version.to_sym)
+      @version ||= full_version.strip_patch
     end
 
     # This can be compared to numerics, strings, or symbols
     # using the standard Ruby Comparable methods.
     def full_version
-      @full_version ||= Version.new((ENV["HOMEBREW_MACOS_VERSION"] || ENV["HOMEBREW_OSX_VERSION"]).chomp)
+      @full_version ||= Version.new((ENV["HOMEBREW_MACOS_VERSION"]).chomp)
     end
 
     def full_version=(version)

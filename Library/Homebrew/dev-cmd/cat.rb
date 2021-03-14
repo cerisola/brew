@@ -11,9 +11,7 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def cat_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `cat` <formula>|<cask>
-
+      description <<~EOS
         Display the source of a <formula> or <cask>.
       EOS
 
@@ -21,9 +19,10 @@ module Homebrew
              description: "Treat all named arguments as formulae."
       switch "--cask", "--casks",
              description: "Treat all named arguments as casks."
+
       conflicts "--formula", "--cask"
 
-      named :formula_or_cask
+      named_args [:formula, :cask], number: 1
     end
   end
 

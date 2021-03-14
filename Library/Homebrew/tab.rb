@@ -29,7 +29,7 @@ class Tab < OpenStruct
       "tabfile"                 => formula.prefix/FILENAME,
       "built_as_bottle"         => build.bottle?,
       "installed_as_dependency" => false,
-      "installed_on_request"    => true,
+      "installed_on_request"    => false,
       "poured_from_bottle"      => false,
       "time"                    => Time.now.to_i,
       "source_modified_time"    => formula.source_modified_time.to_i,
@@ -58,7 +58,12 @@ class Tab < OpenStruct
   # Returns the {Tab} for an install receipt at `path`.
   # Results are cached.
   def self.from_file(path)
-    cache.fetch(path) { |p| cache[p] = from_file_content(File.read(p), p) }
+    cache.fetch(path) do |p|
+      content = File.read(p)
+      return empty if content.blank?
+
+      cache[p] = from_file_content(content, p)
+    end
   end
 
   # Like {from_file}, but bypass the cache.
@@ -179,7 +184,7 @@ class Tab < OpenStruct
       "unused_options"          => [],
       "built_as_bottle"         => false,
       "installed_as_dependency" => false,
-      "installed_on_request"    => true,
+      "installed_on_request"    => false,
       "poured_from_bottle"      => false,
       "time"                    => nil,
       "source_modified_time"    => 0,

@@ -15,9 +15,7 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def __cache_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `--cache` [<options>] [<formula>|<cask>]
-
+      description <<~EOS
         Display Homebrew's download cache. See also `HOMEBREW_CACHE`.
 
         If <formula> is provided, display the file or directory used to cache <formula>.
@@ -30,8 +28,11 @@ module Homebrew
              description: "Only show cache files for formulae."
       switch "--cask",
              description: "Only show cache files for casks."
-      conflicts "--build-from-source", "--force-bottle"
+
+      conflicts "--build-from-source", "--force-bottle", "--cask"
       conflicts "--formula", "--cask"
+
+      named_args [:formula, :cask]
     end
   end
 

@@ -5,6 +5,7 @@ require "formula"
 require "erb"
 require "ostruct"
 require "cli/parser"
+require "completions"
 
 module Homebrew
   extend T::Sig
@@ -18,41 +19,40 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def man_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `man` [<options>]
-
+      description <<~EOS
         Generate Homebrew's manpages.
+
+        *Note:* Not (yet) working on Apple Silicon.
       EOS
-      switch "--fail-if-changed",
-             description: "Return a failing status code if changes are detected in the manpage outputs. This "\
-                          "can be used to notify CI when the manpages are out of date. Additionally, "\
+      switch "--fail-if-not-changed",
+             description: "Return a failing status code if no changes are detected in the manpage outputs. "\
+                          "This can be used to notify CI when the manpages are out of date. Additionally, "\
                           "the date used in new manpages will match those in the existing manpages (to allow "\
                           "comparison without factoring in the date)."
-      switch "--link",
-             description: "This is now done automatically by `brew update`."
-
-      max_named 0
+      named_args :none
     end
   end
 
   def man
+    # TODO: update description above if removing this.
+    if !ENV["HOMEBREW_SILICON_DEVELOPER"] && Hardware::CPU.arm?
+      raise UsageError, "not (yet) working on Apple Silicon!"
+    end
+
     args = man_args.parse
 
-    odie "`brew man --link` is now done automatically by `brew update`." if args.link?
-
     Commands.rebuild_internal_commands_completion_list
-    regenerate_man_pages(preserve_date: args.fail_if_changed?, quiet: args.quiet?)
+    regenerate_man_pages(preserve_date: args.fail_if_not_changed?, quiet: args.quiet?)
+    Completions.update_shell_completions!
 
     diff = system_command "git", args: [
       "-C", HOMEBREW_REPOSITORY, "diff", "--exit-code", "docs/Manpage.md", "manpages", "completions"
     ]
-    if diff.status.success?
-      puts "No changes to manpage or completions output detected."
-    elsif args.fail_if_changed?
-      puts "Changes to manpage or completions detected:"
-      puts diff.stdout
-      Homebrew.failed = true
-    end
+
+    return unless diff.status.success?
+
+    puts "No changes to manpage or completions output detected."
+    Homebrew.failed = true if args.fail_if_not_changed?
   end
 
   def regenerate_man_pages(preserve_date:, quiet:)
@@ -60,6 +60,7 @@ module Homebrew
 
     markup = build_man_page(quiet: quiet)
     convert_man_page(markup, TARGET_DOC_PATH/"Manpage.md", preserve_date: preserve_date)
+    markup = I18n.transliterate(markup, locale: :en)
     convert_man_page(markup, TARGET_MAN_PATH/"brew.1", preserve_date: preserve_date)
   end
 
@@ -67,7 +68,7 @@ module Homebrew
     template = (SOURCE_PATH/"brew.1.md.erb").read
     variables = OpenStruct.new
 
-    variables[:commands] = generate_cmd_manpages(Commands.internal_commands_paths(cask: false))
+    variables[:commands] = generate_cmd_manpages(Commands.internal_commands_paths)
     variables[:developer_commands] = generate_cmd_manpages(Commands.internal_developer_commands_paths)
     variables[:official_external_commands] =
       generate_cmd_manpages(Commands.official_external_commands_paths(quiet: quiet))
@@ -86,7 +87,7 @@ module Homebrew
       readme.read[/(Homebrew's \[Technical Steering Committee.*\.)/, 1]
             .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1')
     variables[:linux] =
-      readme.read[%r{(Homebrew/brew's Linux maintainers .*\.)}, 1]
+      readme.read[/(Homebrew's Linux maintainers .*\.)/, 1]
             .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1')
     variables[:maintainers] =
       readme.read[/(Homebrew's other current maintainers .*\.)/, 1]
@@ -162,7 +163,7 @@ module Homebrew
     # preserve existing manpage order
     cmd_paths.sort_by(&method(:sort_key_for_path))
              .each do |cmd_path|
-      cmd_man_page_lines = if cmd_parser = CLI::Parser.from_cmd_path(cmd_path)
+      cmd_man_page_lines = if (cmd_parser = CLI::Parser.from_cmd_path(cmd_path))
         next if cmd_parser.hide_from_man_page
 
         cmd_parser_manpage_lines(cmd_parser).join

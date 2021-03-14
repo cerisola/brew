@@ -6,7 +6,8 @@
 # also return the related instance variable when no argument is provided.
 #
 # This information is used by the `brew livecheck` command to control its
-# behavior.
+# behavior. Example `livecheck` blocks can be found in the
+# [`brew livecheck` documentation](https://docs.brew.sh/Brew-Livecheck).
 class Livecheck
   extend Forwardable
 
@@ -91,17 +92,11 @@ class Livecheck
   # @param val [String, Symbol] URL to check for version information
   # @return [String, nil]
   def url(val = nil)
-    @url = case val
+    case val
     when nil
-      return @url
-    when :url
-      @formula_or_cask.url.to_s
-    when :head, :stable
-      @formula_or_cask.send(val).url
-    when :homepage
-      @formula_or_cask.homepage
-    when String
-      val
+      @url
+    when String, :head, :homepage, :stable, :url
+      @url = val
     else
       raise TypeError, "Livecheck#url expects a String or valid Symbol"
     end

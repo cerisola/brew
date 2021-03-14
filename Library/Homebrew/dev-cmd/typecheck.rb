@@ -11,10 +11,10 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def typecheck_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `typecheck`
-
+      description <<~EOS
         Check for typechecking errors using Sorbet.
+
+        Not (yet) working on Apple Silicon.
       EOS
       switch "--fix",
              description: "Automatically fix type errors."
@@ -23,8 +23,8 @@ module Homebrew
       switch "--update",
              description: "Update RBI files."
       switch "--suggest-typed",
-             description: "Try upgrading `typed` sigils.",
-             depends_on:  "--update"
+             depends_on:  "--update",
+             description: "Try upgrading `typed` sigils."
       switch "--fail-if-not-changed",
              description: "Return a failing status code if all gems are up to date " \
                           "and gem definitions do not need a tapioca update."
@@ -37,12 +37,18 @@ module Homebrew
                           "in their paths (relative to the input path passed to Sorbet)."
 
       conflicts "--dir", "--file"
-      max_named 0
+
+      named_args :none
     end
   end
 
   sig { void }
   def typecheck
+    # TODO: update description above if removing this.
+    if Hardware::CPU.arm? || Hardware::CPU.in_rosetta2?
+      raise UsageError, "not (yet) working on Apple Silicon or Rosetta 2!"
+    end
+
     args = typecheck_args.parse
 
     Homebrew.install_bundler_gems!
@@ -91,12 +97,15 @@ module Homebrew
       end
 
       srb_exec = %w[bundle exec srb tc]
-      srb_exec << "--error-black-list" << "5061"
+
+      # TODO: comment explaining why?
+      srb_exec << "--suppress-error-code" << "5061"
+
       srb_exec << "--quiet" if args.quiet?
 
       if args.fix?
         # Auto-correcting method names is almost always wrong.
-        srb_exec << "--error-black-list" << "7003"
+        srb_exec << "--suppress-error-code" << "7003"
 
         srb_exec << "--autocorrect"
       end

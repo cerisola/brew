@@ -14,9 +14,7 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def list_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `list`, `ls` [<options>] [<formula>|<cask>]
-
+      description <<~EOS
         List all installed formulae and casks.
 
         If <formula> is provided, summarise the paths within its current keg.
@@ -72,6 +70,8 @@ module Homebrew
         conflicts "--full-name", flag
         conflicts "--cask", flag
       end
+
+      named_args [:installed_formula, :installed_cask]
     end
   end
 
@@ -116,12 +116,8 @@ module Homebrew
       ls_args << "-r" if args.r?
       ls_args << "-t" if args.t?
 
-      if !$stdout.tty? && !args.formula? && !args.cask?
-        odisabled "`brew list` to only list formulae", "`brew list --formula`"
-      else
-        safe_system "ls", *ls_args, HOMEBREW_CELLAR unless args.cask?
-        list_casks(args: args) unless args.formula?
-      end
+      safe_system "ls", *ls_args, HOMEBREW_CELLAR unless args.cask?
+      list_casks(args: args) unless args.formula?
     elsif args.verbose? || !$stdout.tty?
       system_command! "find", args: args.named.to_kegs.map(&:to_s) + %w[-not -type d -print], print_stdout: true
     else

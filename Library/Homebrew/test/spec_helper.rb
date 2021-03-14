@@ -23,12 +23,17 @@ if ENV["HOMEBREW_TESTS_COVERAGE"]
   SimpleCov.formatters = SimpleCov::Formatter::MultiFormatter.new(formatters)
 end
 
+require_relative "../warnings"
+
+Warnings.ignore :parser_syntax do
+  require "rubocop"
+end
+
 require "rspec/its"
 require "rspec/github"
 require "rspec/wait"
 require "rspec/retry"
 require "rspec/sorbet"
-require "rubocop"
 require "rubocop/rspec/support"
 require "find"
 require "byebug"
@@ -80,6 +85,8 @@ RSpec.configure do |config|
   if ENV["CI"]
     config.verbose_retry = true
     config.display_try_failure_messages = true
+    config.default_retry_count = 2
+    config.default_sleep_interval = 1
 
     config.around(:each, :integration_test) do |example|
       example.metadata[:timeout] ||= 120
@@ -88,7 +95,10 @@ RSpec.configure do |config|
 
     config.around(:each, :needs_network) do |example|
       example.metadata[:timeout] ||= 120
-      example.run_with_retry retry: 5, retry_wait: 5
+      example.metadata[:retry] ||= 4
+      example.metadata[:retry_wait] ||= 2
+      example.metadata[:exponential_backoff] ||= true
+      example.run
     end
   end
 
@@ -118,13 +128,7 @@ RSpec.configure do |config|
   end
 
   config.before(:each, :needs_java) do
-    java_installed = if OS.mac?
-      Utils.popen_read("/usr/libexec/java_home", "--failfast")
-      $CHILD_STATUS.success?
-    else
-      which("java")
-    end
-    skip "Java is not installed." unless java_installed
+    skip "Java is not installed." unless which("java")
   end
 
   config.before(:each, :needs_python) do
@@ -196,7 +200,7 @@ RSpec.configure do |config|
     @__stderr = $stderr.clone
 
     begin
-      if (example.metadata.keys & [:focus, :byebug]).empty? && !ENV.key?("VERBOSE_TESTS")
+      if (example.metadata.keys & [:focus, :byebug]).empty? && !ENV.key?("HOMEBREW_VERBOSE_TESTS")
         $stdout.reopen(File::NULL)
         $stderr.reopen(File::NULL)
       end

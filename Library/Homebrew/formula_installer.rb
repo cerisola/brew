@@ -94,7 +94,6 @@ class FormulaInstaller
     @options = options
     @requirement_messages = []
     @poured_bottle = false
-    @pour_failed = false
     @start_time = nil
   end
 
@@ -154,8 +153,6 @@ class FormulaInstaller
 
   sig { params(output_warning: T::Boolean).returns(T::Boolean) }
   def pour_bottle?(output_warning: false)
-    return false if @pour_failed
-
     return false if !formula.bottle_tag? && !formula.local_bottle_path
     return true  if force_bottle?
     return false if build_from_source? || build_bottle? || interactive?
@@ -175,13 +172,11 @@ class FormulaInstaller
 
     bottle = formula.bottle_specification
     unless bottle.compatible_locations?
-      # TODO: delete HOMEBREW_REPOSITORY reference after Homebrew 2.7.0 is released.
       if output_warning
         opoo <<~EOS
           Building #{formula.full_name} from source as the bottle needs:
           - HOMEBREW_CELLAR: #{bottle.cellar} (yours is #{HOMEBREW_CELLAR})
           - HOMEBREW_PREFIX: #{bottle.prefix} (yours is #{HOMEBREW_PREFIX})
-          - HOMEBREW_REPOSITORY: #{bottle.repository} (yours is #{HOMEBREW_REPOSITORY})
         EOS
       end
       return false
@@ -193,12 +188,12 @@ class FormulaInstaller
   sig { params(dep: Formula, build: BuildOptions).returns(T::Boolean) }
   def install_bottle_for?(dep, build)
     return pour_bottle? if dep == formula
-    return false if @build_from_source_formulae.include?(dep.full_name)
-    return false unless dep.bottle && dep.pour_bottle?
-    return false unless build.used_options.empty?
-    return false unless dep.bottle&.compatible_locations?
 
-    true
+    @build_from_source_formulae.exclude?(dep.full_name) &&
+      dep.bottle.present? &&
+      dep.pour_bottle? &&
+      build.used_options.empty? &&
+      dep.bottle&.compatible_locations?
   end
 
   sig { void }
@@ -232,31 +227,44 @@ class FormulaInstaller
       raise CannotInstallFormulaError, "--force-bottle passed but #{formula.full_name} has no bottle!"
     end
 
-    if Homebrew.default_prefix? && !Homebrew::EnvConfig.developer? &&
+    if Homebrew.default_prefix? &&
        # TODO: re-enable this on Linux when we merge linuxbrew-core into
        # homebrew-core and have full bottle coverage.
        (OS.mac? || ENV["CI"]) &&
        !build_from_source? && !build_bottle? &&
-       !installed_as_dependency? &&
-       formula.tap&.core_tap? && !formula.bottle_unneeded? && !formula.any_version_installed? &&
+       formula.tap&.core_tap? && !formula.bottle_unneeded? &&
        # Integration tests override homebrew-core locations
        ENV["HOMEBREW_TEST_TMPDIR"].nil? &&
        !pour_bottle?
-      message = <<~EOS
-        #{formula}: no bottle available!
-      EOS
-      if !formula.pour_bottle? && formula.pour_bottle_check_unsatisfied_reason
-        message += formula.pour_bottle_check_unsatisfied_reason
+      message = if !formula.pour_bottle? && formula.pour_bottle_check_unsatisfied_reason
+        formula_message = formula.pour_bottle_check_unsatisfied_reason
+        formula_message[0] = formula_message[0].downcase
+
+        <<~EOS
+          #{formula}: #{formula_message}
+        EOS
+      # don't want to complain about no bottle available if doing an
+      # upgrade/reinstall/dependency install (but do in the case the bottle
+      # check fails)
+      elsif !Homebrew::EnvConfig.developer? &&
+            (!installed_as_dependency? || !formula.any_version_installed?) &&
+            (!OS.mac? || !OS::Mac.outdated_release?)
+        <<~EOS
+          #{formula}: no bottle available!
+        EOS
       end
-      message += <<~EOS
-        You can try to install from source with e.g.
-          brew install --build-from-source #{formula}
-        Please note building from source is unsupported. You will encounter build
-        failures with some formulae. If you experience any issues please create pull
-        requests instead of asking for help on Homebrew's GitHub, Twitter or any other
-        official channels.
-      EOS
-      raise CannotInstallFormulaError, message
+
+      if message
+        message += <<~EOS
+          You can try to install from source with:
+            brew install --build-from-source #{formula}
+          Please note building from source is unsupported. You will encounter build
+          failures with some formulae. If you experience any issues please create pull
+          requests instead of asking for help on Homebrew's GitHub, Twitter or any other
+          official channels.
+        EOS
+        raise CannotInstallFormulaError, message
+      end
     end
 
     type, reason = DeprecateDisable.deprecate_disable_info formula
@@ -360,14 +368,16 @@ class FormulaInstaller
       EOS
       if formula.outdated? && !formula.head?
         message += <<~EOS
-          To upgrade to #{formula.pkg_version}, run `brew upgrade #{formula.full_name}`.
+          To upgrade to #{formula.pkg_version}, run:
+            brew upgrade #{formula.full_name}
         EOS
       elsif only_deps?
         message = nil
       else
         # some other version is already installed *and* linked
         message += <<~EOS
-          To install #{formula.pkg_version}, first run `brew unlink #{formula.name}`.
+          To install #{formula.pkg_version}, first run:
+            brew unlink #{formula.name}
         EOS
       end
       raise CannotInstallFormulaError, message if message
@@ -425,7 +435,7 @@ class FormulaInstaller
     if pour_bottle?
       begin
         pour
-      rescue Exception => e # rubocop:disable Lint/RescueException
+      rescue Exception # rubocop:disable Lint/RescueException
         # any exceptions must leave us with nothing installed
         ignore_interrupts do
           begin
@@ -438,17 +448,7 @@ class FormulaInstaller
           end
           formula.rack.rmdir_if_possible
         end
-        raise if Homebrew::EnvConfig.developer? ||
-                 Homebrew::EnvConfig.no_bottle_source_fallback? ||
-                 force_bottle? ||
-                 e.is_a?(Interrupt)
-
-        @pour_failed = true
-        onoe e.message
-        opoo "Bottle installation failed: building from source."
-        raise UnbottledError, [formula] unless DevelopmentTools.installed?
-
-        compute_and_install_dependencies unless ignore_deps?
+        raise
       else
         @poured_bottle = true
       end
@@ -509,7 +509,7 @@ class FormulaInstaller
 
       $stderr.puts "Please report this issue to the #{formula.tap} tap (not Homebrew/brew or Homebrew/core)!"
       false
-    else # rubocop:disable Layout/ElseAlignment
+    else
       f.linked_keg.exist? && f.opt_prefix.exist?
     end
 
@@ -519,9 +519,11 @@ class FormulaInstaller
   # Compute and collect the dependencies needed by the formula currently
   # being installed.
   def compute_dependencies
-    req_map, req_deps = expand_requirements
-    check_requirements(req_map)
-    expand_dependencies(req_deps + formula.deps)
+    @compute_dependencies ||= begin
+      req_map, req_deps = expand_requirements
+      check_requirements(req_map)
+      expand_dependencies(req_deps + formula.deps)
+    end
   end
 
   def unbottled_dependencies(deps)
@@ -571,7 +573,7 @@ class FormulaInstaller
     formula_deps_map = Dependency.expand(formula)
                                  .index_by(&:name)
 
-    while f = formulae.pop
+    while (f = formulae.pop)
       runtime_requirements = runtime_requirements(f)
       f.recursive_requirements do |dependent, req|
         build = effective_build_options_for(dependent)
@@ -703,16 +705,17 @@ class FormulaInstaller
       quiet:                      quiet?,
       verbose:                    verbose?,
     )
+    fi.prelude
     fi.fetch
   end
 
   sig { params(dep: Dependency, inherited_options: Options).void }
   def install_dependency(dep, inherited_options)
     df = dep.to_formula
-    tab = Tab.for_formula(df)
 
     if df.linked_keg.directory?
       linked_keg = Keg.new(df.linked_keg.resolved_path)
+      tab = Tab.for_keg(linked_keg)
       keg_had_linked_keg = true
       keg_was_linked = linked_keg.linked?
       linked_keg.unlink
@@ -720,12 +723,13 @@ class FormulaInstaller
 
     if df.latest_version_installed?
       installed_keg = Keg.new(df.prefix)
+      tab ||= Tab.for_keg(installed_keg)
       tmp_keg = Pathname.new("#{installed_keg}.tmp")
       installed_keg.rename(tmp_keg)
     end
 
-    tab_tap = tab.source["tap"]
-    if tab_tap.present? && df.tap.present? && df.tap.to_s != tab_tap.to_s
+    if df.tap.present? && tab.present? && (tab_tap = tab.source["tap"].presence) &&
+       df.tap.to_s != tab_tap.to_s
       odie <<~EOS
         #{df} is already installed from #{tab_tap}!
         Please `brew uninstall #{df}` first."
@@ -733,7 +737,7 @@ class FormulaInstaller
     end
 
     options = Options.new
-    options |= tab.used_options
+    options |= tab.used_options if tab.present?
     options |= Tab.remap_deprecated_options(df.deprecated_options, dep.options)
     options |= inherited_options
     options &= df.options
@@ -744,7 +748,7 @@ class FormulaInstaller
         options:                    options,
         link_keg:                   keg_had_linked_keg ? keg_was_linked : nil,
         installed_as_dependency:    true,
-        installed_on_request:       df.any_version_installed? && tab.installed_on_request,
+        installed_on_request:       df.any_version_installed? && tab.present? && tab.installed_on_request,
         force_bottle:               false,
         include_test_formulae:      @include_test_formulae,
         build_from_source_formulae: @build_from_source_formulae,
@@ -755,7 +759,6 @@ class FormulaInstaller
         verbose:                    verbose?,
       },
     )
-    fi.prelude
     oh1 "Installing #{formula.full_name} dependency: #{Formatter.identifier(dep.name)}"
     fi.install
     fi.finish
@@ -799,11 +802,12 @@ class FormulaInstaller
     keg = Keg.new(formula.prefix)
     link(keg)
 
-    fix_dynamic_linkage(keg) unless @poured_bottle && formula.bottle_specification.skip_relocation?
+    fix_dynamic_linkage(keg) if !@poured_bottle || !formula.bottle_specification.skip_relocation?
 
     if build_bottle?
-      ohai "Not running post_install as we're building a bottle"
-      puts "You can run it manually using `brew postinstall #{formula.full_name}`"
+      ohai "Not running 'post_install' as we're building a bottle"
+      puts "You can run it manually using:"
+      puts "  brew postinstall #{formula.full_name}"
     else
       post_install
     end
@@ -896,13 +900,12 @@ class FormulaInstaller
     # 1. formulae can modify ENV, so we must ensure that each
     #    installation has a pristine ENV when it starts, forking now is
     #    the easiest way to do this
-    args = %W[
-      nice #{RUBY_PATH}
-      #{ENV["HOMEBREW_RUBY_WARNINGS"]}
-      -I #{$LOAD_PATH.join(File::PATH_SEPARATOR)}
-      --
-      #{HOMEBREW_LIBRARY_PATH}/build.rb
-      #{formula.specified_path}
+    args = [
+      "nice",
+      *HOMEBREW_RUBY_EXEC_ARGS,
+      "--",
+      HOMEBREW_LIBRARY_PATH/"build.rb",
+      formula.specified_path,
     ].concat(build_argv)
 
     Utils.safe_fork do
@@ -949,10 +952,9 @@ class FormulaInstaller
       begin
         keg.optlink(verbose: verbose?)
       rescue Keg::LinkError => e
-        onoe "Failed to create #{formula.opt_prefix}"
+        ofail "Failed to create #{formula.opt_prefix}"
         puts "Things that depend on #{formula.full_name} will probably not build."
         puts e
-        Homebrew.failed = true
       end
       return
     end
@@ -989,25 +991,23 @@ class FormulaInstaller
         link_overwrite_backup[conflict_file] = backup_file
         retry
       end
-      onoe "The `brew link` step did not complete successfully"
+      ofail "The `brew link` step did not complete successfully"
       puts "The formula built, but is not symlinked into #{HOMEBREW_PREFIX}"
       puts e
       puts
       puts "Possible conflicting files are:"
       keg.link(dry_run: true, overwrite: true, verbose: verbose?)
       @show_summary_heading = true
-      Homebrew.failed = true
     rescue Keg::LinkError => e
-      onoe "The `brew link` step did not complete successfully"
+      ofail "The `brew link` step did not complete successfully"
       puts "The formula built, but is not symlinked into #{HOMEBREW_PREFIX}"
       puts e
       puts
       puts "You can try again using:"
       puts "  brew link #{formula.name}"
       @show_summary_heading = true
-      Homebrew.failed = true
     rescue Exception => e # rubocop:disable Lint/RescueException
-      onoe "An unexpected error occurred during the `brew link` step"
+      ofail "An unexpected error occurred during the `brew link` step"
       puts "The formula built, but is not symlinked into #{HOMEBREW_PREFIX}"
       puts e
       puts e.backtrace if debug?
@@ -1019,16 +1019,15 @@ class FormulaInstaller
           FileUtils.mv backup, origin
         end
       end
-      Homebrew.failed = true
       raise
     end
 
     return if link_overwrite_backup.empty?
 
-    opoo "These files were overwritten during `brew link` step:"
+    opoo "These files were overwritten during the `brew link` step:"
     puts link_overwrite_backup.keys
     puts
-    puts "They have been backed up in #{backup_dir}"
+    puts "They have been backed up to: #{backup_dir}"
     @show_summary_heading = true
   end
 
@@ -1041,20 +1040,18 @@ class FormulaInstaller
     log = formula.var/"log"
     log.mkpath if formula.plist.include? log.to_s
   rescue Exception => e # rubocop:disable Lint/RescueException
-    onoe "Failed to install plist file"
+    ofail "Failed to install plist file"
     odebug e, e.backtrace
-    Homebrew.failed = true
   end
 
   sig { params(keg: Keg).void }
   def fix_dynamic_linkage(keg)
     keg.fix_dynamic_linkage
   rescue Exception => e # rubocop:disable Lint/RescueException
-    onoe "Failed to fix install linkage"
+    ofail "Failed to fix install linkage"
     puts "The formula built, but you may encounter issues using it or linking other"
     puts "formulae against it."
     odebug e, e.backtrace
-    Homebrew.failed = true
     @show_summary_heading = true
   end
 
@@ -1064,7 +1061,7 @@ class FormulaInstaller
     Cleaner.new(formula).clean
   rescue Exception => e # rubocop:disable Lint/RescueException
     opoo "The cleaning step did not complete successfully"
-    puts "Still, the installation was successful, so we will link it into your prefix"
+    puts "Still, the installation was successful, so we will link it into your prefix."
     odebug e, e.backtrace
     Homebrew.failed = true
     @show_summary_heading = true
@@ -1101,7 +1098,8 @@ class FormulaInstaller
     end
   rescue Exception => e # rubocop:disable Lint/RescueException
     opoo "The post-install step did not complete successfully"
-    puts "You can try again using `brew postinstall #{formula.full_name}`"
+    puts "You can try again using:"
+    puts "  brew postinstall #{formula.full_name}"
     odebug e, e.backtrace, always_display: Homebrew::EnvConfig.developer?
     Homebrew.failed = true
     @show_summary_heading = true
@@ -1123,25 +1121,10 @@ class FormulaInstaller
 
     return if only_deps?
 
-    if pour_bottle?(output_warning: true)
-      begin
-        downloader.fetch
-      rescue Exception => e # rubocop:disable Lint/RescueException
-        raise if Homebrew::EnvConfig.developer? ||
-                 Homebrew::EnvConfig.no_bottle_source_fallback? ||
-                 force_bottle? ||
-                 e.is_a?(Interrupt)
-
-        @pour_failed = true
-        onoe e.message
-        opoo "Bottle installation failed: building from source."
-        fetch_dependencies
-      end
+    unless pour_bottle?(output_warning: true)
+      formula.fetch_patches
+      formula.resources.each(&:fetch)
     end
-    return if pour_bottle?
-
-    formula.fetch_patches
-    formula.resources.each(&:fetch)
     downloader.fetch
   end
 
@@ -1253,10 +1236,9 @@ class FormulaInstaller
     end
 
     return if forbidden_licenses.blank?
+    return if ignore_deps?
 
     compute_dependencies.each do |dep, _|
-      next if @ignore_deps
-
       dep_f = dep.to_formula
       next unless SPDX.licenses_forbid_installation? dep_f.license, forbidden_licenses
 
@@ -1265,7 +1247,8 @@ class FormulaInstaller
           #{SPDX.license_expression_to_string dep_f.license}.
       EOS
     end
-    return if @only_deps
+
+    return if only_deps?
 
     return unless SPDX.licenses_forbid_installation? formula.license, forbidden_licenses
 

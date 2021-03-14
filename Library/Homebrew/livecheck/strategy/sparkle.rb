@@ -61,12 +61,14 @@ module Homebrew
 
             title = (item > "title").first&.text&.strip
 
-            if match = title&.match(/(\d+(?:\.\d+)*)\s*(\([^)]+\))?\Z/)
+            if (match = title&.match(/(\d+(?:\.\d+)*)\s*(\([^)]+\))?\Z/))
               short_version ||= match[1]
               version ||= match[2]
             end
 
             bundle_version = BundleVersion.new(short_version, version) if short_version || version
+
+            next if (os = enclosure&.attr("os")) && os != "osx"
 
             data = {
               title:          title,

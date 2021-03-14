@@ -10,15 +10,13 @@ module Homebrew
 
   def autoremove_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `autoremove` [<options>]
-
+      description <<~EOS
         Uninstall formulae that were only installed as a dependency of another formula and are now no longer needed.
       EOS
       switch "-n", "--dry-run",
              description: "List what would be uninstalled, but do not actually uninstall anything."
 
-      max_named 0
+      named_args :none
     end
   end
 

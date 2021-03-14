@@ -12,13 +12,11 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def formula_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `formula` <formula>
-
+      description <<~EOS
         Display the path where <formula> is located.
       EOS
 
-      min_named :formula
+      named_args :formula, min: 1
     end
   end
 

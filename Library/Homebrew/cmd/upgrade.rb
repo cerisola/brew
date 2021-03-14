@@ -17,9 +17,7 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def upgrade_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `upgrade` [<options>] [<formula>|<cask>]
-
+      description <<~EOS
         Upgrade outdated casks and outdated, unpinned formulae using the same options they were originally
         installed with, plus any appended brew formula options. If <cask> or <formula> are specified,
         upgrade only the given <cask> or <formula> kegs (unless they are pinned; see `pin`, `unpin`).
@@ -32,7 +30,8 @@ module Homebrew
                           "or a shell inside the temporary build directory."
       switch "-f", "--force",
              description: "Install formulae without checking for previously installed keg-only or "\
-                          "non-migrated versions. Overwrite existing files when installing casks."
+                          "non-migrated versions. When installing casks, overwrite existing files "\
+                          "(binaries and symlinks are excluded, unless originally from the same cask)."
       switch "-v", "--verbose",
              description: "Print the verification and postinstall steps."
       switch "-n", "--dry-run",
@@ -88,6 +87,8 @@ module Homebrew
       cask_options
 
       conflicts "--build-from-source", "--force-bottle"
+
+      named_args [:outdated_formula, :outdated_cask]
     end
   end
 
@@ -99,16 +100,20 @@ module Homebrew
     # If one or more formulae are specified, but no casks were
     # specified, we want to make note of that so we don't
     # try to upgrade all outdated casks.
-    upgrade_formulae = formulae.present? && casks.blank?
-    upgrade_casks = casks.present? && formulae.blank?
+    only_upgrade_formulae = formulae.present? && casks.blank?
+    only_upgrade_casks = casks.present? && formulae.blank?
 
-    upgrade_outdated_formulae(formulae, args: args) unless upgrade_casks
-    upgrade_outdated_casks(casks, args: args) unless upgrade_formulae
+    display_messages = !only_upgrade_casks && upgrade_outdated_formulae(formulae, args: args)
+    force_caveats = !only_upgrade_formulae && upgrade_outdated_casks(casks, args: args)
+
+    return unless display_messages
+
+    Homebrew.messages.display_messages(force_caveats: force_caveats, display_times: args.display_times?)
   end
 
-  sig { params(formulae: T::Array[Formula], args: CLI::Args).void }
+  sig { params(formulae: T::Array[Formula], args: CLI::Args).returns(T::Boolean) }
   def upgrade_outdated_formulae(formulae, args:)
-    return if args.cask?
+    return false if args.cask?
 
     FormulaInstaller.prevent_build_flags(args)
 
@@ -134,7 +139,7 @@ module Homebrew
       end
     end
 
-    return if outdated.blank?
+    return false if outdated.blank?
 
     pinned = outdated.select(&:pinned?)
     outdated -= pinned
@@ -171,21 +176,21 @@ module Homebrew
 
     Upgrade.check_installed_dependents(formulae_to_install, args: args)
 
-    Homebrew.messages.display_messages(display_times: args.display_times?)
+    true
   end
 
-  sig { params(casks: T::Array[Cask::Cask], args: CLI::Args).void }
+  sig { params(casks: T::Array[Cask::Cask], args: CLI::Args).returns(T::Boolean) }
   def upgrade_outdated_casks(casks, args:)
-    return if args.formula?
+    return false if args.formula?
 
     Cask::Cmd::Upgrade.upgrade_casks(
       *casks,
       force:          args.force?,
       greedy:         args.greedy?,
       dry_run:        args.dry_run?,
-      binaries:       EnvConfig.cask_opts_binaries?,
-      quarantine:     EnvConfig.cask_opts_quarantine?,
-      require_sha:    EnvConfig.cask_opts_require_sha?,
+      binaries:       args.binaries?,
+      quarantine:     args.quarantine?,
+      require_sha:    args.require_sha?,
       skip_cask_deps: args.skip_cask_deps?,
       verbose:        args.verbose?,
       args:           args,

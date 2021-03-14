@@ -56,7 +56,7 @@ describe Formula do
       expect { klass.new }.to raise_error(ArgumentError)
     end
 
-    context "in a Tap" do
+    context "when in a Tap" do
       let(:tap) { Tap.new("foo", "bar") }
       let(:path) { (tap.path/"Formula/#{name}.rb") }
       let(:full_name) { "#{tap.user}/#{tap.repo}/#{name}" }
@@ -695,7 +695,7 @@ describe Formula do
         end
       end
 
-      expect(f.livecheck.url).to eq("https://brew.sh/test")
+      expect(f.livecheck.url).to eq(:homepage)
     end
   end
 
@@ -838,6 +838,7 @@ describe Formula do
     expect(h).to be_a(Hash)
     expect(h["name"]).to eq("foo")
     expect(h["full_name"]).to eq("foo")
+    expect(h["tap"]).to eq("homebrew/core")
     expect(h["versions"]["stable"]).to eq("1.0")
     expect(h["versions"]["bottle"]).to be_truthy
   end

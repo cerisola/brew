@@ -12,13 +12,13 @@ module Cask
     # @api private
     class DependsOn < SimpleDelegator
       VALID_KEYS = Set.new([
-                             :formula,
-                             :cask,
-                             :macos,
-                             :arch,
-                             :x11,
-                             :java,
-                           ]).freeze
+        :formula,
+        :cask,
+        :macos,
+        :arch,
+        :x11,
+        :java,
+      ]).freeze
 
       VALID_ARCHES = {
         intel:  { type: :intel, bits: 64 },
@@ -52,7 +52,7 @@ module Cask
       end
 
       def macos=(*args)
-        raise "Only a single 'depends_on macos:' is allowed." if defined?(@macos)
+        raise "Only a single 'depends_on macos' is allowed." if defined?(@macos)
 
         begin
           @macos = if args.count > 1
@@ -83,7 +83,7 @@ module Cask
       end
 
       def java=(arg)
-        odeprecated "depends_on :java", "depends_on a specific Java formula"
+        odisabled "depends_on :java", "depends_on a specific Java formula"
 
         @java = arg
       end
@@ -91,7 +91,7 @@ module Cask
       def x11=(arg)
         raise "invalid 'depends_on x11' value: #{arg.inspect}" unless [true, false].include?(arg)
 
-        odeprecated "depends_on :x11", "depends_on specific X11 formula(e)"
+        odisabled "depends_on :x11", "depends_on specific X11 formula(e)"
 
         @x11 = arg
       end

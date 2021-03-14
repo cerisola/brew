@@ -148,14 +148,13 @@ class Foo < Formula
   depends_on "readline" => :recommended
   depends_on "gtk+" => :optional
   depends_on "httpd" => [:build, :test]
-  depends_on :x11 => :optional
   depends_on :xcode => "9.3"
 end
 ```
 
 A String (e.g. `"jpeg"`) specifies a formula dependency.
 
-A Symbol (e.g. `:x11`) specifies a [`Requirement`](https://rubydoc.brew.sh/Requirement) which can be fulfilled by one or more formulae, casks or other system-wide installed software (e.g. X11).
+A Symbol (e.g. `:xcode`) specifies a [`Requirement`](https://rubydoc.brew.sh/Requirement) which can be fulfilled by one or more formulae, casks or other system-wide installed software (e.g. Xcode).
 
 A Hash (e.g. `=>`) adds information to a dependency. Given a String or Symbol, the value can be one or more of the following values:
 
@@ -175,7 +174,7 @@ description can be overridden using the normal option syntax (in this case, the 
     ```
 * Some [`Requirement`](https://rubydoc.brew.sh/Requirement)s can also take a string specifying their minimum version that the formula depends on.
 
-**Note:** [`option`](https://rubydoc.brew.sh/Formula#option-class_method)s are not allowed in Homebrew/homebrew-core as they are not tested by CI.
+**Note:** `:optional` and `:recommended` are not allowed in Homebrew/homebrew-core as they are not tested by CI.
 
 ### Specifying conflicts with other formulae
 
@@ -414,7 +413,7 @@ Three commands are provided for displaying informational messages to the user:
 In particular, when a test needs to be performed before installation use `odie` to bail out gracefully. For example:
 
 ```ruby
-if build.with?("qt") && build.with("qt5")
+if build.with?("qt") && build.with?("qt5")
   odie "Options --with-qt and --with-qt5 are mutually exclusive."
 end
 system "make", "install"
@@ -544,6 +543,19 @@ Instead of `git diff | pbcopy`, for some editors `git diff >> path/to/your/formu
 ## Advanced formula tricks
 
 If anything isn’t clear, you can usually figure it out by `grep`ping the `$(brew --repo homebrew/core)` directory. Please submit a pull request to amend this document if you think it will help!
+
+### `livecheck` blocks
+
+When `brew livecheck` is unable to identify versions for a formula, we can control its behavior using a `livecheck` block. Here is a simple example to check a page for links containing a filename like `example-1.2.tar.gz`:
+
+```ruby
+livecheck do
+  url "https://www.example.com/downloads/"
+  regex(/href=.*?example[._-]v?(\d+(?:\.\d+)+)\.t/i)
+end
+```
+
+For `url`/`regex` guidelines and additional `livecheck` block examples, refer to the [`brew livecheck` documentation](Brew-Livecheck.md). For more technical information on the methods used in a `livecheck` block, please refer to the [`Livecheck` class documentation](https://rubydoc.brew.sh/Livecheck.html).
 
 ### Unstable versions (`head`)
 

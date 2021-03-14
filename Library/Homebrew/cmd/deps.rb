@@ -17,9 +17,7 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def deps_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `deps` [<options>] [<formula>]
-
+      description <<~EOS
         Show dependencies for <formula>. Additional options specific to <formula>
         may be appended to the command. When given multiple formula arguments,
         show the intersection of dependencies for each formula.
@@ -63,9 +61,12 @@ module Homebrew
       switch "--cask", "--casks",
              depends_on:  "--installed",
              description: "Treat all named arguments as casks."
+
       conflicts "--installed", "--all"
       conflicts "--formula", "--cask"
       formula_options
+
+      named_args [:formula, :cask]
     end
   end
 

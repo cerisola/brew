@@ -32,5 +32,6 @@ require "rubocops/files"
 require "rubocops/keg_only"
 require "rubocops/version"
 require "rubocops/deprecate_disable"
+require "rubocops/bottle"
 
 require "rubocops/rubocop-cask"

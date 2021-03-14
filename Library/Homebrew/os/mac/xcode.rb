@@ -18,12 +18,12 @@ module OS
       # Bump these when a new version is available from the App Store and our
       # CI systems have been updated.
       # This may be a beta version for a beta macOS.
-      sig { returns(String) }
-      def latest_version
-        latest_stable = "12.3"
-        case MacOS.version
+      sig { params(macos: MacOS::Version).returns(String) }
+      def latest_version(macos: MacOS.version)
+        latest_stable = "12.4"
+        case macos
         when "11" then latest_stable
-        when "10.15" then "12.3"
+        when "10.15" then "12.4"
         when "10.14" then "11.3.1"
         when "10.13" then "10.1"
         when "10.12" then "9.2"
@@ -132,6 +132,19 @@ module OS
 
       def sdk_path(v = nil)
         sdk(v)&.path
+      end
+
+      def installation_instructions
+        if OS::Mac.prerelease?
+          <<~EOS
+            Xcode can be installed from:
+              #{Formatter.url("https://developer.apple.com/download/more/")}
+          EOS
+        else
+          <<~EOS
+            Xcode can be installed from the App Store.
+          EOS
+        end
       end
 
       sig { returns(String) }
@@ -254,6 +267,21 @@ module OS
         sdk(v)&.path
       end
 
+      def installation_instructions
+        if MacOS.version == "10.14"
+          # This is not available from `xcode-select`
+          <<~EOS
+            Install the Command Line Tools for Xcode 11.3.1 from:
+              #{Formatter.url("https://developer.apple.com/download/more/")}
+          EOS
+        else
+          <<~EOS
+            Install the Command Line Tools:
+              xcode-select --install
+          EOS
+        end
+      end
+
       sig { returns(String) }
       def update_instructions
         software_update_location = if MacOS.version >= "10.14"
@@ -266,7 +294,7 @@ module OS
           Update them from Software Update in #{software_update_location} or run:
             softwareupdate --all --install --force
 
-          If that doesn't show you an update run:
+          If that doesn't show you any updates, run:
             sudo rm -rf /Library/Developer/CommandLineTools
             sudo xcode-select --install
 
@@ -280,7 +308,7 @@ module OS
       sig { returns(String) }
       def latest_clang_version
         case MacOS.version
-        when "11", "10.15" then "1200.0.32.27"
+        when "11", "10.15" then "1200.0.32.29"
         when "10.14" then "1100.0.33.17"
         when "10.13" then "1000.10.44.2"
         when "10.12" then "900.0.39.2"

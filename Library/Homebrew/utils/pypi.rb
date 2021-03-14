@@ -29,10 +29,10 @@ module PyPI
       @pypi_info = nil
 
       if is_url
-        unless package_string.start_with?(PYTHONHOSTED_URL_PREFIX) &&
-               match = File.basename(package_string).match(/^(.+)-([a-z\d.]+?)(?:.tar.gz|.zip)$/)
-          raise ArgumentError, "package should be a valid PyPI url"
+        match = if package_string.start_with?(PYTHONHOSTED_URL_PREFIX)
+          File.basename(package_string).match(/^(.+)-([a-z\d.]+?)(?:.tar.gz|.zip)$/)
         end
+        raise ArgumentError, "package should be a valid PyPI URL" if match.blank?
 
         @name = match[1]
         @version = match[2]
@@ -42,7 +42,7 @@ module PyPI
       @name = package_string
       @name, @version = @name.split("==") if @name.include? "=="
 
-      return unless match = @name.match(/^(.*?)\[(.+)\]$/)
+      return unless (match = @name.match(/^(.*?)\[(.+)\]$/))
 
       @name = match[1]
       @extras = match[2].split ","
@@ -119,7 +119,7 @@ module PyPI
   end
 
   # Return true if resources were checked (even if no change).
-  sig do
+  sig {
     params(
       formula:                  Formula,
       version:                  T.nilable(String),
@@ -130,7 +130,7 @@ module PyPI
       silent:                   T.nilable(T::Boolean),
       ignore_non_pypi_packages: T.nilable(T::Boolean),
     ).returns(T.nilable(T::Boolean))
-  end
+  }
   def update_python_resources!(formula, version: nil, package_name: nil, extra_packages: nil, exclude_packages: nil,
                                print_only: false, silent: false, ignore_non_pypi_packages: false)
 
@@ -182,6 +182,9 @@ module PyPI
 
     extra_packages = (extra_packages || []).map { |p| Package.new p }
     exclude_packages = (exclude_packages || []).map { |p| Package.new p }
+    exclude_packages += %W[#{main_package.name} argparse pip setuptools wheel wsgiref].map { |p| Package.new p }
+    # remove packages from the exclude list if we've explicitly requested them as an extra package
+    exclude_packages.delete_if { |package| extra_packages.include?(package) }
 
     input_packages = [main_package]
     extra_packages.each do |extra_package|
@@ -208,35 +211,20 @@ module PyPI
     @pipgrip_installed ||= Formula["pipgrip"].any_version_installed?
     odie '"pipgrip" must be installed (`brew install pipgrip`)' unless @pipgrip_installed
 
-    found_packages = []
-    input_packages.each do |package|
-      ohai "Retrieving PyPI dependencies for \"#{package}\"..." if !print_only && !silent
-      pipgrip_output = Utils.popen_read Formula["pipgrip"].bin/"pipgrip", "--json", "--no-cache-dir", package.to_s
-      unless $CHILD_STATUS.success?
-        odie <<~EOS
-          Unable to determine dependencies for \"#{package}\" because of a failure when running
-          `pipgrip --json --no-cache-dir #{package}`.
-          Please update the resources for \"#{formula.name}\" manually.
-        EOS
-      end
-
-      JSON.parse(pipgrip_output).to_h.each do |new_name, new_version|
-        new_package = Package.new("#{new_name}==#{new_version}")
-
-        found_packages.each do |existing_package|
-          if existing_package.same_package?(new_package) && existing_package.version != new_package.version
-            odie "Conflicting versions found for the `#{new_package.name}` resource: "\
-                 "#{existing_package.version}, #{new_package.version}"
-          end
-        end
-
-        found_packages << new_package unless found_packages.include? new_package
-      end
+    ohai "Retrieving PyPI dependencies for \"#{input_packages.join(" ")}\"..." if !print_only && !silent
+    command = [Formula["pipgrip"].bin/"pipgrip", "--json", "--no-cache-dir", *input_packages.map(&:to_s)]
+    pipgrip_output = Utils.popen_read(*command)
+    unless $CHILD_STATUS.success?
+      odie <<~EOS
+        Unable to determine dependencies for \"#{input_packages.join(" ")}\" because of a failure when running
+        `#{command.join(" ")}`.
+        Please update the resources for \"#{formula.name}\" manually.
+      EOS
     end
 
-    # Remove extra packages that may be included in pipgrip output
-    exclude_list = %W[#{main_package.name} argparse pip setuptools wheel wsgiref].map { |p| Package.new p }
-    found_packages.delete_if { |package| exclude_list.include? package }
+    found_packages = JSON.parse(pipgrip_output).to_h.map do |new_name, new_version|
+      Package.new("#{new_name}==#{new_version}")
+    end
 
     new_resource_blocks = ""
     found_packages.sort.each do |package|

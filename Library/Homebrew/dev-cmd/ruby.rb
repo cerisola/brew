@@ -11,16 +11,17 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def ruby_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `ruby` (`-e` <text>|<file>)
-
-        Run a Ruby instance with Homebrew's libraries loaded, e.g.
+      usage_banner "`ruby` [<options>] (`-e` <text>|<file>)"
+      description <<~EOS
+        Run a Ruby instance with Homebrew's libraries loaded. For example,
         `brew ruby -e "puts :gcc.f.deps"` or `brew ruby script.rb`.
       EOS
       flag "-r=",
            description: "Load a library using `require`."
       flag "-e=",
            description: "Execute the given text string as a script."
+
+      named_args :file
     end
   end
 

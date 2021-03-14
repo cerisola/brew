@@ -18,9 +18,7 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def uninstall_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `uninstall`, `rm`, `remove` [<options>] <formula>|<cask>
-
+      description <<~EOS
         Uninstall a <formula> or <cask>.
       EOS
       switch "-f", "--force",
@@ -29,18 +27,18 @@ module Homebrew
       switch "--zap",
              description: "Remove all files associated with a <cask>. " \
                           "*May remove files which are shared between applications.*"
-      conflicts "--formula", "--zap"
       switch "--ignore-dependencies",
              description: "Don't fail uninstall, even if <formula> is a dependency of any installed "\
                           "formulae."
-
       switch "--formula", "--formulae",
              description: "Treat all named arguments as formulae."
       switch "--cask", "--casks",
              description: "Treat all named arguments as casks."
-      conflicts "--formula", "--cask"
 
-      min_named :formula_or_cask
+      conflicts "--formula", "--cask"
+      conflicts "--formula", "--zap"
+
+      named_args [:installed_formula, :installed_cask], min: 1
     end
   end
 
@@ -56,6 +54,7 @@ module Homebrew
 
     Uninstall.uninstall_kegs(
       kegs_by_rack,
+      casks:               casks,
       force:               args.force?,
       ignore_dependencies: args.ignore_dependencies?,
       named_args:          args.named,
@@ -70,9 +69,8 @@ module Homebrew
     else
       T.unsafe(Cask::Cmd::Uninstall).uninstall_casks(
         *casks,
-        binaries: EnvConfig.cask_opts_binaries?,
-        verbose:  args.verbose?,
-        force:    args.force?,
+        verbose: args.verbose?,
+        force:   args.force?,
       )
     end
   end

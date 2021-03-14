@@ -17,19 +17,17 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def self.bump_unversioned_casks_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `bump-unversioned-casks` [<options>] [<cask>|<tap>]
-
+      description <<~EOS
         Check all casks with unversioned URLs in a given <tap> for updates.
       EOS
       switch "-n", "--dry-run",
              description: "Do everything except caching state and opening pull requests."
-      flag  "--limit=",
-            description: "Maximum runtime in minutes."
+      flag   "--limit=",
+             description: "Maximum runtime in minutes."
       flag   "--state-file=",
              description: "File for caching state."
 
-      min_named 1
+      named_args [:cask, :tap], min: 1
     end
   end
 
@@ -84,16 +82,16 @@ module Homebrew
     end
   end
 
-  sig do
+  sig {
     params(cask: Cask::Cask, state: T::Hash[String, T.untyped], dry_run: T.nilable(T::Boolean))
       .returns(T.nilable(T::Hash[String, T.untyped]))
-  end
+  }
   def self.bump_unversioned_cask(cask, state:, dry_run:)
     ohai "Checking #{cask.full_name}"
 
     unversioned_cask_checker = UnversionedCaskChecker.new(cask)
 
-    unless unversioned_cask_checker.single_app_cask? || unversioned_cask_checker.single_pkg_cask?
+    if !unversioned_cask_checker.single_app_cask? && !unversioned_cask_checker.single_pkg_cask?
       opoo "Skipping, not a single-app or PKG cask."
       return
     end

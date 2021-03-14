@@ -19,9 +19,7 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def livecheck_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `livecheck` [<formulae>|<casks>]
-
+      description <<~EOS
         Check for newer versions of formulae and/or casks from upstream.
 
         If no formula or cask argument is passed, the list of formulae and
@@ -46,9 +44,12 @@ module Homebrew
              description: "Only check formulae."
       switch "--cask", "--casks",
              description: "Only check casks."
+
       conflicts "--debug", "--json"
       conflicts "--tap=", "--all", "--installed"
       conflicts "--cask", "--formula"
+
+      named_args [:formula, :cask]
     end
   end
 
@@ -88,11 +89,8 @@ module Homebrew
                           .reject { |line| line.start_with?("#") || line.blank? }
                           .map(&:strip)
 
-          named_args = T.unsafe(CLI::NamedArgs).new(*names)
-          named_args.to_formulae_and_casks.reject do |formula_or_cask|
-            (args.formula? && !formula_or_cask.is_a?(Formula)) ||
-              (args.cask? && !formula_or_cask.is_a?(Cask::Cask))
-          end
+          named_args = T.unsafe(CLI::NamedArgs).new(*names, parent: args)
+          named_args.to_formulae_and_casks(ignore_unavailable: true)
         rescue Errno::ENOENT => e
           onoe e
         end

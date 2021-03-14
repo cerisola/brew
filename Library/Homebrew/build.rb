@@ -6,7 +6,7 @@
 
 old_trap = trap("INT") { exit! 130 }
 
-require "global"
+require_relative "global"
 require "build_options"
 require "cxxstdlib"
 require "keg"
@@ -39,7 +39,7 @@ class Build
   def post_superenv_hacks
     # Only allow Homebrew-approved directories into the PATH, unless
     # a formula opts-in to allowing the user's path.
-    return unless formula.env.userpaths? || reqs.any? { |rq| rq.env.userpaths? }
+    return if !formula.env.userpaths? && reqs.none? { |rq| rq.env.userpaths? }
 
     ENV.userpaths!
   end
@@ -152,14 +152,18 @@ class Build
           system "git", "add", "-A"
         end
         if args.interactive?
-          ohai "Entering interactive mode"
-          puts "Type `exit` to return and finalize the installation."
-          puts "Install to this prefix: #{formula.prefix}"
+          ohai "Entering interactive mode..."
+          puts <<~EOS
+            Type `exit` to return and finalize the installation.
+            Install to this prefix: #{formula.prefix}
+          EOS
 
           if args.git?
-            puts "This directory is now a git repo. Make your changes and then use:"
-            puts "  git diff | pbcopy"
-            puts "to copy the diff to the clipboard."
+            puts <<~EOS
+              This directory is now a Git repository. Make your changes and then use:
+                git diff | pbcopy
+              to copy the diff to the clipboard.
+            EOS
           end
 
           interactive_shell(formula)
@@ -236,7 +240,14 @@ rescue Exception => e # rubocop:disable Lint/RescueException
     error_hash["env"] = e.env
   when "ErrorDuringExecution"
     error_hash["cmd"] = e.cmd
-    error_hash["status"] = e.status.exitstatus
+    error_hash["status"] = if e.status.is_a?(Process::Status)
+      {
+        exitstatus: e.status.exitstatus,
+        termsig:    e.status.termsig,
+      }
+    else
+      e.status
+    end
     error_hash["output"] = e.output
   end
 

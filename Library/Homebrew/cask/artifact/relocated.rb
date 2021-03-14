@@ -41,10 +41,10 @@ module Cask
 
       attr_reader :source, :target
 
-      sig do
+      sig {
         params(cask: Cask, source: T.nilable(T.any(String, Pathname)), target: T.nilable(T.any(String, Pathname)))
           .void
-      end
+      }
       def initialize(cask, source, target: nil)
         super(cask)
 
@@ -82,7 +82,7 @@ module Cask
         altnames = command.run("/usr/bin/xattr",
                                args:         ["-p", ALT_NAME_ATTRIBUTE, file],
                                print_stderr: false).stdout.sub(/\A\((.*)\)\Z/, '\1')
-        odebug "Existing metadata is: '#{altnames}'"
+        odebug "Existing metadata is: #{altnames}"
         altnames.concat(", ") unless altnames.empty?
         altnames.concat(%Q("#{altname}"))
         altnames = "(#{altnames})"

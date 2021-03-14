@@ -114,14 +114,15 @@ class Resource
   # A target or a block must be given, but not both.
   def unpack(target = nil)
     mktemp(download_name) do |staging|
-      downloader.stage
-      @source_modified_time = downloader.source_modified_time
-      apply_patches
-      if block_given?
-        yield ResourceStageContext.new(self, staging)
-      elsif target
-        target = Pathname(target)
-        target.install Pathname.pwd.children
+      downloader.stage do
+        @source_modified_time = downloader.source_modified_time
+        apply_patches
+        if block_given?
+          yield ResourceStageContext.new(self, staging)
+        elsif target
+          target = Pathname(target)
+          target.install Pathname.pwd.children
+        end
       end
     end
   end
@@ -150,7 +151,7 @@ class Resource
 
   def verify_download_integrity(fn)
     if fn.file?
-      ohai "Verifying checksum for '#{fn.basename}'." if verbose?
+      ohai "Verifying checksum for '#{fn.basename}'" if verbose?
       fn.verify_checksum(checksum)
     end
   rescue ChecksumMissingError
@@ -162,8 +163,8 @@ class Resource
     EOS
   end
 
-  Checksum::TYPES.each do |type|
-    define_method(type) { |val| @checksum = Checksum.new(type, val) }
+  def sha256(val)
+    @checksum = Checksum.new(val)
   end
 
   def url(val = nil, **specs)

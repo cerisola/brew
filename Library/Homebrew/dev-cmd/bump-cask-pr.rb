@@ -13,9 +13,7 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def bump_cask_pr_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `bump-cask-pr` [<options>] <cask>
-
+      description <<~EOS
         Create a pull request to update <cask> with a new version.
 
         A best effort to determine the <SHA-256> will be made if the value is not
@@ -52,7 +50,8 @@ module Homebrew
 
       conflicts "--dry-run", "--write"
       conflicts "--no-audit", "--online"
-      named 1
+
+      named_args :cask, number: 1
     end
   end
 
@@ -67,6 +66,10 @@ module Homebrew
     ENV["BROWSER"] = Homebrew::EnvConfig.browser
 
     cask = args.named.to_casks.first
+
+    odie "This cask is not in a tap!" if cask.tap.blank?
+    odie "This cask's tap is not a Git repository!" unless cask.tap.git?
+
     new_version = args.version
     new_version = :latest if ["latest", ":latest"].include?(new_version)
     new_version = Cask::DSL::Version.new(new_version) if new_version.present?
@@ -81,12 +84,7 @@ module Homebrew
     old_version = cask.version
     old_hash = cask.sha256
 
-    tap_full_name = cask.tap&.full_name
-    default_remote_branch = cask.tap.path.git_origin_branch if cask.tap
-    default_remote_branch ||= "master"
-    previous_branch = "-"
-
-    check_open_pull_requests(cask, tap_full_name, args: args)
+    check_open_pull_requests(cask, args: args)
 
     old_contents = File.read(cask.sourcefile_path)
 
@@ -115,7 +113,7 @@ module Homebrew
 
     if new_version.present?
       if new_version.latest?
-        opoo "Ignoring specified --sha256= argument." if new_hash.present?
+        opoo "Ignoring specified `--sha256=` argument." if new_hash.present?
         new_hash = :no_check
       elsif new_hash.nil? || cask.languages.present?
         tmp_contents = Utils::Inreplace.inreplace_pairs(cask.sourcefile_path,
@@ -180,12 +178,9 @@ module Homebrew
     pr_info = {
       sourcefile_path: cask.sourcefile_path,
       old_contents:    old_contents,
-      remote_branch:   default_remote_branch,
       branch_name:     branch_name,
       commit_message:  commit_message,
-      previous_branch: previous_branch,
       tap:             cask.tap,
-      tap_full_name:   tap_full_name,
       pr_message:      "Created with `brew bump-cask-pr`.",
     }
     GitHub.create_bump_pr(pr_info, args: args)
@@ -199,14 +194,11 @@ module Homebrew
     resource.fetch
   end
 
-  def check_open_pull_requests(cask, tap_full_name, args:)
-    GitHub.check_for_duplicate_pull_requests(cask.token, tap_full_name, state: "open", args: args)
-  end
-
-  def check_closed_pull_requests(cask, tap_full_name, version:, args:)
-    # if we haven't already found open requests, try for an exact match across closed requests
-    pr_title = "Update #{cask.token} from #{cask.version} to #{version}"
-    GitHub.check_for_duplicate_pull_requests(pr_title, tap_full_name, state: "closed", args: args)
+  def check_open_pull_requests(cask, args:)
+    GitHub.check_for_duplicate_pull_requests(cask.token, cask.tap.full_name,
+                                             state: "open",
+                                             file:  cask.sourcefile_path.relative_path_from(cask.tap.path).to_s,
+                                             args:  args)
   end
 
   def run_cask_audit(cask, old_contents, args:)

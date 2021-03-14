@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "resource"
+require "download_strategy"
 require "checksum"
 require "version"
 require "options"
@@ -10,7 +11,6 @@ require "dependency_collector"
 require "utils/bottles"
 require "patch"
 require "compilers"
-require "global"
 require "os/mac/version"
 require "extend/on_os"
 
@@ -33,7 +33,7 @@ class SoftwareSpec
                  :cached_download, :clear_cache, :checksum, :mirrors, :specs, :using, :version, :mirror,
                  :downloader
 
-  def_delegators :@resource, *Checksum::TYPES
+  def_delegators :@resource, :sha256
 
   def initialize(flags: [])
     @resource = Resource.new
@@ -178,7 +178,7 @@ class SoftwareSpec
   end
 
   def uses_from_macos(spec, _bounds = {})
-    spec = Hash[*spec.first] if spec.is_a?(Hash)
+    spec = spec.dup.shift if spec.is_a?(Hash)
     depends_on(spec)
   end
 
@@ -225,13 +225,6 @@ class SoftwareSpec
     standards.each do |standard|
       compiler_failures.concat CompilerFailure.for_standard(standard)
     end
-  end
-
-  # TODO: ?
-  def add_legacy_patches(list)
-    list = Patch.normalize_legacy_patches(list)
-    list.each { |p| p.owner = self }
-    patches.concat(list)
   end
 
   def add_dep_option(dep)
@@ -299,7 +292,7 @@ class Bottle
 
   attr_reader :name, :resource, :prefix, :cellar, :rebuild
 
-  def_delegators :resource, :url, :fetch, :verify_download_integrity
+  def_delegators :resource, :url, :verify_download_integrity
   def_delegators :resource, :cached_download, :clear_cache
 
   def initialize(formula, spec)
@@ -309,7 +302,7 @@ class Bottle
     @resource.specs[:bottle] = true
     @spec = spec
 
-    checksum, tag = spec.checksum_for(Utils::Bottles.tag)
+    checksum, tag, cellar = spec.checksum_for(Utils::Bottles.tag)
 
     filename = Filename.create(formula, tag, spec.rebuild)
     @resource.url("#{spec.root_url}/#{filename.bintray}",
@@ -317,8 +310,24 @@ class Bottle
     @resource.version = formula.pkg_version
     @resource.checksum = checksum
     @prefix = spec.prefix
-    @cellar = spec.cellar
+    @cellar = cellar
     @rebuild = spec.rebuild
+  end
+
+  def fetch(verify_download_integrity: true)
+    # add the default bottle domain as a fallback mirror
+    # TODO: this may need adjusted when if we use GitHub Packages by default
+    if @resource.download_strategy == CurlDownloadStrategy &&
+       @resource.url.start_with?(Homebrew::EnvConfig.bottle_domain)
+      fallback_url = @resource.url
+                              .sub(/^#{Regexp.escape(Homebrew::EnvConfig.bottle_domain)}/,
+                                   HOMEBREW_BOTTLE_DEFAULT_DOMAIN)
+      @resource.mirror(fallback_url) if [@resource.url, *@resource.mirrors].exclude?(fallback_url)
+    elsif @resource.download_strategy == CurlGitHubPackagesDownloadStrategy
+      @resource.downloader.name = @name
+      @resource.downloader.checksum = @resource.checksum.hexdigest
+    end
+    @resource.fetch(verify_download_integrity: verify_download_integrity)
   end
 
   def compatible_locations?
@@ -345,15 +354,15 @@ end
 class BottleSpecification
   extend T::Sig
 
-  attr_rw :prefix, :cellar, :rebuild
+  attr_rw :prefix, :rebuild
   attr_accessor :tap
-  attr_reader :checksum, :collector, :root_url_specs, :repository
+  attr_reader :all_tags_cellar, :checksum, :collector, :root_url_specs, :repository
 
   sig { void }
   def initialize
     @rebuild = 0
     @prefix = Homebrew::DEFAULT_PREFIX
-    @cellar = Homebrew::DEFAULT_CELLAR
+    @all_tags_cellar = Homebrew::DEFAULT_CELLAR
     @repository = Homebrew::DEFAULT_REPOSITORY
     @collector = Utils::Bottles::Collector.new
     @root_url_specs = {}
@@ -363,7 +372,7 @@ class BottleSpecification
     if [HOMEBREW_DEFAULT_PREFIX,
         HOMEBREW_MACOS_ARM_DEFAULT_PREFIX,
         HOMEBREW_LINUX_DEFAULT_PREFIX].exclude?(prefix)
-      odeprecated "setting `prefix` for bottles"
+      odisabled "setting 'prefix' for bottles"
     end
     @prefix = prefix
   end
@@ -377,6 +386,20 @@ class BottleSpecification
     end
   end
 
+  def cellar(val = nil)
+    # TODO: (3.1) uncomment to deprecate the old bottle syntax
+    # if val.present?
+    #   odeprecated(
+    #     "`cellar` in a bottle block",
+    #     "`brew style --fix` on the formula to update the style or use `sha256` with a `cellar:` argument",
+    #   )
+    # end
+
+    return collector.dig(Utils::Bottles.tag, :cellar) || @all_tags_cellar if val.nil?
+
+    @all_tags_cellar = val
+  end
+
   def compatible_locations?
     # this looks like it should check prefix and repository too but to be
     # `cellar :any` actually requires no references to the cellar, prefix or
@@ -386,17 +409,7 @@ class BottleSpecification
     compatible_cellar = cellar == HOMEBREW_CELLAR.to_s
     compatible_prefix = prefix == HOMEBREW_PREFIX.to_s
 
-    # Only check the repository matches if the prefix is the default.
-    # This is because the bottle DSL does not allow setting a custom repository
-    # but does allow setting a custom prefix.
-    # TODO: delete this after Homebrew 2.7.0 is released.
-    compatible_repository = if Homebrew.default_prefix?(prefix)
-      repository == HOMEBREW_REPOSITORY.to_s
-    else
-      true
-    end
-
-    compatible_cellar && compatible_prefix && compatible_repository
+    compatible_cellar && compatible_prefix
   end
 
   # Does the {Bottle} this {BottleSpecification} belongs to need to be relocated?
@@ -405,37 +418,70 @@ class BottleSpecification
     cellar == :any_skip_relocation
   end
 
-  def tag?(tag)
-    checksum_for(tag) ? true : false
+  sig { params(tag: Symbol, exact: T::Boolean).returns(T::Boolean) }
+  def tag?(tag, exact: false)
+    checksum_for(tag, exact: exact) ? true : false
   end
 
-  # Checksum methods in the DSL's bottle block optionally take
+  # Checksum methods in the DSL's bottle block take
   # a Hash, which indicates the platform the checksum applies on.
-  Checksum::TYPES.each do |cksum|
-    define_method(cksum) do |val|
-      digest, tag = val.shift
-      collector[tag] = Checksum.new(cksum, digest)
+  # Example bottle block syntax:
+  # bottle do
+  #  sha256 cellar: :any_skip_relocation, big_sur: "69489ae397e4645..."
+  #  sha256 cellar: :any, catalina: "449de5ea35d0e94..."
+  # end
+  def sha256(hash)
+    sha256_regex = /^[a-f0-9]{64}$/i
+
+    # find new `sha256 big_sur: "69489ae397e4645..."` format
+    tag, digest = hash.find do |key, value|
+      key.is_a?(Symbol) && value.is_a?(String) && value.match?(sha256_regex)
     end
+
+    if digest && tag
+      # the cellar hash key only exists on the new format
+      cellar = hash[:cellar]
+    else
+      # otherwise, find old `sha256 "69489ae397e4645..." => :big_sur` format
+      digest, tag = hash.find do |key, value|
+        key.is_a?(String) && value.is_a?(Symbol) && key.match?(sha256_regex)
+      end
+
+      # TODO: (3.1) uncomment to deprecate the old bottle syntax
+      # if digest && tag
+      #   odeprecated(
+      #     '`sha256 "digest" => :tag` in a bottle block',
+      #     '`brew style --fix` on the formula to update the style or use `sha256 tag: "digest"`',
+      #   )
+      # end
+    end
+
+    cellar ||= all_tags_cellar
+    collector[tag] = { checksum: Checksum.new(digest), cellar: cellar }
   end
 
-  def checksum_for(tag)
-    collector.fetch_checksum_for(tag)
+  sig { params(tag: Symbol, exact: T::Boolean).returns(T.nilable([Checksum, Symbol, T.any(Symbol, String)])) }
+  def checksum_for(tag, exact: false)
+    collector.fetch_checksum_for(tag, exact: exact)
   end
 
   def checksums
     tags = collector.keys.sort_by do |tag|
-      "#{OS::Mac::Version.from_symbol(tag)}_#{tag}"
+      version = OS::Mac::Version.from_symbol(tag)
+      # Give arm64 bottles a higher priority so they are first
+      priority = version.arch == :arm64 ? "2" : "1"
+      "#{priority}.#{version}_#{tag}"
     rescue MacOSVersionError
       # Sort non-MacOS tags below MacOS tags.
       "0.#{tag}"
     end
-    checksums = {}
-    tags.reverse_each do |tag|
-      checksum = collector[tag]
-      checksums[checksum.hash_type] ||= []
-      checksums[checksum.hash_type] << { checksum => tag }
+    tags.reverse.map do |tag|
+      {
+        "tag"    => tag,
+        "digest" => collector[tag][:checksum],
+        "cellar" => collector[tag][:cellar],
+      }
     end
-    checksums
   end
 end
 

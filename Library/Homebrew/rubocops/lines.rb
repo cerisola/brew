@@ -162,7 +162,7 @@ module RuboCop
 
           find_instance_method_call(body_node, :build, :without?) do |method|
             arg = parameters(method).first
-            next unless match = regex_match_group(arg, /^-?-?without-(.*)/)
+            next unless (match = regex_match_group(arg, /^-?-?without-(.*)/))
 
             problem "Don't duplicate 'without': " \
                     "Use `build.without? \"#{match[1]}\"` to check for \"--without-#{match[1]}\""
@@ -170,7 +170,7 @@ module RuboCop
 
           find_instance_method_call(body_node, :build, :with?) do |method|
             arg = parameters(method).first
-            next unless match = regex_match_group(arg, /^-?-?with-(.*)/)
+            next unless (match = regex_match_group(arg, /^-?-?with-(.*)/))
 
             problem "Don't duplicate 'with': Use `build.with? \"#{match[1]}\"` to check for \"--with-#{match[1]}\""
           end
@@ -197,20 +197,17 @@ module RuboCop
       #
       # @api private
       class MpiCheck < FormulaCop
+        extend AutoCorrector
+
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           # Enforce use of OpenMPI for MPI dependency in core
           return unless formula_tap == "homebrew-core"
 
           find_method_with_args(body_node, :depends_on, "mpich") do
             problem "Formulae in homebrew/core should use 'depends_on \"open-mpi\"' " \
-            "instead of '#{@offensive_node.source}'."
-          end
-        end
-
-        def autocorrect(node)
-          # The dependency nodes may need to be re-sorted because of this
-          lambda do |corrector|
-            corrector.replace(node.source_range, "depends_on \"open-mpi\"")
+            "instead of '#{@offensive_node.source}'." do |corrector|
+              corrector.replace(@offensive_node.source_range, "depends_on \"open-mpi\"")
+            end
           end
         end
       end
@@ -219,6 +216,8 @@ module RuboCop
       #
       # @api private
       class SafePopenCommands < FormulaCop
+        extend AutoCorrector
+
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           test = find_block(body_node, :test)
 
@@ -233,15 +232,11 @@ module RuboCop
 
             find_instance_method_call(body_node, "Utils", unsafe_command) do |method|
               unless test_methods.include?(method.source_range)
-                problem "Use `Utils.safe_#{unsafe_command}` instead of `Utils.#{unsafe_command}`"
+                problem "Use `Utils.safe_#{unsafe_command}` instead of `Utils.#{unsafe_command}`" do |corrector|
+                  corrector.replace(@offensive_node.loc.selector, "safe_#{@offensive_node.method_name}")
+                end
               end
             end
-          end
-        end
-
-        def autocorrect(node)
-          lambda do |corrector|
-            corrector.replace(node.loc.selector, "safe_#{node.method_name}")
           end
         end
       end
@@ -250,6 +245,8 @@ module RuboCop
       #
       # @api private
       class ShellVariables < FormulaCop
+        extend AutoCorrector
+
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           popen_commands = [
             :popen,
@@ -261,19 +258,15 @@ module RuboCop
 
           popen_commands.each do |command|
             find_instance_method_call(body_node, "Utils", command) do |method|
-              next unless match = regex_match_group(parameters(method).first, /^([^"' ]+)=([^"' ]+)(?: (.*))?$/)
+              next unless (match = regex_match_group(parameters(method).first, /^([^"' ]+)=([^"' ]+)(?: (.*))?$/))
 
               good_args = "Utils.#{command}({ \"#{match[1]}\" => \"#{match[2]}\" }, \"#{match[3]}\")"
 
-              problem "Use `#{good_args}` instead of `#{method.source}`"
+              problem "Use `#{good_args}` instead of `#{method.source}`" do |corrector|
+                corrector.replace(@offensive_node.source_range,
+                                  "{ \"#{match[1]}\" => \"#{match[2]}\" }, \"#{match[3]}\"")
+              end
             end
-          end
-        end
-
-        def autocorrect(node)
-          lambda do |corrector|
-            match = regex_match_group(node, /^([^"' ]+)=([^"' ]+)(?: (.*))?$/)
-            corrector.replace(node.source_range, "{ \"#{match[1]}\" => \"#{match[2]}\" }, \"#{match[3]}\"")
           end
         end
       end
@@ -282,6 +275,8 @@ module RuboCop
       #
       # @api private
       class LicenseArrays < FormulaCop
+        extend AutoCorrector
+
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           license_node = find_node_method_by_name(body_node, :license)
           return unless license_node
@@ -289,12 +284,8 @@ module RuboCop
           license = parameters(license_node).first
           return unless license.array_type?
 
-          problem "Use `license any_of: #{license.source}` instead of `license #{license.source}`"
-        end
-
-        def autocorrect(node)
-          lambda do |corrector|
-            corrector.replace(node.source_range, "license any_of: #{parameters(node).first.source}")
+          problem "Use `license any_of: #{license.source}` instead of `license #{license.source}`" do |corrector|
+            corrector.replace(license_node.source_range, "license any_of: #{parameters(license_node).first.source}")
           end
         end
       end
@@ -324,6 +315,8 @@ module RuboCop
       #
       # @api private
       class PythonVersions < FormulaCop
+        extend AutoCorrector
+
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           python_formula_node = find_every_method_call_by_name(body_node, :depends_on).find do |dep|
             string_content(parameters(dep).first).start_with? "python@"
@@ -334,25 +327,22 @@ module RuboCop
           python_version = string_content(parameters(python_formula_node).first).split("@").last
 
           find_strings(body_node).each do |str|
-            string_content = string_content(str)
+            content = string_content(str)
 
-            next unless match = string_content.match(/^python(@)?(\d\.\d+)$/)
+            next unless (match = content.match(/^python(@)?(\d\.\d+)$/))
             next if python_version == match[2]
 
-            @fix = if match[1]
+            fix = if match[1]
               "python@#{python_version}"
             else
               "python#{python_version}"
             end
 
             offending_node(str)
-            problem "References to `#{string_content}` should match the specified python dependency (`#{@fix}`)"
-          end
-        end
-
-        def autocorrect(node)
-          lambda do |corrector|
-            corrector.replace(node.source_range, "\"#{@fix}\"")
+            problem "References to `#{content}` should "\
+            "match the specified python dependency (`#{fix}`)" do |corrector|
+              corrector.replace(str.source_range, "\"#{fix}\"")
+            end
           end
         end
       end
@@ -395,7 +385,7 @@ module RuboCop
           end
 
           find_instance_method_call(body_node, :man, :+) do |method|
-            next unless match = regex_match_group(parameters(method).first, /^man[1-8]$/)
+            next unless (match = regex_match_group(parameters(method).first, /^man[1-8]$/))
 
             problem "\"#{method.source}\" should be \"#{match[0]}\""
           end
@@ -403,37 +393,37 @@ module RuboCop
           # Avoid hard-coding compilers
           find_every_method_call_by_name(body_node, :system).each do |method|
             param = parameters(method).first
-            if match = regex_match_group(param, %r{^(/usr/bin/)?(gcc|llvm-gcc|clang)(\s|$)})
+            if (match = regex_match_group(param, %r{^(/usr/bin/)?(gcc|llvm-gcc|clang)(\s|$)}))
               problem "Use \"\#{ENV.cc}\" instead of hard-coding \"#{match[2]}\""
-            elsif match = regex_match_group(param, %r{^(/usr/bin/)?((g|llvm-g|clang)\+\+)(\s|$)})
+            elsif (match = regex_match_group(param, %r{^(/usr/bin/)?((g|llvm-g|clang)\+\+)(\s|$)}))
               problem "Use \"\#{ENV.cxx}\" instead of hard-coding \"#{match[2]}\""
             end
           end
 
           find_instance_method_call(body_node, "ENV", :[]=) do |method|
             param = parameters(method)[1]
-            if match = regex_match_group(param, %r{^(/usr/bin/)?(gcc|llvm-gcc|clang)(\s|$)})
+            if (match = regex_match_group(param, %r{^(/usr/bin/)?(gcc|llvm-gcc|clang)(\s|$)}))
               problem "Use \"\#{ENV.cc}\" instead of hard-coding \"#{match[2]}\""
-            elsif match = regex_match_group(param, %r{^(/usr/bin/)?((g|llvm-g|clang)\+\+)(\s|$)})
+            elsif (match = regex_match_group(param, %r{^(/usr/bin/)?((g|llvm-g|clang)\+\+)(\s|$)}))
               problem "Use \"\#{ENV.cxx}\" instead of hard-coding \"#{match[2]}\""
             end
           end
 
           # Prefer formula path shortcuts in strings
           formula_path_strings(body_node, :share) do |p|
-            next unless match = regex_match_group(p, %r{^(/(man))/?})
+            next unless (match = regex_match_group(p, %r{^(/(man))/?}))
 
             problem "\"\#{share}#{match[1]}\" should be \"\#{#{match[2]}}\""
           end
 
           formula_path_strings(body_node, :prefix) do |p|
-            if match = regex_match_group(p, %r{^(/share/(info|man))$})
+            if (match = regex_match_group(p, %r{^(/share/(info|man))$}))
               problem "\"\#\{prefix}#{match[1]}\" should be \"\#{#{match[2]}}\""
             end
-            if match = regex_match_group(p, %r{^((/share/man/)(man[1-8]))})
+            if (match = regex_match_group(p, %r{^((/share/man/)(man[1-8]))}))
               problem "\"\#\{prefix}#{match[1]}\" should be \"\#{#{match[3]}}\""
             end
-            if match = regex_match_group(p, %r{^(/(bin|include|libexec|lib|sbin|share|Frameworks))}i)
+            if (match = regex_match_group(p, %r{^(/(bin|include|libexec|lib|sbin|share|Frameworks))}i))
               problem "\"\#\{prefix}#{match[1]}\" should be \"\#{#{match[2].downcase}}\""
             end
           end
@@ -441,13 +431,13 @@ module RuboCop
           find_every_method_call_by_name(body_node, :depends_on).each do |method|
             key, value = destructure_hash(parameters(method).first)
             next if key.nil? || value.nil?
-            next unless match = regex_match_group(value, /^(lua|perl|python|ruby)(\d*)/)
+            next unless (match = regex_match_group(value, /^(lua|perl|python|ruby)(\d*)/))
 
             problem "#{match[1]} modules should be vendored rather than use deprecated `#{method.source}`"
           end
 
           find_every_method_call_by_name(body_node, :system).each do |method|
-            next unless match = regex_match_group(parameters(method).first, /^(env|export)(\s+)?/)
+            next unless (match = regex_match_group(parameters(method).first, /^(env|export)(\s+)?/))
 
             problem "Use ENV instead of invoking '#{match[1]}' to modify the environment"
           end
@@ -459,7 +449,7 @@ module RuboCop
 
             option_child_nodes.each do |option|
               find_strings(option).each do |dependency|
-                next unless match = regex_match_group(dependency, /(with(out)?-\w+|c\+\+11)/)
+                next unless (match = regex_match_group(dependency, /(with(out)?-\w+|c\+\+11)/))
 
                 problem "Dependency #{string_content(dep)} should not use option #{match[0]}"
               end
@@ -473,10 +463,9 @@ module RuboCop
           end
 
           find_instance_method_call(body_node, "ARGV", :include?) do |method|
-            param = parameters(method).first
-            next unless match = regex_match_group(param, /^--(HEAD|devel)/)
+            next unless parameters_passed?(method, "--HEAD")
 
-            problem "Use \"if build.#{match[1].downcase}?\" instead"
+            problem "Use \"if build.head?\" instead"
           end
 
           find_const(body_node, "MACOS_VERSION") do
@@ -535,7 +524,7 @@ module RuboCop
                     "Pass explicit paths to prevent Homebrew from removing empty folders."
           end
 
-          if find_method_def(@processed_source.ast)
+          if find_method_def(processed_source.ast)
             problem "Define method #{method_name(@offensive_node)} in the class body, not at the top-level"
           end
 
@@ -557,12 +546,21 @@ module RuboCop
             problem "`depends_on` can take requirement classes instead of instances"
           end
 
+          find_instance_method_call(body_node, "ENV", :[]) do |method|
+            next unless modifier?(method.parent)
+
+            param = parameters(method).first
+            next unless node_equals?(param, "CI")
+
+            problem 'Don\'t use ENV["CI"] for Homebrew CI checks.'
+          end
+
           find_instance_method_call(body_node, "Dir", :[]) do |method|
             next unless parameters(method).size == 1
 
             path = parameters(method).first
             next unless path.str_type?
-            next unless match = regex_match_group(path, /^[^*{},]+$/)
+            next unless (match = regex_match_group(path, /^[^*{},]+$/))
 
             problem "Dir([\"#{string_content(path)}\"]) is unnecessary; just use \"#{match[0]}\""
           end
@@ -574,7 +572,7 @@ module RuboCop
           )
           find_every_method_call_by_name(body_node, :system).each do |method|
             param = parameters(method).first
-            next unless match = regex_match_group(param, fileutils_methods)
+            next unless (match = regex_match_group(param, fileutils_methods))
 
             problem "Use the `#{match}` Ruby method instead of `#{method.source}`"
           end
@@ -641,20 +639,13 @@ module RuboCop
         end
       end
 
-      # This cop ensures that new formulae depending on Requirements are not introduced in homebrew/core.
-      class CoreRequirements < FormulaCop
+      # This cop ensures that new formulae depending on removed Requirements are not used
+      class Requirements < FormulaCop
         def audit_formula(_node, _class_node, _parent_class_node, _body_node)
-          return if formula_tap != "homebrew-core"
-
-          if depends_on? :java
-            problem "Formulae in homebrew/core should depend on a versioned `openjdk` instead of :java"
-          end
-
-          if depends_on? :x11
-            problem "Formulae in homebrew/core should depend on specific X libraries instead of :x11"
-          end
-
-          problem ":osxfuse is deprecated in homebrew/core" if depends_on? :osxfuse
+          problem "Formulae should depend on a versioned `openjdk` instead of :java" if depends_on? :java
+          problem "Formulae should depend on specific X libraries instead of :x11" if depends_on? :x11
+          problem "Formulae should not depend on :osxfuse" if depends_on? :osxfuse
+          problem "Formulae should not depend on :tuntap" if depends_on? :tuntap
         end
       end
 
@@ -662,6 +653,8 @@ module RuboCop
       #
       # @api private
       class ShellCommands < FormulaCop
+        extend AutoCorrector
+
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           # Match shell commands separated by spaces in the same string
           shell_cmd_with_spaces_regex = /[^"' ]*(?:\s[^"' ]*)+/
@@ -679,11 +672,13 @@ module RuboCop
             # Only separate when no shell metacharacters are present
             next if shell_metacharacters.any? { |meta| string_content(parameters(method).first).include?(meta) }
 
-            next unless match = regex_match_group(parameters(method).first, shell_cmd_with_spaces_regex)
+            next unless (match = regex_match_group(parameters(method).first, shell_cmd_with_spaces_regex))
 
             good_args = match[0].gsub(" ", "\", \"")
             offending_node(parameters(method).first)
-            problem "Separate `system` commands into `\"#{good_args}\"`"
+            problem "Separate `system` commands into `\"#{good_args}\"`" do |corrector|
+              corrector.replace(@offensive_node.source_range, @offensive_node.source.gsub(" ", "\", \""))
+            end
           end
 
           popen_commands.each do |command|
@@ -693,19 +688,15 @@ module RuboCop
               # Only separate when no shell metacharacters are present
               next if shell_metacharacters.any? { |meta| string_content(parameters(method)[index]).include?(meta) }
 
-              next unless match = regex_match_group(parameters(method)[index], shell_cmd_with_spaces_regex)
+              next unless (match = regex_match_group(parameters(method)[index], shell_cmd_with_spaces_regex))
 
               good_args = match[0].gsub(" ", "\", \"")
               offending_node(parameters(method)[index])
-              problem "Separate `Utils.#{command}` commands into `\"#{good_args}\"`"
+              problem "Separate `Utils.#{command}` commands into `\"#{good_args}\"`" do |corrector|
+                good_args = @offensive_node.source.gsub(" ", "\", \"")
+                corrector.replace(@offensive_node.source_range, good_args)
+              end
             end
-          end
-        end
-
-        def autocorrect(node)
-          lambda do |corrector|
-            good_args = node.source.gsub(" ", "\", \"")
-            corrector.replace(node.source_range, good_args)
           end
         end
       end

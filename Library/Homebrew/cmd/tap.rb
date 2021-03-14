@@ -11,9 +11,8 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def tap_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `tap` [<options>] [<user>`/`<repo>] [<URL>]
-
+      usage_banner "`tap` [<options>] [<user>`/`<repo>] [<URL>]"
+      description <<~EOS
         Tap a formula repository.
 
         If no arguments are provided, list all installed taps.
@@ -41,7 +40,7 @@ module Homebrew
       switch "--list-pinned",
              description: "List all pinned taps."
 
-      max_named 2
+      named_args :tap, max: 2
     end
   end
 
@@ -51,6 +50,7 @@ module Homebrew
 
     if args.repair?
       Tap.each(&:link_completions_and_manpages)
+      Tap.each(&:fix_remote_configuration)
     elsif args.list_pinned?
       puts Tap.select(&:pinned?).map(&:name)
     elsif args.no_named?

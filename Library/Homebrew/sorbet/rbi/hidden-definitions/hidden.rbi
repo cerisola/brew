@@ -532,14 +532,6 @@ class ActiveSupport::CurrentAttributes
   def _reset_callbacks(); end
 
   def _run_reset_callbacks(&block); end
-
-  def attributes(); end
-
-  def attributes=(attributes); end
-
-  def reset(); end
-
-  def set(set_attributes); end
 end
 
 class ActiveSupport::CurrentAttributes
@@ -561,17 +553,9 @@ class ActiveSupport::CurrentAttributes
 
   def self.before_reset(&block); end
 
-  def self.clear_all(); end
-
   def self.instance(); end
 
-  def self.reset(*args, &block); end
-
-  def self.reset_all(); end
-
   def self.resets(&block); end
-
-  def self.set(*args, &block); end
 end
 
 module ActiveSupport::Dependencies
@@ -2705,7 +2689,13 @@ class Addrinfo
   def connect_internal(local_addrinfo, timeout=T.unsafe(nil)); end
 end
 
+class Archive
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
 class Array
+  include ::MessagePack::CoreExt
   def compact_blank!(); end
 
   def extract_options!(); end
@@ -2808,6 +2798,286 @@ end
 class Bintray
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Bootsnap
+  def bundler?(); end
+  VERSION = ::T.let(nil, ::T.untyped)
+end
+
+module Bootsnap::CompileCache
+end
+
+class Bootsnap::CompileCache::Error
+end
+
+class Bootsnap::CompileCache::Error
+end
+
+class Bootsnap::CompileCache::PermissionError
+end
+
+class Bootsnap::CompileCache::PermissionError
+end
+
+module Bootsnap::CompileCache
+  def self.permission_error(path); end
+
+  def self.setup(cache_dir:, iseq:, yaml:); end
+
+  def self.supported?(); end
+end
+
+module Bootsnap::ExplicitRequire
+  ARCHDIR = ::T.let(nil, ::T.untyped)
+  DLEXT = ::T.let(nil, ::T.untyped)
+  RUBYLIBDIR = ::T.let(nil, ::T.untyped)
+end
+
+module Bootsnap::ExplicitRequire
+  def self.from_archdir(feature); end
+
+  def self.from_rubylibdir(feature); end
+
+  def self.from_self(feature); end
+
+  def self.with_gems(*gems); end
+end
+
+class Bootsnap::InvalidConfiguration
+end
+
+class Bootsnap::InvalidConfiguration
+end
+
+module Bootsnap::LoadPathCache
+  CACHED_EXTENSIONS = ::T.let(nil, ::T.untyped)
+  DLEXT = ::T.let(nil, ::T.untyped)
+  DLEXT2 = ::T.let(nil, ::T.untyped)
+  DL_EXTENSIONS = ::T.let(nil, ::T.untyped)
+  DOT_RB = ::T.let(nil, ::T.untyped)
+  DOT_SO = ::T.let(nil, ::T.untyped)
+  ERROR_TAG_IVAR = ::T.let(nil, ::T.untyped)
+  SLASH = ::T.let(nil, ::T.untyped)
+end
+
+class Bootsnap::LoadPathCache::Cache
+  def absolute_path?(path); end
+
+  def find(feature); end
+
+  def initialize(store, path_obj, development_mode: T.unsafe(nil)); end
+
+  def load_dir(dir); end
+
+  def push_paths(sender, *paths); end
+
+  def reinitialize(path_obj=T.unsafe(nil)); end
+
+  def unshift_paths(sender, *paths); end
+  AGE_THRESHOLD = ::T.let(nil, ::T.untyped)
+  BUILTIN_FEATURES = ::T.let(nil, ::T.untyped)
+end
+
+class Bootsnap::LoadPathCache::Cache
+end
+
+module Bootsnap::LoadPathCache::ChangeObserver
+end
+
+module Bootsnap::LoadPathCache::ChangeObserver::ArrayMixin
+  def <<(entry); end
+
+  def []=(*args, &block); end
+
+  def clear(*args, &block); end
+
+  def collect!(*args, &block); end
+
+  def compact!(*args, &block); end
+
+  def concat(entries); end
+
+  def delete(*args, &block); end
+
+  def delete_at(*args, &block); end
+
+  def delete_if(*args, &block); end
+
+  def fill(*args, &block); end
+
+  def flatten!(*args, &block); end
+
+  def insert(*args, &block); end
+
+  def keep_if(*args, &block); end
+
+  def map!(*args, &block); end
+
+  def pop(*args, &block); end
+
+  def push(*entries); end
+
+  def reject!(*args, &block); end
+
+  def replace(*args, &block); end
+
+  def reverse!(*args, &block); end
+
+  def rotate!(*args, &block); end
+
+  def select!(*args, &block); end
+
+  def shift(*args, &block); end
+
+  def shuffle!(*args, &block); end
+
+  def slice!(*args, &block); end
+
+  def sort!(*args, &block); end
+
+  def sort_by!(*args, &block); end
+
+  def uniq!(*args); end
+
+  def unshift(*entries); end
+end
+
+module Bootsnap::LoadPathCache::ChangeObserver::ArrayMixin
+end
+
+module Bootsnap::LoadPathCache::ChangeObserver
+  def self.register(observer, arr); end
+end
+
+class Bootsnap::LoadPathCache::FallbackScan
+end
+
+class Bootsnap::LoadPathCache::FallbackScan
+end
+
+class Bootsnap::LoadPathCache::LoadedFeaturesIndex
+  def key?(feature); end
+
+  def purge(feature); end
+
+  def purge_multi(features); end
+
+  def register(short, long=T.unsafe(nil)); end
+end
+
+class Bootsnap::LoadPathCache::LoadedFeaturesIndex
+end
+
+class Bootsnap::LoadPathCache::Path
+  def entries_and_dirs(store); end
+
+  def expanded_path(); end
+
+  def initialize(path); end
+
+  def non_directory?(); end
+
+  def path(); end
+
+  def relative?(); end
+
+  def stable?(); end
+
+  def volatile?(); end
+  RUBY_LIBDIR = ::T.let(nil, ::T.untyped)
+  RUBY_SITEDIR = ::T.let(nil, ::T.untyped)
+  STABLE = ::T.let(nil, ::T.untyped)
+  VOLATILE = ::T.let(nil, ::T.untyped)
+end
+
+class Bootsnap::LoadPathCache::Path
+end
+
+module Bootsnap::LoadPathCache::PathScanner
+  ALTERNATIVE_NATIVE_EXTENSIONS_PATTERN = ::T.let(nil, ::T.untyped)
+  BUNDLE_PATH = ::T.let(nil, ::T.untyped)
+  NORMALIZE_NATIVE_EXTENSIONS = ::T.let(nil, ::T.untyped)
+  REQUIRABLE_EXTENSIONS = ::T.let(nil, ::T.untyped)
+end
+
+module Bootsnap::LoadPathCache::PathScanner
+  def self.call(path); end
+
+  def self.os_path(path); end
+
+  def self.walk(absolute_dir_path, relative_dir_path, &block); end
+end
+
+class Bootsnap::LoadPathCache::RealpathCache
+  def call(*key); end
+end
+
+class Bootsnap::LoadPathCache::RealpathCache
+end
+
+class Bootsnap::LoadPathCache::ReturnFalse
+end
+
+class Bootsnap::LoadPathCache::ReturnFalse
+end
+
+class Bootsnap::LoadPathCache::Store
+  def fetch(key); end
+
+  def get(key); end
+
+  def initialize(store_path); end
+
+  def set(key, value); end
+
+  def transaction(); end
+end
+
+class Bootsnap::LoadPathCache::Store::NestedTransactionError
+end
+
+class Bootsnap::LoadPathCache::Store::NestedTransactionError
+end
+
+class Bootsnap::LoadPathCache::Store::SetOutsideTransactionNotAllowed
+end
+
+class Bootsnap::LoadPathCache::Store::SetOutsideTransactionNotAllowed
+end
+
+class Bootsnap::LoadPathCache::Store
+end
+
+module Bootsnap::LoadPathCache
+  def self.load_path_cache(); end
+
+  def self.loaded_features_index(); end
+
+  def self.realpath_cache(); end
+
+  def self.setup(cache_path:, development_mode:); end
+
+  def self.supported?(); end
+end
+
+module Bootsnap
+  extend ::Bootsnap
+  def self._instrument(event, path); end
+
+  def self.default_setup(); end
+
+  def self.instrumentation=(callback); end
+
+  def self.iseq_cache_supported?(); end
+
+  def self.log!(); end
+
+  def self.logger(); end
+
+  def self.logger=(logger); end
+
+  def self.setup(cache_dir:, development_mode: T.unsafe(nil), load_path_cache: T.unsafe(nil), autoload_paths_cache: T.unsafe(nil), disable_trace: T.unsafe(nil), compile_cache_iseq: T.unsafe(nil), compile_cache_yaml: T.unsafe(nil)); end
 end
 
 class BottleSpecification
@@ -5362,6 +5632,11 @@ class Cask::Config
   def vst_plugindir=(path); end
 end
 
+class Cask::Config
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
 class Cask::DSL::Caveats
   def depends_on_java(*args); end
 
@@ -5843,13 +6118,95 @@ module Codecov
   VERSION = ::T.let(nil, ::T.untyped)
 end
 
+module Codecov::Configuration
+  def pass_ci_if_error(); end
+
+  def pass_ci_if_error=(pass_ci_if_error); end
+end
+
+module Codecov::Configuration
+end
+
+module Codecov::SimpleCov
+end
+
+class Codecov::SimpleCov::Formatter
+  def format(report); end
+  RESULT_FILE_NAME = ::T.let(nil, ::T.untyped)
+end
+
+class Codecov::SimpleCov::Formatter
+end
+
+module Codecov::SimpleCov
+end
+
+class Codecov::Uploader
+  APPVEYOR = ::T.let(nil, ::T.untyped)
+  AZUREPIPELINES = ::T.let(nil, ::T.untyped)
+  BITBUCKET = ::T.let(nil, ::T.untyped)
+  BITRISE = ::T.let(nil, ::T.untyped)
+  BUILDKITE = ::T.let(nil, ::T.untyped)
+  CIRCLE = ::T.let(nil, ::T.untyped)
+  CODEBUILD = ::T.let(nil, ::T.untyped)
+  CODESHIP = ::T.let(nil, ::T.untyped)
+  DRONEIO = ::T.let(nil, ::T.untyped)
+  GITHUB = ::T.let(nil, ::T.untyped)
+  GITLAB = ::T.let(nil, ::T.untyped)
+  HEROKU = ::T.let(nil, ::T.untyped)
+  JENKINS = ::T.let(nil, ::T.untyped)
+  RECOGNIZED_CIS = ::T.let(nil, ::T.untyped)
+  SEMAPHORE = ::T.let(nil, ::T.untyped)
+  SHIPPABLE = ::T.let(nil, ::T.untyped)
+  SOLANO = ::T.let(nil, ::T.untyped)
+  TEAMCITY = ::T.let(nil, ::T.untyped)
+  TRAVIS = ::T.let(nil, ::T.untyped)
+  WERCKER = ::T.let(nil, ::T.untyped)
+end
+
+class Codecov::Uploader
+  def self.black(str); end
+
+  def self.build_params(ci); end
+
+  def self.detect_ci(); end
+
+  def self.display_header(); end
+
+  def self.green(str); end
+
+  def self.gzip_report(report); end
+
+  def self.handle_report_response(report); end
+
+  def self.net_blockers(switch); end
+
+  def self.red(str); end
+
+  def self.retry_request(req, https); end
+
+  def self.upload(report, disable_net_blockers=T.unsafe(nil)); end
+
+  def self.upload_to_codecov(ci, report); end
+
+  def self.upload_to_v2(url, report, query, query_without_token); end
+
+  def self.upload_to_v4(url, report, query, query_without_token); end
+end
+
 module Codecov
+  extend ::Codecov::Configuration
 end
 
 class CompilerSelector::Compiler
   def self.[](*_); end
 
   def self.members(); end
+end
+
+class CompilerSelector
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
 end
 
 class Concurrent::Promises::AbstractEventFuture
@@ -6674,6 +7031,8 @@ end
 class Errno::EBADRPC
 end
 
+Errno::ECAPMODE = Errno::NOERROR
+
 Errno::EDEADLOCK = Errno::NOERROR
 
 class Errno::EDEVERR
@@ -6694,6 +7053,13 @@ end
 
 Errno::EIPSEC = Errno::NOERROR
 
+class Errno::ELAST
+  Errno = ::T.let(nil, ::T.untyped)
+end
+
+class Errno::ELAST
+end
+
 class Errno::ENEEDAUTH
   Errno = ::T.let(nil, ::T.untyped)
 end
@@ -6714,6 +7080,8 @@ end
 
 class Errno::ENOPOLICY
 end
+
+Errno::ENOTCAPABLE = Errno::NOERROR
 
 class Errno::ENOTSUP
   Errno = ::T.let(nil, ::T.untyped)
@@ -6757,12 +7125,7 @@ end
 class Errno::EPWROFF
 end
 
-class Errno::EQFULL
-  Errno = ::T.let(nil, ::T.untyped)
-end
-
-class Errno::EQFULL
-end
+Errno::EQFULL = Errno::ELAST
 
 class Errno::ERPCMISMATCH
   Errno = ::T.let(nil, ::T.untyped)
@@ -6894,6 +7257,10 @@ class ExternalPatch
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
+class FalseClass
+  include ::MessagePack::CoreExt
+end
+
 class Fiber
   def transfer(*_); end
 end
@@ -6953,6 +7320,10 @@ end
 
 module FileUtils
   extend ::FileUtils::StreamUtils_
+end
+
+class Float
+  include ::MessagePack::CoreExt
 end
 
 module FormulaCellarChecks
@@ -7604,6 +7975,11 @@ end
 module GetText
 end
 
+module GitHub::API
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
 class GitHub::Actions::Annotation
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
@@ -7614,7 +7990,12 @@ module GitHub::Actions
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
-module GitHub
+class GitHubPackages
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class GitHubReleases
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
 end
@@ -7639,6 +8020,7 @@ module Hardware
 end
 
 class Hash
+  include ::MessagePack::CoreExt
   def assert_valid_keys(*valid_keys); end
 
   def compact_blank!(); end
@@ -7678,14 +8060,52 @@ class Hash
   def self.try_convert(_); end
 end
 
-class HeadVersion
-  extend ::T::Private::Methods::MethodHooks
-  extend ::T::Private::Methods::SingletonMethodHooks
-end
-
 module Homebrew
   MAX_PORT = ::T.let(nil, ::T.untyped)
   MIN_PORT = ::T.let(nil, ::T.untyped)
+end
+
+module Homebrew::Assertions
+  include ::Minitest::Assertions
+  def assert_include(*args); end
+
+  def assert_no_match(*args); end
+
+  def assert_not_empty(*args); end
+
+  def assert_not_equal(*args); end
+
+  def assert_not_in_delta(*args); end
+
+  def assert_not_in_epsilon(*args); end
+
+  def assert_not_include(*args); end
+
+  def assert_not_includes(*args); end
+
+  def assert_not_instance_of(*args); end
+
+  def assert_not_kind_of(*args); end
+
+  def assert_not_match(*args); end
+
+  def assert_not_nil(*args); end
+
+  def assert_not_operator(*args); end
+
+  def assert_not_predicate(*args); end
+
+  def assert_not_respond_to(*args); end
+
+  def assert_not_same(*args); end
+
+  def assert_path_exist(*args); end
+
+  def assert_path_not_exist(*args); end
+
+  def assert_raise(*args); end
+
+  def assert_throw(*args); end
 end
 
 class Homebrew::BundleVersion
@@ -7708,6 +8128,11 @@ class Homebrew::CLI::Parser
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
+module Homebrew::Completions
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
 module Homebrew::EnvConfig
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
@@ -7726,6 +8151,8 @@ module Homebrew::EnvConfig
   def self.bintray_key(); end
 
   def self.bintray_user(); end
+
+  def self.bootsnap?(); end
 
   def self.bottle_domain(); end
 
@@ -7781,11 +8208,17 @@ module Homebrew::EnvConfig
 
   def self.github_api_token(); end
 
+  def self.github_packages_token(); end
+
+  def self.github_packages_user(); end
+
   def self.http_proxy(); end
 
   def self.https_proxy(); end
 
   def self.install_badge(); end
+
+  def self.internet_archive_key(); end
 
   def self.livecheck_watchlist(); end
 
@@ -7795,7 +8228,7 @@ module Homebrew::EnvConfig
 
   def self.no_auto_update?(); end
 
-  def self.no_bottle_source_fallback?(); end
+  def self.no_bootsnap?(); end
 
   def self.no_color?(); end
 
@@ -7814,6 +8247,8 @@ module Homebrew::EnvConfig
   def self.no_proxy(); end
 
   def self.pry?(); end
+
+  def self.simulate_macos_on_linux?(); end
 
   def self.skip_or_later_bottles?(); end
 
@@ -7840,6 +8275,16 @@ module Homebrew::Fetch
 end
 
 class Homebrew::FormulaCreator
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class Homebrew::Livecheck::LivecheckVersion
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Homebrew::Livecheck::SkipConditions
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
 end
@@ -7871,6 +8316,11 @@ module Homebrew::Livecheck::Strategy
 end
 
 module Homebrew::Livecheck
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Homebrew::Settings
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
 end
@@ -8828,816 +9278,6 @@ module Hpricot
 end
 
 module I18n
-  DEFAULT_INTERPOLATION_PATTERNS = ::T.let(nil, ::T.untyped)
-  EMPTY_HASH = ::T.let(nil, ::T.untyped)
-  INTERPOLATION_PATTERN = ::T.let(nil, ::T.untyped)
-  RESERVED_KEYS = ::T.let(nil, ::T.untyped)
-  RESERVED_KEYS_PATTERN = ::T.let(nil, ::T.untyped)
-  VERSION = ::T.let(nil, ::T.untyped)
-end
-
-class I18n::ArgumentError
-end
-
-class I18n::ArgumentError
-end
-
-module I18n::Backend
-end
-
-module I18n::Backend::Base
-  include ::I18n::Backend::Transliterator
-  def available_locales(); end
-
-  def deep_interpolate(locale, data, values=T.unsafe(nil)); end
-
-  def default(locale, object, subject, options=T.unsafe(nil)); end
-
-  def eager_load!(); end
-
-  def eager_loaded?(); end
-
-  def exists?(locale, key, options=T.unsafe(nil)); end
-
-  def interpolate(locale, subject, values=T.unsafe(nil)); end
-
-  def load_file(filename); end
-
-  def load_json(filename); end
-
-  def load_rb(filename); end
-
-  def load_translations(*filenames); end
-
-  def load_yaml(filename); end
-
-  def load_yml(filename); end
-
-  def localize(locale, object, format=T.unsafe(nil), options=T.unsafe(nil)); end
-
-  def lookup(locale, key, scope=T.unsafe(nil), options=T.unsafe(nil)); end
-
-  def pluralization_key(entry, count); end
-
-  def pluralize(locale, entry, count); end
-
-  def reload!(); end
-
-  def resolve(locale, object, subject, options=T.unsafe(nil)); end
-
-  def store_translations(locale, data, options=T.unsafe(nil)); end
-
-  def subtrees?(); end
-
-  def translate(locale, key, options=T.unsafe(nil)); end
-
-  def translate_localization_format(locale, object, format, options); end
-end
-
-module I18n::Backend::Base
-end
-
-module I18n::Backend::Cache
-  def _fetch(cache_key, &block); end
-
-  def cache_key(locale, key, options); end
-
-  def fetch(cache_key, &block); end
-
-  def translate(locale, key, options=T.unsafe(nil)); end
-end
-
-module I18n::Backend::Cache
-end
-
-module I18n::Backend::CacheFile
-  def load_file(filename); end
-
-  def normalized_path(file); end
-
-  def path_roots(); end
-
-  def path_roots=(path_roots); end
-end
-
-module I18n::Backend::CacheFile
-end
-
-module I18n::Backend::Cascade
-  def lookup(locale, key, scope=T.unsafe(nil), options=T.unsafe(nil)); end
-end
-
-module I18n::Backend::Cascade
-end
-
-class I18n::Backend::Chain
-  include ::I18n::Backend::Chain::Implementation
-  include ::I18n::Backend::Base
-  include ::I18n::Backend::Transliterator
-end
-
-module I18n::Backend::Chain::Implementation
-  include ::I18n::Backend::Base
-  include ::I18n::Backend::Transliterator
-  def available_locales(); end
-
-  def backends(); end
-
-  def backends=(backends); end
-
-  def eager_load!(); end
-
-  def exists?(locale, key, options=T.unsafe(nil)); end
-
-  def init_translations(); end
-
-  def initialize(*backends); end
-
-  def initialized?(); end
-
-  def localize(locale, object, format=T.unsafe(nil), options=T.unsafe(nil)); end
-
-  def namespace_lookup?(result, options); end
-
-  def reload!(); end
-
-  def store_translations(locale, data, options=T.unsafe(nil)); end
-
-  def translate(locale, key, default_options=T.unsafe(nil)); end
-
-  def translations(); end
-end
-
-module I18n::Backend::Chain::Implementation
-end
-
-class I18n::Backend::Chain
-end
-
-module I18n::Backend::Fallbacks
-  def exists?(locale, key, options=T.unsafe(nil)); end
-
-  def extract_non_symbol_default!(options); end
-
-  def translate(locale, key, options=T.unsafe(nil)); end
-end
-
-module I18n::Backend::Fallbacks
-end
-
-module I18n::Backend::Flatten
-  def escape_default_separator(key); end
-
-  def find_link(locale, key); end
-
-  def flatten_keys(hash, escape, prev_key=T.unsafe(nil), &block); end
-
-  def flatten_translations(locale, data, escape, subtree); end
-
-  def links(); end
-
-  def normalize_flat_keys(locale, key, scope, separator); end
-
-  def resolve_link(locale, key); end
-
-  def store_link(locale, key, link); end
-  FLATTEN_SEPARATOR = ::T.let(nil, ::T.untyped)
-  SEPARATOR_ESCAPE_CHAR = ::T.let(nil, ::T.untyped)
-end
-
-module I18n::Backend::Flatten
-  def self.escape_default_separator(key); end
-
-  def self.normalize_flat_keys(locale, key, scope, separator); end
-end
-
-module I18n::Backend::Gettext
-  def load_po(filename); end
-
-  def normalize(locale, data); end
-
-  def normalize_pluralization(locale, key, value); end
-
-  def parse(filename); end
-end
-
-class I18n::Backend::Gettext::PoData
-  def set_comment(msgid_or_sym, comment); end
-end
-
-class I18n::Backend::Gettext::PoData
-end
-
-module I18n::Backend::Gettext
-end
-
-module I18n::Backend::InterpolationCompiler
-  def compile_all_strings_in(data); end
-
-  def interpolate(locale, string, values); end
-
-  def store_translations(locale, data, options=T.unsafe(nil)); end
-end
-
-module I18n::Backend::InterpolationCompiler::Compiler
-  def compile_if_an_interpolation(string); end
-
-  def compile_interpolation_token(key); end
-
-  def compiled_interpolation_body(str); end
-
-  def direct_key(key); end
-
-  def escape_key_sym(key); end
-
-  def escape_plain_str(str); end
-
-  def handle_interpolation_token(interpolation, matchdata); end
-
-  def interpolate_key(key); end
-
-  def interpolate_or_raise_missing(key); end
-
-  def interpolated_str?(str); end
-
-  def missing_key(key); end
-
-  def nil_key(key); end
-
-  def reserved_key(key); end
-
-  def tokenize(str); end
-  INTERPOLATION_SYNTAX_PATTERN = ::T.let(nil, ::T.untyped)
-  TOKENIZER = ::T.let(nil, ::T.untyped)
-end
-
-module I18n::Backend::InterpolationCompiler::Compiler
-  extend ::I18n::Backend::InterpolationCompiler::Compiler
-end
-
-module I18n::Backend::InterpolationCompiler
-end
-
-class I18n::Backend::KeyValue
-  include ::I18n::Backend::KeyValue::Implementation
-  include ::I18n::Backend::Flatten
-  include ::I18n::Backend::Base
-  include ::I18n::Backend::Transliterator
-end
-
-module I18n::Backend::KeyValue::Implementation
-  include ::I18n::Backend::Flatten
-  include ::I18n::Backend::Base
-  include ::I18n::Backend::Transliterator
-  def available_locales(); end
-
-  def init_translations(); end
-
-  def initialize(store, subtrees=T.unsafe(nil)); end
-
-  def initialized?(); end
-
-  def lookup(locale, key, scope=T.unsafe(nil), options=T.unsafe(nil)); end
-
-  def pluralize(locale, entry, count); end
-
-  def store(); end
-
-  def store=(store); end
-
-  def store_translations(locale, data, options=T.unsafe(nil)); end
-
-  def subtrees?(); end
-
-  def translations(); end
-end
-
-module I18n::Backend::KeyValue::Implementation
-end
-
-class I18n::Backend::KeyValue::SubtreeProxy
-  def [](key); end
-
-  def has_key?(key); end
-
-  def initialize(master_key, store); end
-
-  def instance_of?(klass); end
-
-  def is_a?(klass); end
-
-  def kind_of?(klass); end
-end
-
-class I18n::Backend::KeyValue::SubtreeProxy
-end
-
-class I18n::Backend::KeyValue
-end
-
-module I18n::Backend::Memoize
-  def available_locales(); end
-
-  def eager_load!(); end
-
-  def lookup(locale, key, scope=T.unsafe(nil), options=T.unsafe(nil)); end
-
-  def memoized_lookup(); end
-
-  def reload!(); end
-
-  def reset_memoizations!(locale=T.unsafe(nil)); end
-
-  def store_translations(locale, data, options=T.unsafe(nil)); end
-end
-
-module I18n::Backend::Memoize
-end
-
-module I18n::Backend::Metadata
-  def interpolate(locale, entry, values=T.unsafe(nil)); end
-
-  def pluralize(locale, entry, count); end
-
-  def translate(locale, key, options=T.unsafe(nil)); end
-
-  def with_metadata(metadata, &block); end
-end
-
-module I18n::Backend::Metadata
-  def self.included(base); end
-end
-
-module I18n::Backend::Pluralization
-  def pluralize(locale, entry, count); end
-
-  def pluralizer(locale); end
-
-  def pluralizers(); end
-end
-
-module I18n::Backend::Pluralization
-end
-
-class I18n::Backend::Simple
-  include ::I18n::Backend::Simple::Implementation
-  include ::I18n::Backend::Base
-  include ::I18n::Backend::Transliterator
-end
-
-module I18n::Backend::Simple::Implementation
-  include ::I18n::Backend::Base
-  include ::I18n::Backend::Transliterator
-  def available_locales(); end
-
-  def eager_load!(); end
-
-  def init_translations(); end
-
-  def initialized?(); end
-
-  def lookup(locale, key, scope=T.unsafe(nil), options=T.unsafe(nil)); end
-
-  def reload!(); end
-
-  def store_translations(locale, data, options=T.unsafe(nil)); end
-
-  def translations(do_init: T.unsafe(nil)); end
-end
-
-module I18n::Backend::Simple::Implementation
-end
-
-class I18n::Backend::Simple
-end
-
-module I18n::Backend::Transliterator
-  def transliterate(locale, string, replacement=T.unsafe(nil)); end
-  DEFAULT_REPLACEMENT_CHAR = ::T.let(nil, ::T.untyped)
-end
-
-class I18n::Backend::Transliterator::HashTransliterator
-  def initialize(rule=T.unsafe(nil)); end
-
-  def transliterate(string, replacement=T.unsafe(nil)); end
-  DEFAULT_APPROXIMATIONS = ::T.let(nil, ::T.untyped)
-end
-
-class I18n::Backend::Transliterator::HashTransliterator
-end
-
-class I18n::Backend::Transliterator::ProcTransliterator
-  def initialize(rule); end
-
-  def transliterate(string, replacement=T.unsafe(nil)); end
-end
-
-class I18n::Backend::Transliterator::ProcTransliterator
-end
-
-module I18n::Backend::Transliterator
-  def self.get(rule=T.unsafe(nil)); end
-end
-
-module I18n::Backend
-end
-
-module I18n::Base
-  def available_locales(); end
-
-  def available_locales=(value); end
-
-  def available_locales_initialized?(); end
-
-  def backend(); end
-
-  def backend=(value); end
-
-  def config(); end
-
-  def config=(value); end
-
-  def default_locale(); end
-
-  def default_locale=(value); end
-
-  def default_separator(); end
-
-  def default_separator=(value); end
-
-  def eager_load!(); end
-
-  def enforce_available_locales(); end
-
-  def enforce_available_locales!(locale); end
-
-  def enforce_available_locales=(value); end
-
-  def exception_handler(); end
-
-  def exception_handler=(value); end
-
-  def exists?(key, _locale=T.unsafe(nil), locale: T.unsafe(nil), **options); end
-
-  def l(object, locale: T.unsafe(nil), format: T.unsafe(nil), **options); end
-
-  def load_path(); end
-
-  def load_path=(value); end
-
-  def locale(); end
-
-  def locale=(value); end
-
-  def locale_available?(locale); end
-
-  def localize(object, locale: T.unsafe(nil), format: T.unsafe(nil), **options); end
-
-  def normalize_keys(locale, key, scope, separator=T.unsafe(nil)); end
-
-  def reload!(); end
-
-  def t(key=T.unsafe(nil), *_, throw: T.unsafe(nil), raise: T.unsafe(nil), locale: T.unsafe(nil), **options); end
-
-  def t!(key, options=T.unsafe(nil)); end
-
-  def translate(key=T.unsafe(nil), *_, throw: T.unsafe(nil), raise: T.unsafe(nil), locale: T.unsafe(nil), **options); end
-
-  def translate!(key, options=T.unsafe(nil)); end
-
-  def transliterate(key, *_, throw: T.unsafe(nil), raise: T.unsafe(nil), locale: T.unsafe(nil), replacement: T.unsafe(nil), **options); end
-
-  def with_locale(tmp_locale=T.unsafe(nil)); end
-end
-
-module I18n::Base
-end
-
-class I18n::Config
-  def available_locales(); end
-
-  def available_locales=(locales); end
-
-  def available_locales_initialized?(); end
-
-  def available_locales_set(); end
-
-  def backend(); end
-
-  def backend=(backend); end
-
-  def clear_available_locales_set(); end
-
-  def default_locale(); end
-
-  def default_locale=(locale); end
-
-  def default_separator(); end
-
-  def default_separator=(separator); end
-
-  def enforce_available_locales(); end
-
-  def enforce_available_locales=(enforce_available_locales); end
-
-  def exception_handler(); end
-
-  def exception_handler=(exception_handler); end
-
-  def interpolation_patterns(); end
-
-  def interpolation_patterns=(interpolation_patterns); end
-
-  def load_path(); end
-
-  def load_path=(load_path); end
-
-  def locale(); end
-
-  def locale=(locale); end
-
-  def missing_interpolation_argument_handler(); end
-
-  def missing_interpolation_argument_handler=(exception_handler); end
-end
-
-class I18n::Config
-end
-
-class I18n::Disabled
-  def initialize(method); end
-end
-
-class I18n::Disabled
-end
-
-class I18n::ExceptionHandler
-  def call(exception, _locale, _key, _options); end
-end
-
-class I18n::ExceptionHandler
-end
-
-module I18n::Gettext
-  CONTEXT_SEPARATOR = ::T.let(nil, ::T.untyped)
-  PLURAL_SEPARATOR = ::T.let(nil, ::T.untyped)
-end
-
-module I18n::Gettext::Helpers
-  def N_(msgsid); end
-
-  def _(msgid, options=T.unsafe(nil)); end
-
-  def gettext(msgid, options=T.unsafe(nil)); end
-
-  def n_(msgid, msgid_plural, n=T.unsafe(nil)); end
-
-  def ngettext(msgid, msgid_plural, n=T.unsafe(nil)); end
-
-  def np_(msgctxt, msgid, msgid_plural, n=T.unsafe(nil)); end
-
-  def npgettext(msgctxt, msgid, msgid_plural, n=T.unsafe(nil)); end
-
-  def ns_(msgid, msgid_plural, n=T.unsafe(nil), separator=T.unsafe(nil)); end
-
-  def nsgettext(msgid, msgid_plural, n=T.unsafe(nil), separator=T.unsafe(nil)); end
-
-  def p_(msgctxt, msgid); end
-
-  def pgettext(msgctxt, msgid); end
-
-  def s_(msgid, separator=T.unsafe(nil)); end
-
-  def sgettext(msgid, separator=T.unsafe(nil)); end
-end
-
-module I18n::Gettext::Helpers
-end
-
-module I18n::Gettext
-  def self.extract_scope(msgid, separator); end
-
-  def self.plural_keys(*args); end
-end
-
-module I18n::HashRefinements
-end
-
-module I18n::HashRefinements
-end
-
-class I18n::InvalidLocale
-  def initialize(locale); end
-
-  def locale(); end
-end
-
-class I18n::InvalidLocale
-end
-
-class I18n::InvalidLocaleData
-  def filename(); end
-
-  def initialize(filename, exception_message); end
-end
-
-class I18n::InvalidLocaleData
-end
-
-class I18n::InvalidPluralizationData
-  def count(); end
-
-  def entry(); end
-
-  def initialize(entry, count, key); end
-
-  def key(); end
-end
-
-class I18n::InvalidPluralizationData
-end
-
-I18n::JSON = ActiveSupport::JSON
-
-module I18n::Locale
-end
-
-class I18n::Locale::Fallbacks
-  def [](locale); end
-
-  def compute(tags, include_defaults=T.unsafe(nil), exclude=T.unsafe(nil)); end
-
-  def defaults(); end
-
-  def defaults=(defaults); end
-
-  def initialize(*mappings); end
-
-  def map(mappings); end
-end
-
-class I18n::Locale::Fallbacks
-end
-
-module I18n::Locale::Tag
-  RFC4646_FORMATS = ::T.let(nil, ::T.untyped)
-  RFC4646_SUBTAGS = ::T.let(nil, ::T.untyped)
-end
-
-module I18n::Locale::Tag::Parents
-  def parent(); end
-
-  def parents(); end
-
-  def self_and_parents(); end
-end
-
-module I18n::Locale::Tag::Parents
-end
-
-class I18n::Locale::Tag::Rfc4646
-  include ::I18n::Locale::Tag::Parents
-  def to_sym(); end
-end
-
-module I18n::Locale::Tag::Rfc4646::Parser
-  PATTERN = ::T.let(nil, ::T.untyped)
-end
-
-module I18n::Locale::Tag::Rfc4646::Parser
-  def self.match(tag); end
-end
-
-class I18n::Locale::Tag::Rfc4646
-  def self.parser(); end
-
-  def self.parser=(parser); end
-
-  def self.tag(tag); end
-end
-
-class I18n::Locale::Tag::Simple
-  include ::I18n::Locale::Tag::Parents
-  def initialize(*tag); end
-
-  def subtags(); end
-
-  def tag(); end
-
-  def to_a(); end
-
-  def to_sym(); end
-end
-
-class I18n::Locale::Tag::Simple
-  def self.tag(tag); end
-end
-
-module I18n::Locale::Tag
-  def self.implementation(); end
-
-  def self.implementation=(implementation); end
-
-  def self.tag(tag); end
-end
-
-module I18n::Locale
-end
-
-class I18n::Middleware
-  def call(env); end
-
-  def initialize(app); end
-end
-
-class I18n::Middleware
-end
-
-class I18n::MissingInterpolationArgument
-  def initialize(key, values, string); end
-
-  def key(); end
-
-  def string(); end
-
-  def values(); end
-end
-
-class I18n::MissingInterpolationArgument
-end
-
-class I18n::MissingTranslation
-  include ::I18n::MissingTranslation::Base
-end
-
-module I18n::MissingTranslation::Base
-  def initialize(locale, key, options=T.unsafe(nil)); end
-
-  def key(); end
-
-  def keys(); end
-
-  def locale(); end
-
-  def message(); end
-
-  def options(); end
-
-  def to_exception(); end
-
-  def to_s(); end
-end
-
-module I18n::MissingTranslation::Base
-end
-
-class I18n::MissingTranslation
-end
-
-class I18n::MissingTranslationData
-  include ::I18n::MissingTranslation::Base
-end
-
-class I18n::MissingTranslationData
-end
-
-class I18n::ReservedInterpolationKey
-  def initialize(key, string); end
-
-  def key(); end
-
-  def string(); end
-end
-
-class I18n::ReservedInterpolationKey
-end
-
-module I18n::Tests
-end
-
-module I18n::Tests::Localization
-end
-
-module I18n::Tests::Localization
-  def self.included(base); end
-end
-
-module I18n::Tests
-end
-
-class I18n::UnknownFileType
-  def filename(); end
-
-  def initialize(type, filename); end
-
-  def type(); end
-end
-
-class I18n::UnknownFileType
-end
-
-module I18n
-  extend ::I18n::Base
   def self.cache_key_digest(); end
 
   def self.cache_key_digest=(key_digest); end
@@ -9653,12 +9293,6 @@ module I18n
   def self.fallbacks(); end
 
   def self.fallbacks=(fallbacks); end
-
-  def self.interpolate(string, values); end
-
-  def self.interpolate_hash(string, values); end
-
-  def self.new_double_nested_cache(); end
 
   def self.perform_caching?(); end
 end
@@ -9973,6 +9607,7 @@ module IRB
 end
 
 class Integer
+  include ::MessagePack::CoreExt
   def to_bn(); end
 end
 
@@ -9989,14 +9624,6 @@ JSON::Parser = JSON::Ext::Parser
 JSON::State = JSON::Ext::Generator::State
 
 JSON::UnparserError = JSON::GeneratorError
-
-class JavaRequirement::CaskSuggestion
-  extend ::T::Private::Methods::MethodHooks
-  extend ::T::Private::Methods::SingletonMethodHooks
-  def self.[](*_); end
-
-  def self.members(); end
-end
 
 module Kconv
   AUTO = ::T.let(nil, ::T.untyped)
@@ -11419,6 +11046,52 @@ end
 
 Markdown = RDiscount
 
+module MessagePack
+  DEFAULT_EMPTY_PARAMS = ::T.let(nil, ::T.untyped)
+end
+
+class MessagePack::Packer
+  def write_bin(_); end
+
+  def write_bin_header(_); end
+end
+
+module MessagePack::Time
+  Packer = ::T.let(nil, ::T.untyped)
+  TIME_AT_3_AVAILABLE = ::T.let(nil, ::T.untyped)
+  Unpacker = ::T.let(nil, ::T.untyped)
+end
+
+module MessagePack::Time
+end
+
+class MessagePack::Timestamp
+  def ==(other); end
+
+  def initialize(sec, nsec); end
+
+  def nsec(); end
+
+  def sec(); end
+
+  def to_msgpack_ext(); end
+  TIMESTAMP32_MAX_SEC = ::T.let(nil, ::T.untyped)
+  TIMESTAMP64_MAX_SEC = ::T.let(nil, ::T.untyped)
+  TYPE = ::T.let(nil, ::T.untyped)
+end
+
+class MessagePack::Timestamp
+  def self.from_msgpack_ext(data); end
+
+  def self.to_msgpack_ext(sec, nsec); end
+end
+
+class MessagePack::Unpacker
+  def feed_reference(_); end
+
+  def freeze?(); end
+end
+
 class Messages
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
@@ -12648,226 +12321,7 @@ class Net::HTTP
 end
 
 class Net::HTTP::Persistent
-  def ca_file(); end
-
-  def ca_file=(file); end
-
-  def ca_path(); end
-
-  def ca_path=(path); end
-
-  def cert(); end
-
-  def cert=(certificate); end
-
-  def cert_store(); end
-
-  def cert_store=(store); end
-
-  def certificate(); end
-
-  def certificate=(certificate); end
-
-  def ciphers(); end
-
-  def ciphers=(ciphers); end
-
-  def connection_for(uri); end
-
-  def debug_output(); end
-
-  def debug_output=(debug_output); end
-
-  def escape(str); end
-
-  def expired?(connection); end
-
-  def finish(connection); end
-
-  def generation(); end
-
-  def headers(); end
-
-  def http_version(uri); end
-
-  def http_versions(); end
-
-  def idle_timeout(); end
-
-  def idle_timeout=(idle_timeout); end
-
-  def initialize(name: T.unsafe(nil), proxy: T.unsafe(nil), pool_size: T.unsafe(nil)); end
-
-  def keep_alive(); end
-
-  def keep_alive=(keep_alive); end
-
-  def key(); end
-
-  def key=(key); end
-
-  def max_requests(); end
-
-  def max_requests=(max_requests); end
-
-  def max_retries(); end
-
-  def max_retries=(retries); end
-
-  def max_version(); end
-
-  def max_version=(max_version); end
-
-  def min_version(); end
-
-  def min_version=(min_version); end
-
-  def name(); end
-
-  def no_proxy(); end
-
-  def normalize_uri(uri); end
-
-  def open_timeout(); end
-
-  def open_timeout=(open_timeout); end
-
-  def override_headers(); end
-
-  def pipeline(uri, requests, &block); end
-
-  def pool(); end
-
-  def private_key(); end
-
-  def private_key=(key); end
-
-  def proxy=(proxy); end
-
-  def proxy_bypass?(host, port); end
-
-  def proxy_from_env(); end
-
-  def proxy_uri(); end
-
-  def read_timeout(); end
-
-  def read_timeout=(read_timeout); end
-
-  def reconnect(); end
-
-  def reconnect_ssl(); end
-
-  def request(uri, req=T.unsafe(nil), &block); end
-
-  def request_setup(req_or_uri); end
-
-  def reset(connection); end
-
-  def reuse_ssl_sessions(); end
-
-  def reuse_ssl_sessions=(reuse_ssl_sessions); end
-
-  def shutdown(); end
-
-  def socket_options(); end
-
-  def ssl(connection); end
-
-  def ssl_generation(); end
-
-  def ssl_timeout(); end
-
-  def ssl_timeout=(ssl_timeout); end
-
-  def ssl_version(); end
-
-  def ssl_version=(ssl_version); end
-
-  def start(http); end
-
-  def timeout_key(); end
-
-  def unescape(str); end
-
-  def verify_callback(); end
-
-  def verify_callback=(callback); end
-
-  def verify_depth(); end
-
-  def verify_depth=(verify_depth); end
-
-  def verify_mode(); end
-
-  def verify_mode=(verify_mode); end
-
-  def write_timeout(); end
-
-  def write_timeout=(write_timeout); end
-  DEFAULT_POOL_SIZE = ::T.let(nil, ::T.untyped)
-  EPOCH = ::T.let(nil, ::T.untyped)
   HAVE_OPENSSL = ::T.let(nil, ::T.untyped)
-  VERSION = ::T.let(nil, ::T.untyped)
-end
-
-class Net::HTTP::Persistent::Connection
-  def finish(); end
-
-  def http(); end
-
-  def http=(http); end
-
-  def initialize(http_class, http_args, ssl_generation); end
-
-  def last_use(); end
-
-  def last_use=(last_use); end
-
-  def requests(); end
-
-  def requests=(requests); end
-
-  def reset(); end
-
-  def ressl(ssl_generation); end
-
-  def ssl_generation(); end
-
-  def ssl_generation=(ssl_generation); end
-end
-
-class Net::HTTP::Persistent::Connection
-end
-
-class Net::HTTP::Persistent::Error
-end
-
-class Net::HTTP::Persistent::Error
-end
-
-class Net::HTTP::Persistent::Pool
-  def checkin(net_http_args); end
-
-  def checkout(net_http_args); end
-
-  def key(); end
-
-  def shutdown(); end
-end
-
-class Net::HTTP::Persistent::Pool
-end
-
-class Net::HTTP::Persistent::TimedStackMulti
-end
-
-class Net::HTTP::Persistent::TimedStackMulti
-  def self.hash_of_arrays(); end
-end
-
-class Net::HTTP::Persistent
-  def self.detect_idle_timeout(uri, max=T.unsafe(nil)); end
 end
 
 class Net::HTTPAlreadyReported
@@ -12890,9 +12344,13 @@ end
 
 Net::HTTPFatalErrorCode = Net::HTTPClientError
 
-Net::HTTPInformation::EXCEPTION_TYPE = Net::HTTPError
+class Net::HTTPInformation
+end
 
-Net::HTTPInformationCode = Net::HTTPInformation
+Net::HTTPInformationCode::EXCEPTION_TYPE = Net::HTTPError
+
+class Net::HTTPInformation
+end
 
 class Net::HTTPLoopDetected
   HAS_BODY = ::T.let(nil, ::T.untyped)
@@ -12956,9 +12414,13 @@ Net::HTTPServerErrorCode = Net::HTTPServerError
 
 Net::HTTPSession = Net::HTTP
 
-Net::HTTPSuccess::EXCEPTION_TYPE = Net::HTTPError
+class Net::HTTPSuccess
+end
 
-Net::HTTPSuccessCode = Net::HTTPSuccess
+Net::HTTPSuccessCode::EXCEPTION_TYPE = Net::HTTPError
+
+class Net::HTTPSuccess
+end
 
 class Net::HTTPURITooLong
   HAS_BODY = ::T.let(nil, ::T.untyped)
@@ -12995,6 +12457,7 @@ class Net::WriteTimeout
 end
 
 class NilClass
+  include ::MessagePack::CoreExt
   def to_d(); end
 
   def try(_method_name=T.unsafe(nil), *_); end
@@ -13127,7 +12590,6 @@ class Object
   def to_query(key); end
 
   def to_yaml(options=T.unsafe(nil)); end
-  APPLE_GEM_HOME = ::T.let(nil, ::T.untyped)
   ARGF = ::T.let(nil, ::T.untyped)
   ARGV = ::T.let(nil, ::T.untyped)
   BUG_REPORTS_URL = ::T.let(nil, ::T.untyped)
@@ -13135,6 +12597,7 @@ class Object
   CROSS_COMPILING = ::T.let(nil, ::T.untyped)
   DEPRECATED_OFFICIAL_TAPS = ::T.let(nil, ::T.untyped)
   ENV = ::T.let(nil, ::T.untyped)
+  FORMULA_COMPONENT_PRECEDENCE_LIST = ::T.let(nil, ::T.untyped)
   HOMEBREW_BOTTLE_DEFAULT_DOMAIN = ::T.let(nil, ::T.untyped)
   HOMEBREW_BREW_DEFAULT_GIT_REMOTE = ::T.let(nil, ::T.untyped)
   HOMEBREW_BREW_FILE = ::T.let(nil, ::T.untyped)
@@ -13159,15 +12622,14 @@ class Object
   HOMEBREW_MACOS_ARM_DEFAULT_PREFIX = ::T.let(nil, ::T.untyped)
   HOMEBREW_MACOS_ARM_DEFAULT_REPOSITORY = ::T.let(nil, ::T.untyped)
   HOMEBREW_OFFICIAL_REPO_PREFIXES_REGEX = ::T.let(nil, ::T.untyped)
-  HOMEBREW_PATCHELF_RB_WRITE = ::T.let(nil, ::T.untyped)
   HOMEBREW_PINNED_KEGS = ::T.let(nil, ::T.untyped)
   HOMEBREW_PREFIX = ::T.let(nil, ::T.untyped)
   HOMEBREW_PRODUCT = ::T.let(nil, ::T.untyped)
   HOMEBREW_PULL_API_REGEX = ::T.let(nil, ::T.untyped)
   HOMEBREW_PULL_OR_COMMIT_URL_REGEX = ::T.let(nil, ::T.untyped)
-  HOMEBREW_RELEASES_URL_REGEX = ::T.let(nil, ::T.untyped)
   HOMEBREW_REPOSITORY = ::T.let(nil, ::T.untyped)
   HOMEBREW_REQUIRED_RUBY_VERSION = ::T.let(nil, ::T.untyped)
+  HOMEBREW_RUBY_EXEC_ARGS = ::T.let(nil, ::T.untyped)
   HOMEBREW_SHIMS_PATH = ::T.let(nil, ::T.untyped)
   HOMEBREW_TAP_CASK_REGEX = ::T.let(nil, ::T.untyped)
   HOMEBREW_TAP_DIR_REGEX = ::T.let(nil, ::T.untyped)
@@ -13192,8 +12654,6 @@ class Object
   RUBY_DESCRIPTION = ::T.let(nil, ::T.untyped)
   RUBY_ENGINE = ::T.let(nil, ::T.untyped)
   RUBY_ENGINE_VERSION = ::T.let(nil, ::T.untyped)
-  RUBY_FRAMEWORK = ::T.let(nil, ::T.untyped)
-  RUBY_FRAMEWORK_VERSION = ::T.let(nil, ::T.untyped)
   RUBY_PATCHLEVEL = ::T.let(nil, ::T.untyped)
   RUBY_PATH = ::T.let(nil, ::T.untyped)
   RUBY_PLATFORM = ::T.let(nil, ::T.untyped)
@@ -13246,7 +12706,11 @@ class OpenSSL::KDF::KDFError
 end
 
 module OpenSSL::KDF
+  def self.hkdf(*_); end
+
   def self.pbkdf2_hmac(*_); end
+
+  def self.scrypt(*_); end
 end
 
 class OpenSSL::OCSP::Request
@@ -13255,20 +12719,29 @@ end
 
 OpenSSL::PKCS7::Signer = OpenSSL::PKCS7::SignerInfo
 
+class OpenSSL::PKey::EC
+  EXPLICIT_CURVE = ::T.let(nil, ::T.untyped)
+end
+
 class OpenSSL::PKey::EC::Point
   def to_octet_string(_); end
 end
 
 module OpenSSL::SSL
+  OP_ALLOW_NO_DHE_KEX = ::T.let(nil, ::T.untyped)
   OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION = ::T.let(nil, ::T.untyped)
   OP_CRYPTOPRO_TLSEXT_BUG = ::T.let(nil, ::T.untyped)
   OP_LEGACY_SERVER_CONNECT = ::T.let(nil, ::T.untyped)
+  OP_NO_ENCRYPT_THEN_MAC = ::T.let(nil, ::T.untyped)
+  OP_NO_RENEGOTIATION = ::T.let(nil, ::T.untyped)
+  OP_NO_TLSv1_3 = ::T.let(nil, ::T.untyped)
   OP_SAFARI_ECDHE_ECDSA_BUG = ::T.let(nil, ::T.untyped)
   OP_TLSEXT_PADDING = ::T.let(nil, ::T.untyped)
   SSL2_VERSION = ::T.let(nil, ::T.untyped)
   SSL3_VERSION = ::T.let(nil, ::T.untyped)
   TLS1_1_VERSION = ::T.let(nil, ::T.untyped)
   TLS1_2_VERSION = ::T.let(nil, ::T.untyped)
+  TLS1_3_VERSION = ::T.let(nil, ::T.untyped)
   TLS1_VERSION = ::T.let(nil, ::T.untyped)
 end
 
@@ -13377,7 +12850,6 @@ end
 module ParallelTests
   RUBY_BINARY = ::T.let(nil, ::T.untyped)
   VERSION = ::T.let(nil, ::T.untyped)
-  Version = ::T.let(nil, ::T.untyped)
   WINDOWS = ::T.let(nil, ::T.untyped)
 end
 
@@ -13446,68 +12918,43 @@ module ParallelTests
   def self.with_ruby_binary(command); end
 end
 
-module Parlour
-  VERSION = ::T.let(nil, ::T.untyped)
-end
-
-class Parlour::ConflictResolver
-  def resolve_conflicts(*args, &blk); end
-end
-
 class Parlour::ConflictResolver
   extend ::T::Sig
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
-module Parlour::Debugging
-end
-
-module Parlour::Debugging::Tree
-  INDENT_SPACES = ::T.let(nil, ::T.untyped)
+class Parlour::Conversion::Converter
+  extend ::T::Sig
+  extend ::T::Helpers
+  extend ::T::Private::Abstract::Hooks
+  extend ::T::InterfaceWrapper::Helpers
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
 end
 
 module Parlour::Debugging::Tree
   extend ::T::Sig
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
-  def self.begin(*args, &blk); end
-
-  def self.end(*args, &blk); end
-
-  def self.here(*args, &blk); end
-
-  def self.line_prefix(); end
-
-  def self.text_prefix(); end
 end
 
 module Parlour::Debugging
   extend ::T::Sig
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
-  def self.debug_mode=(*args, &blk); end
-
-  def self.debug_mode?(*args, &blk); end
-
-  def self.debug_puts(*args, &blk); end
-
-  def self.name_for_debug_caller(*args, &blk); end
 end
 
-class Parlour::DetachedRbiGenerator
-  def detached!(*args, &blk); end
+class Parlour::Generator
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
 end
 
-class Parlour::DetachedRbiGenerator
-end
-
-class Parlour::ParseError
-  def buffer(*args, &blk); end
-
-  def initialize(buffer, range); end
-
-  def range(*args, &blk); end
+class Parlour::Options
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
 end
 
 class Parlour::ParseError
@@ -13517,226 +12964,12 @@ class Parlour::ParseError
 end
 
 class Parlour::Plugin
-  def generate(*args, &blk); end
-
-  def initialize(*args, &blk); end
-
-  def strictness(*args, &blk); end
-
-  def strictness=(strictness); end
-end
-
-class Parlour::Plugin
   extend ::T::Sig
   extend ::T::Helpers
   extend ::T::Private::Abstract::Hooks
   extend ::T::InterfaceWrapper::Helpers
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
-  def self.inherited(*args, &blk); end
-
-  def self.registered_plugins(*args, &blk); end
-
-  def self.run_plugins(*args, &blk); end
-end
-
-class Parlour::RbiGenerator
-  def current_plugin(*args, &blk); end
-
-  def current_plugin=(current_plugin); end
-
-  def initialize(*args, &blk); end
-
-  def options(*args, &blk); end
-
-  def rbi(*args, &blk); end
-
-  def root(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::Arbitrary
-  def ==(*args, &blk); end
-
-  def code(*args, &blk); end
-
-  def code=(code); end
-end
-
-class Parlour::RbiGenerator::Arbitrary
-end
-
-class Parlour::RbiGenerator::Attribute
-  def class_attribute(*args, &blk); end
-
-  def kind(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::Attribute
-end
-
-class Parlour::RbiGenerator::ClassNamespace
-  def abstract(*args, &blk); end
-
-  def superclass(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::ClassNamespace
-end
-
-class Parlour::RbiGenerator::Constant
-  def ==(*args, &blk); end
-
-  def eigen_constant(); end
-
-  def value(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::Constant
-end
-
-class Parlour::RbiGenerator::EnumClassNamespace
-  def enums(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::EnumClassNamespace
-end
-
-class Parlour::RbiGenerator::Extend
-  def ==(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::Extend
-end
-
-class Parlour::RbiGenerator::Include
-  def ==(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::Include
-end
-
-class Parlour::RbiGenerator::Method
-  def ==(*args, &blk); end
-
-  def abstract(*args, &blk); end
-
-  def class_method(*args, &blk); end
-
-  def final(*args, &blk); end
-
-  def implementation(*args, &blk); end
-
-  def overridable(*args, &blk); end
-
-  def override(*args, &blk); end
-
-  def parameters(*args, &blk); end
-
-  def return_type(*args, &blk); end
-
-  def type_parameters(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::Method
-end
-
-class Parlour::RbiGenerator::ModuleNamespace
-  def interface(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::ModuleNamespace
-end
-
-class Parlour::RbiGenerator::Namespace
-  def add_comment_to_next_child(*args, &blk); end
-
-  def children(*args, &blk); end
-
-  def constants(*args, &blk); end
-
-  def create_arbitrary(code:, &block); end
-
-  def create_attr(*args, &blk); end
-
-  def create_attr_accessor(*args, &blk); end
-
-  def create_attr_reader(*args, &blk); end
-
-  def create_attr_writer(*args, &blk); end
-
-  def create_attribute(*args, &blk); end
-
-  def create_class(*args, &blk); end
-
-  def create_constant(*args, &blk); end
-
-  def create_enum_class(*args, &blk); end
-
-  def create_extend(*args, &blk); end
-
-  def create_extends(*args, &blk); end
-
-  def create_include(*args, &blk); end
-
-  def create_includes(*args, &blk); end
-
-  def create_method(*args, &blk); end
-
-  def create_module(*args, &blk); end
-
-  def create_struct_class(*args, &blk); end
-
-  def create_type_alias(*args, &blk); end
-
-  def extends(*args, &blk); end
-
-  def final(*args, &blk); end
-
-  def includes(*args, &blk); end
-
-  def path(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::Namespace
-end
-
-class Parlour::RbiGenerator::Options
-  def break_params(*args, &blk); end
-
-  def indented(*args, &blk); end
-
-  def initialize(*args, &blk); end
-
-  def sort_namespaces(*args, &blk); end
-
-  def tab_size(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::Options
-  extend ::T::Sig
-  extend ::T::Private::Methods::MethodHooks
-  extend ::T::Private::Methods::SingletonMethodHooks
-end
-
-class Parlour::RbiGenerator::Parameter
-  def ==(*args, &blk); end
-
-  def default(*args, &blk); end
-
-  def initialize(*args, &blk); end
-
-  def kind(*args, &blk); end
-
-  def name(*args, &blk); end
-
-  def name_without_kind(*args, &blk); end
-
-  def to_def_param(*args, &blk); end
-
-  def to_sig_param(*args, &blk); end
-
-  def type(*args, &blk); end
-  PREFIXES = ::T.let(nil, ::T.untyped)
 end
 
 class Parlour::RbiGenerator::Parameter
@@ -13745,193 +12978,34 @@ class Parlour::RbiGenerator::Parameter
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
-class Parlour::RbiGenerator::RbiObject
-  def add_comment(*args, &blk); end
-
-  def add_comments(*args, &blk); end
-
-  def comments(*args, &blk); end
-
-  def describe(*args, &blk); end
-
-  def generate_rbi(*args, &blk); end
-
-  def generated_by(*args, &blk); end
-
-  def generator(*args, &blk); end
-
-  def initialize(*args, &blk); end
-
-  def merge_into_self(*args, &blk); end
-
-  def mergeable?(*args, &blk); end
-
-  def name(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::RbiObject
-  extend ::T::Helpers
-  extend ::T::Sig
-  extend ::T::Private::Abstract::Hooks
-  extend ::T::InterfaceWrapper::Helpers
-  extend ::T::Private::Methods::MethodHooks
-  extend ::T::Private::Methods::SingletonMethodHooks
-end
-
-class Parlour::RbiGenerator::StructClassNamespace
-  def props(*args, &blk); end
-end
-
-class Parlour::RbiGenerator::StructClassNamespace
-end
-
-class Parlour::RbiGenerator::StructProp
-  def ==(*args, &blk); end
-
-  def array(*args, &blk); end
-
-  def default(*args, &blk); end
-
-  def dont_store(*args, &blk); end
-
-  def enum(*args, &blk); end
-
-  def factory(*args, &blk); end
-
-  def foreign(*args, &blk); end
-
-  def immutable(*args, &blk); end
-
-  def initialize(*args, &blk); end
-
-  def name(*args, &blk); end
-
-  def optional(*args, &blk); end
-
-  def override(*args, &blk); end
-
-  def redaction(*args, &blk); end
-
-  def to_prop_call(*args, &blk); end
-
-  def type(*args, &blk); end
-  EXTRA_PROPERTIES = ::T.let(nil, ::T.untyped)
-end
-
 class Parlour::RbiGenerator::StructProp
   extend ::T::Sig
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
-class Parlour::RbiGenerator
+class Parlour::RbsGenerator::Block
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class Parlour::RbsGenerator::MethodSignature
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class Parlour::RbsGenerator::Parameter
   extend ::T::Sig
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
 module Parlour::TypeLoader
-end
-
-module Parlour::TypeLoader
   extend ::T::Sig
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
-  def self.load_file(*args, &blk); end
-
-  def self.load_project(*args, &blk); end
-
-  def self.load_source(*args, &blk); end
-end
-
-class Parlour::TypeParser
-  def ast(*args, &blk); end
-
-  def ast=(ast); end
-
-  def body_has_modifier?(*args, &blk); end
-
-  def body_includes_and_extends(*args, &blk); end
-
-  def constant_names(*args, &blk); end
-
-  def generator(*args, &blk); end
-
-  def generator=(generator); end
-
-  def initialize(*args, &blk); end
-
-  def node_to_s(*args, &blk); end
-
-  def parse_all(*args, &blk); end
-
-  def parse_err(*args, &blk); end
-
-  def parse_method_into_methods(*args, &blk); end
-
-  def parse_path_to_object(*args, &blk); end
-
-  def parse_sig_into_methods(*args, &blk); end
-
-  def parse_sig_into_sig(*args, &blk); end
-
-  def previous_sibling_sig_node?(*args, &blk); end
-
-  def sig_node?(*args, &blk); end
-
-  def unknown_node_errors(*args, &blk); end
-
-  def zip_by(*args, &blk); end
-end
-
-class Parlour::TypeParser::IntermediateSig
-  def abstract(); end
-
-  def abstract=(val); end
-
-  def final(); end
-
-  def final=(val); end
-
-  def initialize(*args, &blk); end
-
-  def overridable(); end
-
-  def overridable=(val); end
-
-  def override(); end
-
-  def override=(val); end
-
-  def params(); end
-
-  def params=(val); end
-
-  def return_type(); end
-
-  def return_type=(val); end
-
-  def type_parameters(); end
-
-  def type_parameters=(val); end
-end
-
-class Parlour::TypeParser::IntermediateSig
-  def self.inherited(s); end
-end
-
-class Parlour::TypeParser::NodePath
-  def child(*args, &blk); end
-
-  def indices(*args, &blk); end
-
-  def initialize(*args, &blk); end
-
-  def parent(*args, &blk); end
-
-  def sibling(*args, &blk); end
-
-  def traverse(*args, &blk); end
 end
 
 class Parlour::TypeParser::NodePath
@@ -13944,13 +13018,35 @@ class Parlour::TypeParser
   extend ::T::Sig
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
-  def self.from_source(*args, &blk); end
 end
 
-module Parlour
+class Parlour::TypedObject
+  extend ::T::Sig
+  extend ::T::Helpers
+  extend ::T::Private::Abstract::Hooks
+  extend ::T::InterfaceWrapper::Helpers
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
 end
 
-ParseError = Racc::ParseError
+module Parlour::Types
+  TypeLike = ::T.let(nil, ::T.untyped)
+end
+
+class Parlour::Types::Proc::Parameter
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class Parlour::Types::Type
+  extend ::T::Sig
+  extend ::T::Helpers
+  extend ::T::Private::Abstract::Hooks
+  extend ::T::InterfaceWrapper::Helpers
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
 
 class Parser::Ruby24
   def _reduce_10(val, _values, result); end
@@ -15075,8 +14171,6 @@ class Pry::CLI
   def self.add_option_processor(&block); end
 
   def self.add_options(&block); end
-
-  def self.add_plugin_options(); end
 
   def self.input_args(); end
 
@@ -16363,10 +15457,6 @@ class Pry::Config
 
   def should_load_local_rc=(should_load_local_rc); end
 
-  def should_load_plugins(); end
-
-  def should_load_plugins=(should_load_plugins); end
-
   def should_load_rc(); end
 
   def should_load_rc=(should_load_rc); end
@@ -17496,66 +16586,6 @@ end
 class Pry::Pager
 end
 
-class Pry::PluginManager
-  def load_plugins(); end
-
-  def locate_plugins(); end
-
-  def plugins(); end
-  PRY_PLUGIN_PREFIX = ::T.let(nil, ::T.untyped)
-end
-
-class Pry::PluginManager::NoPlugin
-  def initialize(name); end
-end
-
-class Pry::PluginManager::NoPlugin
-end
-
-class Pry::PluginManager::Plugin
-  def activate!(); end
-
-  def active(); end
-
-  def active=(active); end
-
-  def active?(); end
-
-  def disable!(); end
-
-  def enable!(); end
-
-  def enabled(); end
-
-  def enabled=(enabled); end
-
-  def enabled?(); end
-
-  def gem_name(); end
-
-  def gem_name=(gem_name); end
-
-  def initialize(name, gem_name, spec, enabled); end
-
-  def load_cli_options(); end
-
-  def name(); end
-
-  def name=(name); end
-
-  def spec(); end
-
-  def spec=(spec); end
-
-  def supported?(); end
-end
-
-class Pry::PluginManager::Plugin
-end
-
-class Pry::PluginManager
-end
-
 class Pry::Prompt
   def [](key); end
 
@@ -17794,29 +16824,17 @@ end
 class Pry::Slop::Option
   def accepts_optional_argument?(); end
 
-  def argument?(); end
-
   def argument_in_value(); end
 
   def argument_in_value=(argument_in_value); end
 
-  def as?(); end
-
-  def autocreated?(); end
-
   def call(*objects); end
-
-  def callback?(); end
 
   def config(); end
 
   def count(); end
 
   def count=(count); end
-
-  def default?(); end
-
-  def delimiter?(); end
 
   def description(); end
 
@@ -17828,21 +16846,9 @@ class Pry::Slop::Option
 
   def key(); end
 
-  def limit?(); end
-
   def long(); end
 
-  def match?(); end
-
-  def optional?(); end
-
-  def optional_argument?(); end
-
-  def required?(); end
-
   def short(); end
-
-  def tail?(); end
 
   def types(); end
 
@@ -18091,8 +17097,6 @@ class Pry
 
   def self.load_history(); end
 
-  def self.load_plugins(*args, &block); end
-
   def self.load_rc_files(); end
 
   def self.load_requires(); end
@@ -18100,8 +17104,6 @@ class Pry
   def self.load_traps(); end
 
   def self.load_win32console(); end
-
-  def self.locate_plugins(*args, &block); end
 
   def self.main(); end
 
@@ -18116,8 +17118,6 @@ class Pry
   def self.pager(*args, &block); end
 
   def self.pager=(*args, &block); end
-
-  def self.plugins(*args, &block); end
 
   def self.print(*args, &block); end
 
@@ -20155,6 +19155,8 @@ module RSpec::Core::HashImitatable
   def to_h(); end
 
   def to_hash(*args, &block); end
+
+  def to_msgpack(*args, &block); end
 
   def to_plist(*args, &block); end
 
@@ -24469,6 +23471,8 @@ class RSpec::Mocks::Proxy
 
   def check_for_unexpected_arguments(expectation); end
 
+  def ensure_can_be_proxied!(object); end
+
   def ensure_implemented(*_args); end
 
   def has_negative_expectation?(message); end
@@ -25534,21 +24538,6 @@ class Racc::CparseParams
 end
 
 class Racc::CparseParams
-end
-
-class Racc::Parser
-  Racc_Main_Parsing_Routine = ::T.let(nil, ::T.untyped)
-  Racc_Runtime_Core_Id_C = ::T.let(nil, ::T.untyped)
-  Racc_Runtime_Core_Revision = ::T.let(nil, ::T.untyped)
-  Racc_Runtime_Core_Revision_C = ::T.let(nil, ::T.untyped)
-  Racc_Runtime_Core_Revision_R = ::T.let(nil, ::T.untyped)
-  Racc_Runtime_Core_Version = ::T.let(nil, ::T.untyped)
-  Racc_Runtime_Core_Version_C = ::T.let(nil, ::T.untyped)
-  Racc_Runtime_Core_Version_R = ::T.let(nil, ::T.untyped)
-  Racc_Runtime_Revision = ::T.let(nil, ::T.untyped)
-  Racc_Runtime_Type = ::T.let(nil, ::T.untyped)
-  Racc_Runtime_Version = ::T.let(nil, ::T.untyped)
-  Racc_YY_Parse_Method = ::T.let(nil, ::T.untyped)
 end
 
 module Rack
@@ -27326,6 +26315,11 @@ module Readline
   def self.completion_quote_character(); end
 end
 
+module ReleaseNotes
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
 class Requirement
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
@@ -27402,7 +26396,6 @@ end
 
 class Resource
   include ::FileUtils::StreamUtils_
-  def sha256(val); end
 end
 
 class Resource::Partial
@@ -27695,6 +26688,8 @@ module RuboCop::AST::CollectionNode
 
   def pluck(*args, &block); end
 
+  def to_msgpack(*args, &block); end
+
   def without(*args, &block); end
 end
 
@@ -27706,12 +26701,6 @@ class RuboCop::AST::Node
   def cask_block?(param0=T.unsafe(nil)); end
 
   def key_node(param0=T.unsafe(nil)); end
-
-  def kwargs_type?(); end
-
-  def match_pattern_p_type?(); end
-
-  def match_pattern_type?(); end
 
   def method_node(param0=T.unsafe(nil)); end
 
@@ -27728,15 +26717,6 @@ module RuboCop::AST::NodePattern::Sets
   SET_INCLUDE_WITH_WITHOUT = ::T.let(nil, ::T.untyped)
   SET_SYSTEM_SHELL_OUTPUT_PIPE_OUTPUT = ::T.let(nil, ::T.untyped)
   SET_WITH_WITHOUT = ::T.let(nil, ::T.untyped)
-  SET___EQL = ::T.let(nil, ::T.untyped)
-end
-
-module RuboCop::AST::Traversal
-  def on_kwargs(node); end
-
-  def on_match_pattern(node); end
-
-  def on_match_pattern_p(node); end
 end
 
 class RuboCop::Cask::AST::CaskHeader
@@ -27944,7 +26924,7 @@ module RuboCop::RSpec::ExpectOffense
 
   def expect_no_offenses(source, file=T.unsafe(nil)); end
 
-  def expect_offense(source, file=T.unsafe(nil), severity: T.unsafe(nil), **replacements); end
+  def expect_offense(source, file=T.unsafe(nil), severity: T.unsafe(nil), chomp: T.unsafe(nil), **replacements); end
 
   def format_offense(source, **replacements); end
 
@@ -29128,6 +28108,8 @@ module SimpleCov::Configuration
 
   def nocov_token(nocov_token=T.unsafe(nil)); end
 
+  def primary_coverage(criterion=T.unsafe(nil)); end
+
   def print_error_status(); end
 
   def print_error_status=(print_error_status); end
@@ -29136,7 +28118,9 @@ module SimpleCov::Configuration
 
   def project_name(new_name=T.unsafe(nil)); end
 
-  def refuse_coverage_drop(); end
+  def raise_on_invalid_coverage(coverage, coverage_setting); end
+
+  def refuse_coverage_drop(*criteria); end
 
   def root(root=T.unsafe(nil)); end
 
@@ -29196,6 +28180,7 @@ class SimpleCov::ExitCodes::MaximumCoverageDropCheck
   def initialize(result, maximum_coverage_drop); end
 
   def report(); end
+  MAX_DROP_ACCURACY = ::T.let(nil, ::T.untyped)
 end
 
 class SimpleCov::ExitCodes::MaximumCoverageDropCheck
@@ -29237,6 +28222,8 @@ class SimpleCov::FileList
   def count(*args, &block); end
 
   def coverage_statistics(); end
+
+  def coverage_statistics_by_file(); end
 
   def covered_branches(); end
 
@@ -29303,47 +28290,7 @@ module SimpleCov::Formatter
 end
 
 class SimpleCov::Formatter::Codecov
-  def build_params(ci); end
-
-  def create_report(report); end
-
-  def detect_ci(); end
-
-  def display_header(); end
-
   def format(result, disable_net_blockers=T.unsafe(nil)); end
-
-  def gzip_report(report); end
-
-  def handle_report_response(report); end
-
-  def retry_request(req, https); end
-
-  def upload_to_codecov(ci, report); end
-
-  def upload_to_v2(url, report, query, query_without_token); end
-
-  def upload_to_v4(url, report, query, query_without_token); end
-  APPVEYOR = ::T.let(nil, ::T.untyped)
-  AZUREPIPELINES = ::T.let(nil, ::T.untyped)
-  BITBUCKET = ::T.let(nil, ::T.untyped)
-  BITRISE = ::T.let(nil, ::T.untyped)
-  BUILDKITE = ::T.let(nil, ::T.untyped)
-  CIRCLE = ::T.let(nil, ::T.untyped)
-  CODEBUILD = ::T.let(nil, ::T.untyped)
-  CODESHIP = ::T.let(nil, ::T.untyped)
-  DRONEIO = ::T.let(nil, ::T.untyped)
-  GITHUB = ::T.let(nil, ::T.untyped)
-  GITLAB = ::T.let(nil, ::T.untyped)
-  HEROKU = ::T.let(nil, ::T.untyped)
-  JENKINS = ::T.let(nil, ::T.untyped)
-  RECOGNIZED_CIS = ::T.let(nil, ::T.untyped)
-  SEMAPHORE = ::T.let(nil, ::T.untyped)
-  SHIPPABLE = ::T.let(nil, ::T.untyped)
-  SOLANO = ::T.let(nil, ::T.untyped)
-  TEAMCITY = ::T.let(nil, ::T.untyped)
-  TRAVIS = ::T.let(nil, ::T.untyped)
-  WERCKER = ::T.let(nil, ::T.untyped)
 end
 
 class SimpleCov::Formatter::Codecov
@@ -29448,6 +28395,8 @@ class SimpleCov::Result
 
   def coverage_statistics(*args, &block); end
 
+  def coverage_statistics_by_file(*args, &block); end
+
   def covered_branches(*args, &block); end
 
   def covered_lines(*args, &block); end
@@ -29482,8 +28431,6 @@ class SimpleCov::Result
 
   def source_files(); end
 
-  def time_since_creation(); end
-
   def to_hash(); end
 
   def total_branches(*args, &block); end
@@ -29512,17 +28459,31 @@ module SimpleCov::ResultMerger
 end
 
 module SimpleCov::ResultMerger
-  def self.clear_resultset(); end
+  def self.adapt_pre_simplecov_0_18_result(result); end
 
-  def self.merge_and_store(*results); end
+  def self.adapt_result(result); end
 
-  def self.merge_results(*results); end
+  def self.create_result(command_names, coverage); end
+
+  def self.merge_and_store(*file_paths, ignore_timeout: T.unsafe(nil)); end
+
+  def self.merge_coverage(*results); end
+
+  def self.merge_results(*file_paths, ignore_timeout: T.unsafe(nil)); end
+
+  def self.merge_valid_results(results, ignore_timeout: T.unsafe(nil)); end
 
   def self.merged_result(); end
 
-  def self.results(); end
+  def self.parse_file(path); end
 
-  def self.resultset(); end
+  def self.parse_json(content); end
+
+  def self.pre_simplecov_0_18_result?(result); end
+
+  def self.read_file(path); end
+
+  def self.read_resultset(); end
 
   def self.resultset_path(); end
 
@@ -29530,9 +28491,13 @@ module SimpleCov::ResultMerger
 
   def self.store_result(result); end
 
-  def self.stored_data(); end
-
   def self.synchronize_resultset(); end
+
+  def self.time_since_result_creation(data); end
+
+  def self.valid_results(file_path, ignore_timeout: T.unsafe(nil)); end
+
+  def self.within_merge_timeout?(data); end
 end
 
 module SimpleCov::SimulateCoverage
@@ -29691,7 +28656,7 @@ module SimpleCov
 
   def self.clear_result(); end
 
-  def self.collate(result_filenames, profile=T.unsafe(nil), &block); end
+  def self.collate(result_filenames, profile=T.unsafe(nil), ignore_timeout: T.unsafe(nil), &block); end
 
   def self.exit_and_report_previous_error(exit_status); end
 
@@ -29788,6 +28753,12 @@ module Singleton
   def dup(); end
 end
 
+module Singleton::SingletonClassMethods
+  def _load(str); end
+
+  def clone(); end
+end
+
 module Singleton
   def self.__init__(klass); end
 end
@@ -29837,7 +28808,6 @@ class Socket
   IPV6_PATHMTU = ::T.let(nil, ::T.untyped)
   IPV6_RECVPATHMTU = ::T.let(nil, ::T.untyped)
   IPV6_USE_MIN_MTU = ::T.let(nil, ::T.untyped)
-  IP_DONTFRAG = ::T.let(nil, ::T.untyped)
   IP_PORTRANGE = ::T.let(nil, ::T.untyped)
   IP_RECVDSTADDR = ::T.let(nil, ::T.untyped)
   IP_RECVIF = ::T.let(nil, ::T.untyped)
@@ -29929,7 +28899,6 @@ module Socket::Constants
   IPV6_PATHMTU = ::T.let(nil, ::T.untyped)
   IPV6_RECVPATHMTU = ::T.let(nil, ::T.untyped)
   IPV6_USE_MIN_MTU = ::T.let(nil, ::T.untyped)
-  IP_DONTFRAG = ::T.let(nil, ::T.untyped)
   IP_PORTRANGE = ::T.let(nil, ::T.untyped)
   IP_RECVDSTADDR = ::T.let(nil, ::T.untyped)
   IP_RECVIF = ::T.let(nil, ::T.untyped)
@@ -30132,6 +29101,12 @@ class Spoom::Sorbet::Errors::Parser
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
+module Spoom::Sorbet::Errors
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
 module Spoom::Sorbet::MetricsParser
   extend ::T::Sig
   extend ::T::Private::Methods::MethodHooks
@@ -30145,8 +29120,6 @@ module Spoom::Sorbet::Sigils
 end
 
 module Spoom::Sorbet
-  extend ::T::Sig
-  extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
@@ -30156,7 +29129,14 @@ class Spoom::Timeline
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
+module Spoom
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
 class String
+  include ::MessagePack::CoreExt
   def black(); end
 
   def blink(); end
@@ -30327,6 +29307,15 @@ module Superenv
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
+class Symbol
+  include ::MessagePack::CoreExt
+  def to_msgpack_ext(); end
+end
+
+class Symbol
+  def self.from_msgpack_ext(data); end
+end
+
 class SystemCommand::Result
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
@@ -30364,6 +29353,11 @@ class TZInfo::TransitionRule
 end
 
 class Tab
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class Tap
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
 end
@@ -30570,7 +29564,7 @@ end
 class Time
   def self.===(other); end
 
-  def self.at_with_coercion(*args); end
+  def self.at_with_coercion(*args, **kwargs); end
 
   def self.at_without_coercion(*_); end
 
@@ -30605,6 +29599,10 @@ class TracePoint
   def instruction_sequence(); end
 
   def parameters(); end
+end
+
+class TrueClass
+  include ::MessagePack::CoreExt
 end
 
 module Tty
@@ -30877,6 +29875,16 @@ class User
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
+class Utils::AST::FormulaAST
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Utils::AST
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
 module Utils::Analytics
   extend ::T::Private::Methods::SingletonMethodHooks
 end
@@ -30914,7 +29922,30 @@ module Utils::Svn
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
+module Utils
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class Version::Parser
+  def initialize(*args, &blk); end
+end
+
+class Version::Parser
+  extend ::T::Private::Abstract::Hooks
+  extend ::T::InterfaceWrapper::Helpers
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
 class Version::Token
+  extend ::T::Private::Abstract::Hooks
+  extend ::T::InterfaceWrapper::Helpers
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class Version
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
 end
@@ -30933,9 +29964,13 @@ end
 class WEBrick::HTTPResponse
   def _rack_setup_header(); end
 
+  def make_body_tempfile(); end
+
   def rack(); end
 
   def rack=(rack); end
+
+  def remove_body_tempfile(); end
 end
 
 class WEBrick::HTTPResponse::ChunkedWrapper
@@ -30955,12 +29990,39 @@ class WEBrick::HTTPServer
   def create_response(with_webrick_config); end
 end
 
+class WEBrick::HTTPServlet::CGIHandler
+  CGIRunnerArray = ::T.let(nil, ::T.untyped)
+end
+
 class WEBrick::HTTPServlet::DefaultFileHandler
   def multipart_body(body, parts, boundary, mtype, filesize); end
 end
 
+class WEBrick::HTTPServlet::FileHandler
+  def set_filesystem_encoding(str); end
+end
+
+module Warning::Processor
+  def clear(); end
+
+  def dedup(); end
+
+  def freeze(); end
+
+  def ignore(regexp, path=T.unsafe(nil)); end
+
+  def process(path=T.unsafe(nil), actions=T.unsafe(nil), &block); end
+
+  def warn(str); end
+  IGNORE_MAP = ::T.let(nil, ::T.untyped)
+end
+
+module Warning::Processor
+end
+
 module Warning
   extend ::Warning
+  extend ::Warning::Processor
 end
 
 class WeakRef

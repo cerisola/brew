@@ -62,7 +62,7 @@ class Caveats
     if f.bin.directory? || f.sbin.directory?
       s << <<~EOS
 
-        If you need to have #{f.name} first in your PATH run:
+        If you need to have #{f.name} first in your PATH, run:
       EOS
       s << "  #{Utils::Shell.prepend_path_in_profile(f.opt_bin.to_s)}\n" if f.bin.directory?
       s << "  #{Utils::Shell.prepend_path_in_profile(f.opt_sbin.to_s)}\n" if f.sbin.directory?
@@ -113,7 +113,7 @@ class Caveats
 
     completion_installed = keg.completion_installed?(shell)
     functions_installed = keg.functions_installed?(shell)
-    return unless completion_installed || functions_installed
+    return if !completion_installed && !functions_installed
 
     installed = []
     installed << "completions" if completion_installed

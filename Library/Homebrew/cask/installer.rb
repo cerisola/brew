@@ -146,7 +146,7 @@ module Cask
       installed_cask = installed_caskfile.exist? ? CaskLoader.load(installed_caskfile) : @cask
 
       # Always force uninstallation, ignore method parameter
-      Installer.new(installed_cask, binaries: binaries?, verbose: verbose?, force: true, upgrade: upgrade?).uninstall
+      Installer.new(installed_cask, verbose: verbose?, force: true, upgrade: upgrade?).uninstall
     end
 
     sig { returns(String) }
@@ -191,7 +191,7 @@ module Cask
 
       basename = downloader.basename
 
-      if nested_container = @cask.container&.nested
+      if (nested_container = @cask.container&.nested)
         Dir.mktmpdir do |tmpdir|
           tmpdir = Pathname(tmpdir)
           primary_container.extract(to: tmpdir, basename: basename, verbose: verbose?)
@@ -212,11 +212,11 @@ module Cask
     end
 
     def install_artifacts
+      artifacts = @cask.artifacts
       already_installed_artifacts = []
 
       odebug "Installing artifacts"
-      artifacts = @cask.artifacts
-      odebug "#{artifacts.length} artifact/s defined", artifacts
+      odebug "#{artifacts.length} #{"artifact".pluralize(artifacts.length)} defined", artifacts
 
       artifacts.each do |artifact|
         next unless artifact.respond_to?(:install_phase)
@@ -280,7 +280,7 @@ module Cask
       raise CaskError,
             "Cask #{@cask} depends on hardware architecture being one of " \
             "[#{@cask.depends_on.arch.map(&:to_s).join(", ")}], " \
-            "but you are running #{@current_arch}"
+            "but you are running #{@current_arch}."
     end
 
     def x11_dependencies
@@ -356,7 +356,7 @@ module Cask
       missing_formulae_and_casks = missing_cask_and_formula_dependencies
 
       if missing_formulae_and_casks.empty?
-        puts "All Formula dependencies satisfied."
+        puts "All formula dependencies satisfied."
         return
       end
 
@@ -414,7 +414,7 @@ module Cask
     def uninstall
       oh1 "Uninstalling Cask #{Formatter.identifier(@cask)}"
       uninstall_artifacts(clear: true)
-      remove_config_file unless reinstall? || upgrade?
+      remove_config_file if !reinstall? && !upgrade?
       purge_versioned_files
       purge_caskroom_path if force?
     end
@@ -435,7 +435,7 @@ module Cask
     end
 
     def restore_backup
-      return unless backup_path.directory? && backup_metadata_path.directory?
+      return if !backup_path.directory? || !backup_metadata_path.directory?
 
       Pathname.new(@cask.staged_path).rmtree if @cask.staged_path.exist?
       Pathname.new(@cask.metadata_versioned_path).rmtree if @cask.metadata_versioned_path.exist?
@@ -459,10 +459,10 @@ module Cask
     end
 
     def uninstall_artifacts(clear: false)
-      odebug "Uninstalling artifacts"
       artifacts = @cask.artifacts
 
-      odebug "#{artifacts.length} artifact/s defined", artifacts
+      odebug "Uninstalling artifacts"
+      odebug "#{artifacts.length} #{"artifact".pluralize(artifacts.length)} defined", artifacts
 
       artifacts.each do |artifact|
         if artifact.respond_to?(:uninstall_phase)
@@ -482,7 +482,7 @@ module Cask
     end
 
     def zap
-      ohai %Q(Implied "brew uninstall --cask #{@cask}")
+      ohai "Implied `brew uninstall --cask #{@cask}`"
       uninstall_artifacts
       if (zap_stanzas = @cask.artifacts.select { |a| a.is_a?(Artifact::Zap) }).empty?
         opoo "No zap stanza present for Cask '#{@cask}'"

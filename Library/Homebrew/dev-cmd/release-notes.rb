@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "cli/parser"
+require "release_notes"
 
 module Homebrew
   extend T::Sig
@@ -11,10 +12,9 @@ module Homebrew
   sig { returns(CLI::Parser) }
   def release_notes_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `release-notes` [<options>] [<previous_tag>] [<end_ref>]
-
-        Print the merged pull requests on cerisola/brew between two Git refs.
+      usage_banner "`release-notes` [<options>] [<previous_tag>] [<end_ref>]"
+      description <<~EOS
+        Print the merged pull requests on Homebrew/brew between two Git refs.
         If no <previous_tag> is provided it defaults to the latest tag.
         If no <end_ref> is provided it defaults to `origin/master`.
 
@@ -25,12 +25,16 @@ module Homebrew
       switch "--markdown",
              description: "Print as a Markdown list."
 
-      max_named 2
+      named_args max: 2
+
+      hide_from_man_page!
     end
   end
 
   def release_notes
     args = release_notes_args.parse
+
+    odeprecated "`brew release-notes`", "`brew release`"
 
     previous_tag = args.named.first
 
@@ -56,25 +60,9 @@ module Homebrew
       odie "Ref #{ref} does not exist!"
     end
 
-    output = Utils.popen_read(
-      "git", "-C", HOMEBREW_REPOSITORY, "log", "--pretty=format:'%s >> - %b%n'", "#{previous_tag}..#{end_ref}"
-    ).lines.grep(/Merge pull request/)
-
-    output.map! do |s|
-      s.gsub(%r{.*Merge pull request #(\d+) from ([^/]+)/[^>]*(>>)*},
-             "https://github.com/cerisola/brew/pull/\\1 (@\\2)")
-    end
-    if args.markdown?
-      output.map! do |s|
-        /(.*\d)+ \(@(.+)\) - (.*)/ =~ s
-        "- [#{Regexp.last_match(3)}](#{Regexp.last_match(1)}) (@#{Regexp.last_match(2)})"
-      end
-    end
+    release_notes = ReleaseNotes.generate_release_notes previous_tag, end_ref, markdown: args.markdown?
 
     $stderr.puts "Release notes between #{previous_tag} and #{end_ref}:"
-    if args.markdown? && args.named.first
-      puts "Release notes for major and minor releases can be found in the [Homebrew blog](https://brew.sh/blog/)."
-    end
-    puts output
+    puts release_notes
   end
 end

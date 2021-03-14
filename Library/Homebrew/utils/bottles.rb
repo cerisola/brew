@@ -24,7 +24,7 @@ module Utils
 
       def file_outdated?(f, file)
         filename = file.basename.to_s
-        return unless f.bottle && filename.match(Pathname::BOTTLE_EXTNAME_RX)
+        return if f.bottle.blank? || !filename.match?(Pathname::BOTTLE_EXTNAME_RX)
 
         bottle_ext = filename[native_regex, 1]
         bottle_url_ext = f.bottle.url[native_regex, 1]
@@ -100,21 +100,22 @@ module Utils
 
       extend Forwardable
 
-      def_delegators :@checksums, :keys, :[], :[]=, :key?, :each_key
+      def_delegators :@checksums, :keys, :[], :[]=, :key?, :each_key, :dig
 
       sig { void }
       def initialize
         @checksums = {}
       end
 
-      def fetch_checksum_for(tag)
-        tag = find_matching_tag(tag)
-        return self[tag], tag if tag
+      sig { params(tag: Symbol, exact: T::Boolean).returns(T.nilable([Checksum, Symbol, T.any(Symbol, String)])) }
+      def fetch_checksum_for(tag, exact: false)
+        tag = find_matching_tag(tag, exact: exact)
+        return self[tag][:checksum], tag, self[tag][:cellar] if tag
       end
 
       private
 
-      def find_matching_tag(tag)
+      def find_matching_tag(tag, exact: false)
         tag if key?(tag)
       end
     end
