@@ -30,7 +30,7 @@ describe "brew bump" do
       content = <<~RUBY
         desc "HEAD-only test formula"
         homepage "https://brew.sh"
-        head "https://github.com/Homebrew/brew.git"
+        head "https://github.com/cerisola/brew.git"
       RUBY
       setup_test_formula("headonly", content)
 

@@ -18,15 +18,15 @@ describe ReleaseNotes do
   describe ".generate_release_notes" do
     it "generates release notes" do
       expect(described_class.generate_release_notes("release-notes-testing", "HEAD")).to eq <<~NOTES
-        https://github.com/Homebrew/brew/pull/2 (@User) - Do something else
-        https://github.com/Homebrew/brew/pull/1 (@Homebrew) - Do something
+        https://github.com/cerisola/brew/pull/2 (@User) - Do something else
+        https://github.com/cerisola/brew/pull/1 (@Homebrew) - Do something
       NOTES
     end
 
     it "generates markdown release notes" do
       expect(described_class.generate_release_notes("release-notes-testing", "HEAD", markdown: true)).to eq <<~NOTES
-        - [Do something else](https://github.com/Homebrew/brew/pull/2) (@User)
-        - [Do something](https://github.com/Homebrew/brew/pull/1) (@Homebrew)
+        - [Do something else](https://github.com/cerisola/brew/pull/2) (@User)
+        - [Do something](https://github.com/cerisola/brew/pull/1) (@Homebrew)
       NOTES
     end
   end

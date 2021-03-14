@@ -7,7 +7,7 @@ describe Homebrew::Livecheck do
   subject(:livecheck) { described_class }
 
   let(:cask_url) { "https://brew.sh/test-0.0.1.dmg" }
-  let(:head_url) { "https://github.com/Homebrew/brew.git" }
+  let(:head_url) { "https://github.com/cerisola/brew.git" }
   let(:homepage_url) { "https://brew.sh" }
   let(:livecheck_url) { "https://formulae.brew.sh/api/formula/ruby.json" }
   let(:stable_url) { "https://brew.sh/test-0.0.1.tgz" }
@@ -84,7 +84,7 @@ describe Homebrew::Livecheck do
         desc "Test Livecheck URL formula"
         homepage "https://brew.sh"
         url "https://brew.sh/test-0.0.1.tgz"
-        head "https://github.com/Homebrew/brew.git"
+        head "https://github.com/cerisola/brew.git"
       end
     end
 

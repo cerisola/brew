@@ -42,7 +42,7 @@ module OS
         return @all_sdks unless File.directory? sdk_prefix
 
         # Use unversioned SDK path on Big Sur to avoid issues such as:
-        # https://github.com/Homebrew/homebrew-core/issues/67075
+        # https://github.com/cerisola/homebrew-core/issues/67075
         unversioned_sdk_path = Pathname.new("#{sdk_prefix}/MacOSX.sdk")
         version = read_sdk_version(unversioned_sdk_path)
         if version && version >= :big_sur

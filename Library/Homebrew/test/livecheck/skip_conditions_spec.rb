@@ -12,7 +12,7 @@ describe Homebrew::Livecheck::SkipConditions do
         desc "Test formula"
         homepage "https://brew.sh"
         url "https://brew.sh/test-0.0.1.tgz"
-        head "https://github.com/Homebrew/brew.git"
+        head "https://github.com/cerisola/brew.git"
 
         livecheck do
           url "https://formulae.brew.sh/api/formula/ruby.json"
@@ -39,12 +39,12 @@ describe Homebrew::Livecheck::SkipConditions do
       head_only:           formula("test_head_only") do
         desc "HEAD-only test formula"
         homepage "https://brew.sh"
-        head "https://github.com/Homebrew/brew.git"
+        head "https://github.com/cerisola/brew.git"
       end,
       gist:                formula("test_gist") do
         desc "Gist test formula"
         homepage "https://brew.sh"
-        url "https://gist.github.com/Homebrew/0000000000"
+        url "https://gist.github.com/cerisola/0000000000"
       end,
       google_code_archive: formula("test_google_code_archive") do
         desc "Google Code Archive test formula"

@@ -9,7 +9,7 @@ describe Livecheck do
     formula do
       homepage "https://brew.sh"
       url "https://brew.sh/test-0.0.1.tgz"
-      head "https://github.com/Homebrew/brew.git"
+      head "https://github.com/cerisola/brew.git"
     end
   end
   let(:livecheckable_f) { described_class.new(f) }

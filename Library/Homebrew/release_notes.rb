@@ -20,7 +20,7 @@ module ReleaseNotes
 
     log_output.map! do |s|
       s.gsub(%r{.*Merge pull request #(\d+) from ([^/]+)/[^>]*(>>)*},
-             "https://github.com/Homebrew/brew/pull/\\1 (@\\2)")
+             "https://github.com/cerisola/brew/pull/\\1 (@\\2)")
     end
 
     if markdown

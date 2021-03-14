@@ -126,7 +126,7 @@ module GitHub
 
       # Don't use passwords from the keychain unless they look like
       # GitHub Personal Access Tokens:
-      #   https://github.com/Homebrew/brew/issues/6862#issuecomment-572610344
+      #   https://github.com/cerisola/brew/issues/6862#issuecomment-572610344
       return unless /^[a-f0-9]{40}$/i.match?(github_password)
 
       github_password
