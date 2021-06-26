@@ -34,8 +34,8 @@ fi
 # shellcheck disable=SC2034
 if [[ -n "${ruby_SHA}" && -n "${ruby_FILENAME}" ]]
 then
-  ruby_URL="https://ghcr.io/v2/homebrew/portable-ruby/portable-ruby/blobs/sha256:${ruby_SHA}"
-  ruby_URL2="https://github.com/Homebrew/homebrew-portable-ruby/releases/download/2.6.3_2/${ruby_FILENAME}"
+  ruby_URL="http://127.0.0.1:8080/homebrew/portable-ruby/portable-ruby/blobs/sha256:${ruby_SHA}"
+  ruby_URL2="https://github.com/cerisola/homebrew-portable-ruby/releases/download/2.6.3_2/${ruby_FILENAME}"
 fi
 
 check_linux_glibc_version() {

@@ -203,7 +203,7 @@ module Superenv
     if compiler.match?(GNU_GCC_REGEXP)
       # Add path to GCC runtime libs for version being used to compile,
       # so that the linker will find those libs before any that may be linked in $HOMEBREW_PREFIX/lib.
-      # https://github.com/Homebrew/brew/pull/11459#issuecomment-851075936
+      # https://github.com/cerisola/brew/pull/11459#issuecomment-851075936
       begin
         f = gcc_version_formula(compiler.to_s)
       rescue FormulaUnavailableError

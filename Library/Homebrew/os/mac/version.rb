@@ -26,13 +26,13 @@ module OS
 
       # TODO: bump version when new macOS is released or announced
       # and also update references in docs/Installation.md and
-      # https://github.com/Homebrew/install/blob/HEAD/install.sh
+      # https://github.com/cerisola/install/blob/HEAD/install.sh
       MACOS_NEWEST_UNSUPPORTED = "12.0"
       private_constant :MACOS_NEWEST_UNSUPPORTED
 
       # TODO: bump version when new macOS is released and also update
       # references in docs/Installation.md and
-      # https://github.com/Homebrew/install/blob/HEAD/install.sh
+      # https://github.com/cerisola/install/blob/HEAD/install.sh
       MACOS_OLDEST_SUPPORTED = "10.14"
       private_constant :MACOS_OLDEST_SUPPORTED
 

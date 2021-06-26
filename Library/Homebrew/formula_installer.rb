@@ -1174,7 +1174,7 @@ class FormulaInstaller
     keg = Keg.new(formula.prefix)
     skip_linkage = formula.bottle_specification.skip_relocation?
     # TODO: Remove `with_env` when bottles are built with RPATH relocation enabled
-    # https://github.com/Homebrew/brew/issues/11329
+    # https://github.com/cerisola/brew/issues/11329
     with_env(HOMEBREW_RELOCATE_RPATHS: "1") do
       keg.replace_placeholders_with_locations tab.changed_files, skip_linkage: skip_linkage
     end

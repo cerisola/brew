@@ -219,7 +219,7 @@ describe Tap do
       services_tap.path.mkpath
       services_tap.path.cd do
         system "git", "init"
-        system "git", "remote", "add", "origin", "https://github.com/Homebrew/homebrew-bar"
+        system "git", "remote", "add", "origin", "https://github.com/cerisola/homebrew-bar"
       end
       expect(services_tap.remote_repo).to eq("Homebrew/homebrew-bar")
     end
