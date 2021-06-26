@@ -15,9 +15,8 @@ describe Formulary do
         sha256 TESTBALL_SHA256
 
         bottle do
-          cellar :any_skip_relocation
           root_url "file://#{bottle_dir}"
-          sha256 "8f9aecd233463da6a4ea55f5f88fc5841718c013f3e2a7941350d6130f1dc149" => :#{Utils::Bottles.tag}
+          sha256 cellar: :any_skip_relocation, #{Utils::Bottles.tag}: "8f9aecd233463da6a4ea55f5f88fc5841718c013f3e2a7941350d6130f1dc149"
         end
 
         def install
@@ -58,6 +57,7 @@ describe Formulary do
 
   describe "::factory" do
     before do
+      formula_path.dirname.mkpath
       formula_path.write formula_content
     end
 
@@ -195,12 +195,36 @@ describe Formulary do
       end
 
       it "raises an error if a Formula is in multiple Taps" do
+        another_tap.path.mkpath
         (another_tap.path/"#{formula_name}.rb").write formula_content
 
         expect {
           described_class.factory(formula_name)
         }.to raise_error(TapFormulaAmbiguityError)
       end
+    end
+  end
+
+  describe "::map_formula_name_to_local_bottle_path" do
+    before do
+      formula_path.dirname.mkpath
+      formula_path.write formula_content
+    end
+
+    it "maps a reference to a new Formula" do
+      expect {
+        described_class.factory("formula-to-map")
+      }.to raise_error(FormulaUnavailableError)
+
+      ENV["HOMEBREW_JSON_CORE"] = nil
+      expect {
+        described_class.map_formula_name_to_local_bottle_path "formula-to-map", formula_path
+      }.to raise_error(UsageError, /HOMEBREW_JSON_CORE not set/)
+
+      ENV["HOMEBREW_JSON_CORE"] = "1"
+      described_class.map_formula_name_to_local_bottle_path "formula-to-map", formula_path
+
+      expect(described_class.factory("formula-to-map")).to be_kind_of(Formula)
     end
   end
 

@@ -50,6 +50,7 @@ module SharedEnvExtension
     reset
   end
   private :setup_build_environment
+  alias generic_shared_setup_build_environment setup_build_environment
 
   sig { void }
   def reset
@@ -237,37 +238,6 @@ module SharedEnvExtension
     end
   end
 
-  # Snow Leopard defines an NCURSES value the opposite of most distros.
-  # @see https://bugs.python.org/issue6848
-  sig { void }
-  def ncurses_define
-    odeprecated "ENV.ncurses_define"
-
-    append "CPPFLAGS", "-DNCURSES_OPAQUE=0"
-  end
-
-  # @private
-  sig { void }
-  def userpaths!
-    odeprecated "ENV.userpaths!"
-
-    path = PATH.new(self["PATH"]).select do |p|
-      # put Superenv.bin and opt path at the first
-      p.start_with?("#{HOMEBREW_REPOSITORY}/Library/ENV", "#{HOMEBREW_PREFIX}/opt")
-    end
-    path.append(HOMEBREW_PREFIX/"bin") # XXX hot fix to prefer brewed stuff (e.g. python) over /usr/bin.
-    path.append(self["PATH"]) # reset of self["PATH"]
-    path.append(
-      # user paths
-      ORIGINAL_PATHS.map do |p|
-        p.realpath.to_s
-      rescue
-        nil
-      end - %w[/usr/X11/bin /opt/X11/bin],
-    )
-    self["PATH"] = path
-  end
-
   sig { void }
   def fortran
     # Ignore repeated calls to this function as it will misleadingly warn about
@@ -344,11 +314,6 @@ module SharedEnvExtension
 
   sig { void }
   def permit_arch_flags; end
-
-  sig { void }
-  def permit_weak_imports
-    odeprecated "ENV.permit_weak_imports"
-  end
 
   # @private
   sig { params(cc: T.any(Symbol, String)).returns(T::Boolean) }

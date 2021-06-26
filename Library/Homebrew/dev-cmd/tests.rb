@@ -39,15 +39,17 @@ module Homebrew
   def tests
     args = tests_args.parse
 
-    Homebrew.install_bundler_gems!
+    Homebrew.install_bundler_gems!(groups: ["sorbet"])
 
     require "byebug" if args.byebug?
 
     HOMEBREW_LIBRARY_PATH.cd do
       # Cleanup any unwanted user configuration.
-      allowed_test_env = [
-        "HOMEBREW_GITHUB_API_TOKEN",
-        "HOMEBREW_TEMP",
+      allowed_test_env = %w[
+        HOMEBREW_GITHUB_API_TOKEN
+        HOMEBREW_CACHE
+        HOMEBREW_LOGS
+        HOMEBREW_TEMP
       ]
       Homebrew::EnvConfig::ENVS.keys.map(&:to_s).each do |env|
         next if allowed_test_env.include?(env)
@@ -98,10 +100,24 @@ module Homebrew
         Dir.glob("test/**/*_spec.rb")
       end
 
+      parallel_rspec_log_name = "parallel_runtime_rspec"
+      parallel_rspec_log_name = "#{parallel_rspec_log_name}.no_compat" if args.no_compat?
+      parallel_rspec_log_name = "#{parallel_rspec_log_name}.generic" if args.generic?
+      parallel_rspec_log_name = "#{parallel_rspec_log_name}.online" if args.online?
+      parallel_rspec_log_name = "#{parallel_rspec_log_name}.log"
+
+      parallel_rspec_log_path = if ENV["CI"]
+        "tests/#{parallel_rspec_log_name}"
+      else
+        "#{HOMEBREW_CACHE}/#{parallel_rspec_log_name}"
+      end
+      ENV["PARALLEL_RSPEC_LOG_PATH"] = parallel_rspec_log_path
+
       parallel_args = if ENV["CI"]
-        %w[
+        %W[
           --combine-stderr
           --serialize-stdout
+          --runtime-log #{parallel_rspec_log_path}
         ]
       else
         %w[
@@ -118,12 +134,7 @@ module Homebrew
         --seed #{seed}
         --color
         --require spec_helper
-        --format NoSeedProgressFormatter
-        --format ParallelTests::RSpec::RuntimeLogger
-        --out #{HOMEBREW_CACHE}/tests/parallel_runtime_rspec.log
       ]
-
-      bundle_args << "--format" << "RSpec::Github::Formatter" if ENV["GITHUB_ACTIONS"]
 
       unless OS.mac?
         bundle_args << "--tag" << "~needs_macos" << "--tag" << "~cask"

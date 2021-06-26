@@ -21,7 +21,6 @@ module Homebrew
       @new_formula = options[:new_formula] && !@versioned_formula
       @strict = options[:strict]
       @online = options[:online]
-      @build_stable = options[:build_stable]
       @git = options[:git]
       @display_cop_names = options[:display_cop_names]
       @only = options[:only]
@@ -121,10 +120,12 @@ module Homebrew
     end
 
     def audit_formula_name
+      name = formula.name
+
+      problem "Formula name '#{name}' must not contain uppercase letters." if name != name.downcase
+
       return unless @strict
       return unless @core_tap
-
-      name = formula.name
 
       problem "'#{name}' is not allowed in homebrew/core." if MissingFormula.disallowed_reason(name)
 
@@ -234,6 +235,7 @@ module Homebrew
              dep_f.keg_only? &&
              dep_f.keg_only_reason.provided_by_macos? &&
              dep_f.keg_only_reason.applicable? &&
+             formula.requirements.none?(LinuxRequirement) &&
              !tap_audit_exception(:provided_by_macos_depends_on_allowlist, dep.name)
             new_formula_problem(
               "Dependency '#{dep.name}' is provided by macOS; " \
@@ -312,15 +314,38 @@ module Homebrew
     end
 
     def audit_conflicts
-      formula.conflicts.each do |c|
-        Formulary.factory(c.name)
+      tap = formula.tap
+      formula.conflicts.each do |conflict|
+        conflicting_formula = Formulary.factory(conflict.name)
+        next if tap != conflicting_formula.tap
+
+        problem "Formula should not conflict with itself" if formula == conflicting_formula
+
+        if tap.formula_renames.key?(conflict.name) || tap.aliases.include?(conflict.name)
+          problem "Formula conflict should be declared using " \
+                  "canonical name (#{conflicting_formula.name}) instead of #{conflict.name}"
+        end
+
+        reverse_conflict_found = false
+        conflicting_formula.conflicts.each do |reverse_conflict|
+          reverse_conflict_formula = Formulary.factory(reverse_conflict.name)
+          if tap.formula_renames.key?(reverse_conflict.name) || tap.aliases.include?(reverse_conflict.name)
+            problem "Formula #{conflicting_formula.name} conflict should be declared using " \
+                    "canonical name (#{reverse_conflict_formula.name}) instead of #{reverse_conflict.name}"
+          end
+
+          reverse_conflict_found ||= reverse_conflict_formula == formula
+        end
+        unless reverse_conflict_found
+          problem "Formula #{conflicting_formula.name} should also have a conflict declared with #{formula.name}"
+        end
       rescue TapFormulaUnavailableError
         # Don't complain about missing cross-tap conflicts.
         next
       rescue FormulaUnavailableError
-        problem "Can't find conflicting formula #{c.name.inspect}."
+        problem "Can't find conflicting formula #{conflict.name.inspect}."
       rescue TapFormulaAmbiguityError, TapFormulaWithOldnameAmbiguityError
-        problem "Ambiguous conflicting formula #{c.name.inspect}."
+        problem "Ambiguous conflicting formula #{conflict.name.inspect}."
       end
     end
 
@@ -344,11 +369,22 @@ module Homebrew
       return unless @core_tap
 
       version = formula.version.to_s
-      return if version == "2.23"
+      return if version == OS::CI_GLIBC_VERSION
 
       problem "The glibc version must be #{version}, as this is the version used by our CI on Linux. " \
               "Glibc is for users who have a system Glibc with a lower version, " \
               "which allows them to use our Linux bottles, which were compiled against system Glibc on CI."
+    end
+
+    ELASTICSEARCH_KIBANA_RELICENSED_VERSION = "7.11"
+
+    def audit_elasticsearch_kibana
+      return if formula.name != "elasticsearch" && formula.name != "kibana"
+      return unless @core_tap
+      return if formula.version < Version.new(ELASTICSEARCH_KIBANA_RELICENSED_VERSION)
+
+      problem "Elasticsearch and Kibana were relicensed to a non-open-source license from version 7.11. " \
+              "They must not be upgraded to version 7.11 or newer."
     end
 
     def audit_versioned_keg_only
@@ -380,6 +416,7 @@ module Homebrew
       return unless DevelopmentTools.curl_handles_most_https_certificates?
 
       if (http_content_problem = curl_check_http_content(homepage,
+                                                         "homepage URL",
                                                          user_agents:   [:browser, :default],
                                                          check_content: true,
                                                          strict:        @strict))
@@ -486,7 +523,10 @@ module Homebrew
         spec_name = name.downcase.to_sym
         next unless (spec = formula.send(spec_name))
 
-        ra = ResourceAuditor.new(spec, spec_name, online: @online, strict: @strict).audit
+        ra = ResourceAuditor.new(
+          spec, spec_name,
+          online: @online, strict: @strict, only: @only, except: @except
+        ).audit
         ra.problems.each do |message|
           problem "#{name}: #{message}"
         end
@@ -494,7 +534,10 @@ module Homebrew
         spec.resources.each_value do |resource|
           problem "Resource name should be different from the formula name" if resource.name == formula.name
 
-          ra = ResourceAuditor.new(resource, spec_name, online: @online, strict: @strict).audit
+          ra = ResourceAuditor.new(
+            resource, spec_name,
+            online: @online, strict: @strict, only: @only, except: @except
+          ).audit
           ra.problems.each do |message|
             problem "#{name} resource #{resource.name.inspect}: #{message}"
           end
@@ -550,6 +593,9 @@ module Homebrew
         version_prefix = stable.version.major_minor
         return if tap_audit_exception :gnome_devel_allowlist, formula.name, version_prefix
         return if stable_url_version < Version.create("1.0")
+        # All minor versions are stable in the new GNOME version scheme (which starts at version 40.0)
+        # https://discourse.gnome.org/t/new-gnome-versioning-scheme/4235
+        return if stable_url_version >= Version.create("40.0")
         return if stable_url_minor_version.even?
 
         problem "#{stable.version} is a development release"
@@ -729,11 +775,9 @@ module Homebrew
 
       methods.map(&:to_s).grep(/^audit_/).each do |audit_method_name|
         name = audit_method_name.delete_prefix("audit_")
-        if only_audits
-          next unless only_audits.include?(name)
-        elsif except_audits
-          next if except_audits.include?(name)
-        end
+        next if only_audits&.exclude?(name)
+        next if except_audits&.include?(name)
+
         send(audit_method_name)
       end
     end

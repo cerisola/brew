@@ -42,7 +42,6 @@ module RuboCop
           net-snmp
           netcat
           openldap
-          openlibm
           pcsc-lite
           pod2man
           rpcgen
@@ -78,6 +77,7 @@ module RuboCop
           bash
           cpio
           expect
+          git
           groff
           gzip
           openssl

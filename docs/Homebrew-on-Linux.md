@@ -57,14 +57,14 @@ Paste at a terminal prompt:
 ### Debian or Ubuntu
 
 ```sh
-sudo apt-get install build-essential curl file git
+sudo apt-get install build-essential procps curl file git
 ```
 
 ### Fedora, CentOS, or Red Hat
 
 ```sh
 sudo yum groupinstall 'Development Tools'
-sudo yum install curl file git
+sudo yum install procps-ng curl file git
 sudo yum install libxcrypt-compat # needed by Fedora 30 and up
 ```
 
@@ -94,9 +94,3 @@ eval $(~/.linuxbrew/bin/brew shellenv)
 - [@HomebrewOnLinux on Twitter](https://twitter.com/HomebrewOnLinux)
 - [Homebrew/linuxbrew-core on GitHub](https://github.com/Homebrew/linuxbrew-core)
 - [Homebrew/discussions (forum)](https://github.com/homebrew/discussions/discussions)
-
-## Sponsors
-
-Our binary packages (bottles) are built on [GitHub Actions](https://github.com/features/actions) and hosted by [Bintray](https://bintray.com/linuxbrew).
-
-[![Downloads by Bintray](https://bintray.com/docs/images/downloads_by_bintray_96.png)](https://bintray.com/linuxbrew)

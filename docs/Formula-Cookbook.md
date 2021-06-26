@@ -8,6 +8,7 @@ A *formula* is a package definition written in Ruby. It can be created with `bre
 |----------------|------------------------------------------------------------|-----------------------------------------------------------------|
 | **Formula**    | The package definition                                     | `/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/Formula/foo.rb` |
 | **Keg**        | The installation prefix of a **Formula**                   | `/usr/local/Cellar/foo/0.1`                                     |
+| **Keg-only**   | A **Formula** is **Keg-only** if it is not linked into the Homebrew prefix | The [`openjdk` formula](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/openjdk.rb) |
 | **opt prefix** | A symlink to the active version of a **Keg**               | `/usr/local/opt/foo `                                           |
 | **Cellar**     | All **Kegs** are installed here                            | `/usr/local/Cellar`                                             |
 | **Tap**        | A Git repository of **Formulae** and/or commands | `/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core`   |
@@ -289,7 +290,7 @@ Some advice for specific cases:
 * If the formula is a library, compile and run some simple code that links against it. It could be taken from upstream's documentation / source examples.
 A good example is [`tinyxml2`](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/tinyxml2.rb), which writes a small C++ source file into the test directory, compiles and links it against the tinyxml2 library and finally checks that the resulting program runs successfully.
 * If the formula is for a GUI program, try to find some function that runs as command-line only, like a format conversion, reading or displaying a config file, etc.
-* If the software cannot function without credentials or requires a virtual machine, docker instance, etc. to run, a test could be to try to connect with invalid credentials (or without credentials) and confirm that it fails as expected. This is prefered over mocking a dependency.
+* If the software cannot function without credentials or requires a virtual machine, docker instance, etc. to run, a test could be to try to connect with invalid credentials (or without credentials) and confirm that it fails as expected. This is preferred over mocking a dependency.
 * Homebrew comes with a number of [standard test fixtures](https://github.com/Homebrew/brew/tree/master/Library/Homebrew/test/support/fixtures), including numerous sample images, sounds, and documents in various formats. You can get the file path to a test fixture with `test_fixtures("test.svg")`.
 * If your test requires a test file that isn't a standard test fixture, you can install it from a source repository during the `test` phase with a resource block, like this:
 
@@ -410,13 +411,14 @@ Three commands are provided for displaying informational messages to the user:
 * `opoo` for warning messages
 * `odie` for error messages and immediately exiting
 
-In particular, when a test needs to be performed before installation use `odie` to bail out gracefully. For example:
+Use `odie` when you need to exit a formula gracefully for any reason. For example:
 
 ```ruby
-if build.with?("qt") && build.with?("qt5")
-  odie "Options --with-qt and --with-qt5 are mutually exclusive."
+if build.head?
+  lib_jar = Dir["cfr-*-SNAPSHOT.jar"]
+  doc_jar = Dir["cfr-*-SNAPSHOT-javadoc.jar"]
+  odie "Unexpected number of artifacts!" if (lib_jar.length != 1) || (doc_jar.length != 1)
 end
-system "make", "install"
 ```
 
 ### `bin.install "foo"`
@@ -577,10 +579,9 @@ To use a specific commit, tag, or branch from a repository, specify [`head`](htt
 
 ```ruby
 class Foo < Formula
-  head "https://github.com/some/package.git", :revision => "090930930295adslfknsdfsdaffnasd13"
-                                         # or :branch => "develop" (the default is "master")
-                                         # or :tag => "1_0_release",
-                                         #    :revision => "090930930295adslfknsdfsdaffnasd13"
+  head "https://github.com/some/package.git", revision: "090930930295adslfknsdfsdaffnasd13"
+                                         # or branch: "main" (the default is "master")
+                                         # or tag: "1_0_release", revision: "090930930295adslfknsdfsdaffnasd13"
 end
 ```
 
@@ -630,7 +631,9 @@ If you need more control over the way files are downloaded and staged, you can c
 
 ```ruby
 class MyDownloadStrategy < SomeHomebrewDownloadStrategy
-  def fetch
+  def fetch(timeout: nil, **options)
+    opoo "Unhandled options in #{self.class}#fetch: #{options.keys.join(", ")}" unless options.empty?
+
     # downloads output to `temporary_path`
   end
 end
@@ -747,6 +750,12 @@ ln_s libexec/"name", bin
 ```
 
 The symlinks created by [`install_symlink`](https://rubydoc.brew.sh/Pathname#install_symlink-instance_method) are guaranteed to be relative. `ln_s` will only produce a relative symlink when given a relative path.
+
+### Rewriting a script shebang
+
+Some formulae install executable scripts written in an interpreted language such as Python or Perl. Homebrew provides a `rewrite_shebang` method to rewrite the shebang of a script. This replaces a script's original interpreter path with the one the formula depends on. This guarantees that the correct interpreter is used at execution time. This isn't required if the build system already handles it (e.g. often with `pip` or Perl `ExtUtils::MakeMaker`).
+
+For example, the [`icdiff` formula](https://github.com/Homebrew/homebrew-core/blob/7beae5ab57c65249403699b2b0700fbccf14e6cb/Formula/icdiff.rb#L16) uses such utility. Note that it is necessary to include the utility in the formula, for example with Python one must use `include Language::Python::Shebang`.
 
 ### Handling files that should persist over formula upgrades
 

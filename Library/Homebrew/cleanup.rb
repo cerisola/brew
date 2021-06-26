@@ -64,7 +64,7 @@ module Homebrew
         def stale_formula?(scrub)
           return false unless HOMEBREW_CELLAR.directory?
 
-          version = if to_s.match?(Pathname::BOTTLE_EXTNAME_RX)
+          version = if HOMEBREW_BOTTLES_EXTNAME_REGEX.match?(to_s)
             begin
               Utils::Bottles.resolve_version(self)
             rescue
@@ -317,7 +317,7 @@ module Homebrew
           next
         end
 
-        # If we've specifed --prune don't do the (expensive) .stale? check.
+        # If we've specified --prune don't do the (expensive) .stale? check.
         cleanup_path(path) { path.unlink } if !prune? && path.stale?(scrub: scrub?)
       end
 
@@ -430,14 +430,17 @@ module Homebrew
     end
 
     def rm_ds_store(dirs = nil)
-      dirs ||= begin
-        Keg::MUST_EXIST_DIRECTORIES + [
-          HOMEBREW_PREFIX/"Caskroom",
-        ]
-      end
+      dirs ||= Keg::MUST_EXIST_DIRECTORIES + [
+        HOMEBREW_PREFIX/"Caskroom",
+      ]
       dirs.select(&:directory?)
           .flat_map { |d| Pathname.glob("#{d}/**/.DS_Store") }
-          .each(&:unlink)
+          .each do |dir|
+            dir.unlink
+          rescue Errno::EACCES
+            # don't care if we can't delete a .DS_Store
+            nil
+          end
     end
 
     def prune_prefix_symlinks_and_directories

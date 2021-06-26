@@ -13,7 +13,7 @@ module Homebrew
     class NamedArgs < Array
       extend T::Sig
 
-      def initialize(*args, parent: Args.new, override_spec: nil, force_bottle: false, flags: [])
+      def initialize(*args, parent: Args.new, override_spec: nil, force_bottle: false, flags: [], cask_options: false)
         require "cask/cask"
         require "cask/cask_loader"
         require "formulary"
@@ -24,6 +24,7 @@ module Homebrew
         @override_spec = override_spec
         @force_bottle = force_bottle
         @flags = flags
+        @cask_options = cask_options
         @parent = parent
 
         super(@args)
@@ -43,10 +44,14 @@ module Homebrew
       # If both a formula and cask with the same name exist, returns
       # the formula and prints a warning unless `only` is specified.
       sig {
-        params(only: T.nilable(Symbol), ignore_unavailable: T.nilable(T::Boolean), method: T.nilable(Symbol))
-          .returns(T::Array[T.any(Formula, Keg, Cask::Cask)])
+        params(
+          only:               T.nilable(Symbol),
+          ignore_unavailable: T.nilable(T::Boolean),
+          method:             T.nilable(Symbol),
+          uniq:               T::Boolean,
+        ).returns(T::Array[T.any(Formula, Keg, Cask::Cask)])
       }
-      def to_formulae_and_casks(only: parent&.only_formula_or_cask, ignore_unavailable: nil, method: nil)
+      def to_formulae_and_casks(only: parent&.only_formula_or_cask, ignore_unavailable: nil, method: nil, uniq: true)
         @to_formulae_and_casks ||= {}
         @to_formulae_and_casks[only] ||= downcased_unique_named.flat_map do |name|
           load_formula_or_cask(name, only: only, method: method)
@@ -56,9 +61,15 @@ module Homebrew
           # Need to rescue before `*UnavailableError` (superclass of this)
           # The formula/cask was found, but there's a problem with its implementation
           raise
-        rescue NoSuchKegError, FormulaUnavailableError, Cask::CaskUnavailableError
+        rescue NoSuchKegError, FormulaUnavailableError, Cask::CaskUnavailableError, FormulaOrCaskUnavailableError
           ignore_unavailable ? [] : raise
-        end.uniq.freeze
+        end.freeze
+
+        if uniq
+          @to_formulae_and_casks[only].uniq.freeze
+        else
+          @to_formulae_and_casks[only]
+        end
       end
 
       def to_formulae_to_casks(only: parent&.only_formula_or_cask, method: nil)
@@ -87,11 +98,17 @@ module Homebrew
               Formulary.factory(name, *spec, force_bottle: @force_bottle, flags: @flags)
             when :resolve
               resolve_formula(name)
+            when :latest_kegs
+              resolve_latest_keg(name)
+            when :default_kegs
+              resolve_default_keg(name)
             when :keg
-              resolve_keg(name)
+              odeprecated "`load_formula_or_cask` with `method: :keg`",
+                          "`load_formula_or_cask` with `method: :default_kegs`"
+              resolve_default_keg(name)
             when :kegs
-              rack = Formulary.to_rack(name)
-              rack.directory? ? rack.subdirs.map { |d| Keg.new(d) } : []
+              _, kegs = resolve_kegs(name)
+              kegs
             else
               raise
             end
@@ -110,7 +127,8 @@ module Homebrew
 
         if only != :formula
           begin
-            cask = Cask::CaskLoader.load(name, config: Cask::Config.from_args(@parent))
+            config = Cask::Config.from_args(@parent) if @cask_options
+            cask = Cask::CaskLoader.load(name, config: config)
 
             if unreadable_error.present?
               onoe <<~EOS
@@ -147,9 +165,9 @@ module Homebrew
       end
       private :resolve_formula
 
-      sig { returns(T::Array[Formula]) }
-      def to_resolved_formulae
-        @to_resolved_formulae ||= to_formulae_and_casks(only: :formula, method: :resolve)
+      sig { params(uniq: T::Boolean).returns(T::Array[Formula]) }
+      def to_resolved_formulae(uniq: true)
+        @to_resolved_formulae ||= to_formulae_and_casks(only: :formula, method: :resolve, uniq: uniq)
                                   .freeze
       end
 
@@ -197,9 +215,33 @@ module Homebrew
       end
 
       sig { returns(T::Array[Keg]) }
+      def to_default_kegs
+        @to_default_kegs ||= begin
+          to_formulae_and_casks(only: :formula, method: :default_kegs).freeze
+        rescue NoSuchKegError => e
+          if (reason = MissingFormula.suggest_command(e.name, "uninstall"))
+            $stderr.puts reason
+          end
+          raise e
+        end
+      end
+
+      sig { returns(T::Array[Keg]) }
+      def to_latest_kegs
+        @to_latest_kegs ||= begin
+          to_formulae_and_casks(only: :formula, method: :latest_kegs).freeze
+        rescue NoSuchKegError => e
+          if (reason = MissingFormula.suggest_command(e.name, "uninstall"))
+            $stderr.puts reason
+          end
+          raise e
+        end
+      end
+
+      sig { returns(T::Array[Keg]) }
       def to_kegs
         @to_kegs ||= begin
-          to_formulae_and_casks(only: :formula, method: :keg).freeze
+          to_formulae_and_casks(only: :formula, method: :kegs).freeze
         rescue NoSuchKegError => e
           if (reason = MissingFormula.suggest_command(e.name, "uninstall"))
             $stderr.puts reason
@@ -213,7 +255,7 @@ module Homebrew
           .returns([T::Array[Keg], T::Array[Cask::Cask]])
       }
       def to_kegs_to_casks(only: parent&.only_formula_or_cask, ignore_unavailable: nil, all_kegs: nil)
-        method = all_kegs ? :kegs : :keg
+        method = all_kegs ? :kegs : :default_kegs
         @to_kegs_to_casks ||= {}
         @to_kegs_to_casks[method] ||=
           to_formulae_and_casks(only: only, ignore_unavailable: ignore_unavailable, method: method)
@@ -257,15 +299,30 @@ module Homebrew
       end
       private :spec
 
-      def resolve_keg(name)
+      def resolve_kegs(name)
         raise UsageError if name.blank?
 
         require "keg"
 
         rack = Formulary.to_rack(name.downcase)
 
-        dirs = rack.directory? ? rack.subdirs : []
-        raise NoSuchKegError, rack.basename if dirs.empty?
+        kegs = rack.directory? ? rack.subdirs.map { |d| Keg.new(d) } : []
+        raise NoSuchKegError, rack.basename if kegs.none?
+
+        [rack, kegs]
+      end
+
+      def resolve_latest_keg(name)
+        _, kegs = resolve_kegs(name)
+
+        # Return keg if it is the only installed keg
+        return kegs if kegs.length == 1
+
+        kegs.reject { |k| k.version.head? }.max_by(&:version)
+      end
+
+      def resolve_default_keg(name)
+        rack, kegs = resolve_kegs(name)
 
         linked_keg_ref = HOMEBREW_LINKED_KEGS/rack.basename
         opt_prefix = HOMEBREW_PREFIX/"opt/#{rack.basename}"
@@ -273,7 +330,7 @@ module Homebrew
         begin
           return Keg.new(opt_prefix.resolved_path) if opt_prefix.symlink? && opt_prefix.directory?
           return Keg.new(linked_keg_ref.resolved_path) if linked_keg_ref.symlink? && linked_keg_ref.directory?
-          return Keg.new(dirs.first) if dirs.length == 1
+          return kegs.first if kegs.length == 1
 
           f = if name.include?("/") || File.exist?(name)
             Formulary.factory(name)

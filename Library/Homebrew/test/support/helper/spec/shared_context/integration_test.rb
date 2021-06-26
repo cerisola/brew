@@ -162,7 +162,7 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
 
         # something here
       RUBY
-    when "foo", "patchelf"
+    when "foo", "gnupg", "patchelf"
       content = <<~RUBY
         url "https://brew.sh/#{name}-1.0"
       RUBY
@@ -220,7 +220,7 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
         system "git", "clone", "--shared", system_tap_path, tap.path
         system "git", "-C", tap.path, "checkout", "master"
       else
-        tap.install(full_clone: false, quiet: true)
+        tap.install(quiet: true)
       end
     end
   end
@@ -235,7 +235,7 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
       brew "install", old_name
 
       (tap_path/"Formula/#{old_name}.rb").unlink
-      (tap_path/"formula_renames.json").write JSON.generate(old_name => new_name)
+      (tap_path/"formula_renames.json").write JSON.pretty_generate(old_name => new_name)
 
       system "git", "add", "--all"
       system "git", "commit", "-m",

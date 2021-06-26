@@ -13,12 +13,6 @@ module GitHub
 
   module_function
 
-  def open_api(url, data: nil, data_binary_path: nil, request_method: nil, scopes: [].freeze, parse_json: true)
-    odeprecated "GitHub.open_api", "GitHub::API.open_rest"
-    API.open_rest(url, data: data, data_binary_path: data_binary_path, request_method: request_method,
-                  scopes: scopes, parse_json: parse_json)
-  end
-
   def check_runs(repo: nil, commit: nil, pr: nil)
     if pr
       repo = pr.fetch("base").fetch("repo").fetch("full_name")
@@ -37,13 +31,13 @@ module GitHub
   end
 
   def create_gist(files, description, private:)
-    url = "https://api.github.com/gists"
+    url = "#{API_URL}/gists"
     data = { "public" => !private, "files" => files, "description" => description }
     API.open_rest(url, data: data, scopes: CREATE_GIST_SCOPES)["html_url"]
   end
 
   def create_issue(repo, title, body)
-    url = "https://api.github.com/repos/#{repo}/issues"
+    url = "#{API_URL}/repos/#{repo}/issues"
     data = { "title" => title, "body" => body }
     API.open_rest(url, data: data, scopes: CREATE_ISSUE_FORK_OR_PR_SCOPES)["html_url"]
   end
@@ -63,8 +57,8 @@ module GitHub
     end
   end
 
-  def issues_for_formula(name, tap: CoreTap.instance, tap_full_name: tap.full_name, state: nil)
-    search_issues(name, repo: tap_full_name, state: state, in: "title")
+  def issues_for_formula(name, tap: CoreTap.instance, tap_remote_repo: tap.full_name, state: nil)
+    search_issues(name, repo: tap_remote_repo, state: state, in: "title")
   end
 
   def user
@@ -115,17 +109,18 @@ module GitHub
     puts "No pull requests found for #{query.inspect}" if open_prs.blank? && closed_prs.blank?
   end
 
-  def create_fork(repo)
+  def create_fork(repo, org: nil)
     url = "#{API_URL}/repos/#{repo}/forks"
     data = {}
+    data[:organization] = org if org
     scopes = CREATE_ISSUE_FORK_OR_PR_SCOPES
     API.open_rest(url, data: data, scopes: scopes)
   end
 
-  def check_fork_exists(repo)
+  def check_fork_exists(repo, org: nil)
     _, reponame = repo.split("/")
 
-    username = API.open_rest(url_to("user")) { |json| json["login"] }
+    username = org || API.open_rest(url_to("user")) { |json| json["login"] }
     json = API.open_rest(url_to("repos", username, reponame))
 
     return false if json["message"] == "Not Found"
@@ -410,7 +405,7 @@ module GitHub
     nil
   end
 
-  def fetch_pull_requests(name, tap_full_name, state: nil, version: nil)
+  def fetch_pull_requests(name, tap_remote_repo, state: nil, version: nil)
     if version.present?
       query = "#{name} #{version}"
       regex = /(^|\s)#{Regexp.quote(name)}(:|,|\s)(.*\s)?#{Regexp.quote(version)}(:|,|\s|$)/i
@@ -418,7 +413,7 @@ module GitHub
       query = name
       regex = /(^|\s)#{Regexp.quote(name)}(:|,|\s|$)/i
     end
-    issues_for_formula(query, tap_full_name: tap_full_name, state: state).select do |pr|
+    issues_for_formula(query, tap_remote_repo: tap_remote_repo, state: state).select do |pr|
       pr["html_url"].include?("/pull/") && regex.match?(pr["title"])
     end
   rescue API::RateLimitExceededError => e
@@ -426,9 +421,9 @@ module GitHub
     []
   end
 
-  def check_for_duplicate_pull_requests(name, tap_full_name, state:, file:, args:, version: nil)
-    pull_requests = fetch_pull_requests(name, tap_full_name, state: state, version: version).select do |pr|
-      pr_files = API.open_rest(url_to("repos", tap_full_name, "pulls", pr["number"], "files"))
+  def check_for_duplicate_pull_requests(name, tap_remote_repo, state:, file:, args:, version: nil)
+    pull_requests = fetch_pull_requests(name, tap_remote_repo, state: state, version: version).select do |pr|
+      pr_files = API.open_rest(url_to("repos", tap_remote_repo, "pulls", pr["number"], "files"))
       pr_files.any? { |f| f["filename"] == file }
     end
     return if pull_requests.blank?
@@ -450,10 +445,10 @@ module GitHub
     end
   end
 
-  def forked_repo_info!(tap_full_name)
-    response = create_fork(tap_full_name)
+  def forked_repo_info!(tap_remote_repo, org: nil)
+    response = create_fork(tap_remote_repo, org: org)
     # GitHub API responds immediately but fork takes a few seconds to be ready.
-    sleep 1 until check_fork_exists(tap_full_name)
+    sleep 1 until check_fork_exists(tap_remote_repo, org: org)
     remote_url = if system("git", "config", "--local", "--get-regexp", "remote\..*\.url", "git@github.com:.*")
       response.fetch("ssh_url")
     else
@@ -477,34 +472,41 @@ module GitHub
     branch = info[:branch_name]
     commit_message = info[:commit_message]
     previous_branch = info[:previous_branch] || "-"
-    tap_full_name = info[:tap_full_name] || tap.full_name
+    tap_remote_repo = info[:tap_remote_repo] || tap.full_name
     pr_message = info[:pr_message]
 
     sourcefile_path.parent.cd do
-      git_dir = Utils.popen_read("git rev-parse --git-dir").chomp
+      git_dir = Utils.popen_read("git", "rev-parse", "--git-dir").chomp
       shallow = !git_dir.empty? && File.exist?("#{git_dir}/shallow")
       changed_files = [sourcefile_path]
       changed_files += additional_files if additional_files.present?
 
       if args.dry_run? || (args.write? && !args.commit?)
-        ohai "try to fork repository with GitHub API" unless args.no_fork?
+        remote_url = if args.no_fork?
+          Utils.popen_read("git", "remote", "get-url", "--push", "origin").chomp
+        else
+          fork_message = "try to fork repository with GitHub API" \
+                         "#{" into `#{args.fork_org}` organization" if args.fork_org}"
+          ohai fork_message
+          "FORK_URL"
+        end
         ohai "git fetch --unshallow origin" if shallow
         ohai "git add #{changed_files.join(" ")}"
         ohai "git checkout --no-track -b #{branch} #{remote}/#{remote_branch}"
         ohai "git commit --no-edit --verbose --message='#{commit_message}'" \
              " -- #{changed_files.join(" ")}"
-        ohai "git push --set-upstream $HUB_REMOTE #{branch}:#{branch}"
+        ohai "git push --set-upstream #{remote_url} #{branch}:#{branch}"
         ohai "git checkout --quiet #{previous_branch}"
         ohai "create pull request with GitHub API (base branch: #{remote_branch})"
       else
 
         unless args.commit?
           if args.no_fork?
-            remote_url = Utils.popen_read("git remote get-url --push origin").chomp
+            remote_url = Utils.popen_read("git", "remote", "get-url", "--push", "origin").chomp
             username = tap.user
           else
             begin
-              remote_url, username = forked_repo_info!(tap_full_name)
+              remote_url, username = forked_repo_info!(tap_remote_repo, org: args.fork_org)
             rescue *API::ERRORS => e
               sourcefile_path.atomic_write(old_contents)
               odie "Unable to fork: #{e.message}!"
@@ -538,7 +540,7 @@ module GitHub
         end
 
         begin
-          url = create_pull_request(tap_full_name, commit_message,
+          url = create_pull_request(tap_remote_repo, commit_message,
                                     "#{username}:#{branch}", remote_branch, pr_message)["html_url"]
           if args.no_browse?
             puts url

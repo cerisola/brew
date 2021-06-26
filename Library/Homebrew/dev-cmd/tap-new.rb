@@ -36,7 +36,7 @@ module Homebrew
     branch = args.branch || "main"
 
     tap = args.named.to_taps.first
-    odie "Invalid tap name '#{tap_name}'" unless tap.path.to_s.match?(HOMEBREW_TAP_PATH_REGEX)
+    odie "Invalid tap name '#{tap}'" unless tap.path.to_s.match?(HOMEBREW_TAP_PATH_REGEX)
 
     titleized_user = tap.user.dup
     titleized_repo = tap.repo.dup
@@ -149,6 +149,9 @@ module Homebrew
 
     unless args.no_git?
       cd tap.path do
+        Utils::Git.set_name_email!
+        Utils::Git.setup_gpg!
+
         # Would be nice to use --initial-branch here but it's not available in
         # older versions of Git that we support.
         safe_system "git", "-c", "init.defaultBranch=#{branch}", "init"

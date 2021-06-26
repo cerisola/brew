@@ -51,12 +51,16 @@ module Homebrew
 
     args = typecheck_args.parse
 
-    Homebrew.install_bundler_gems!
+    Homebrew.install_bundler_gems!(groups: ["sorbet"])
 
     HOMEBREW_LIBRARY_PATH.cd do
       if args.update?
+        excluded_gems = [
+          "did_you_mean", # RBI file is already provided by Sorbet
+        ]
+
         ohai "Updating Tapioca RBI files..."
-        system "bundle", "exec", "tapioca", "sync"
+        system "bundle", "exec", "tapioca", "sync", "--exclude", *excluded_gems
         system "bundle", "exec", "srb", "rbi", "hidden-definitions"
         system "bundle", "exec", "srb", "rbi", "todo"
 

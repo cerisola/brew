@@ -12,11 +12,21 @@ module Homebrew
       #
       # * `https://download.gnome.org/sources/example/1.2/example-1.2.3.tar.xz`
       #
-      # The default regex restricts matching to filenames containing a version
-      # with an even-numbered minor below 90, as these are stable releases.
+      # Before version 40, GNOME used a version scheme where unstable releases
+      # were indicated with a minor that's 90+ or odd. The newer version scheme
+      # uses trailing alpha/beta/rc text to identify unstable versions
+      # (e.g., `40.alpha`).
+      #
+      # When a regex isn't provided in a `livecheck` block, the strategy uses
+      # a default regex that matches versions which don't include trailing text
+      # after the numeric version (e.g., `40.0` instead of `40.alpha`) and it
+      # selectively filters out unstable versions below 40 using the rules for
+      # the older version scheme.
       #
       # @api public
       class Gnome
+        extend T::Sig
+
         NICE_NAME = "GNOME"
 
         # The `Regexp` used to determine if the strategy applies to the URL.
@@ -40,24 +50,36 @@ module Homebrew
         # @param url [String] the URL of the content to check
         # @param regex [Regexp] a regex used for matching versions in content
         # @return [Hash]
-        def self.find_versions(url, regex = nil, &block)
+        sig {
+          params(
+            url:   String,
+            regex: T.nilable(Regexp),
+            cask:  T.nilable(Cask::Cask),
+            block: T.nilable(T.proc.params(arg0: String).returns(T.any(T::Array[String], String))),
+          ).returns(T::Hash[Symbol, T.untyped])
+        }
+        def self.find_versions(url, regex, cask: nil, &block)
           match = url.match(URL_MATCH_REGEX)
 
           page_url = "https://download.gnome.org/sources/#{match[:package_name]}/cache.json"
 
-          # GNOME archive files seem to use a standard filename format, so we
-          # count on the delimiter between the package name and numeric version
-          # being a hyphen and the file being a tarball.
-          #
-          # The `([0-8]\d*?)?[02468]` part of the regex is intended to restrict
-          # matching to versions with an even-numbered minor, as these are
-          # stable releases. This also excludes x.90+ versions, which are
-          # development versions. See: https://www.gnome.org/gnome-3/source/
-          #
-          # Example regex: `/example-(\d+\.([0-8]\d*?)?[02468](?:\.\d+)*?)\.t/i`
-          regex ||= /#{Regexp.escape(match[:package_name])}-(\d+\.([0-8]\d*?)?[02468](?:\.\d+)*?)\.t/i
+          if regex.blank?
+            # GNOME archive files seem to use a standard filename format, so we
+            # count on the delimiter between the package name and numeric
+            # version being a hyphen and the file being a tarball.
+            regex = /#{Regexp.escape(match[:package_name])}-(\d+(?:\.\d+)+)\.t/i
+            version_data = PageMatch.find_versions(page_url, regex, cask: cask, &block)
 
-          PageMatch.find_versions(page_url, regex, &block)
+            # Filter out unstable versions using the old version scheme where
+            # the major version is below 40.
+            version_data[:matches].reject! do |_, version|
+              version.major < 40 && (version.minor >= 90 || version.minor.to_i.odd?)
+            end
+
+            version_data
+          else
+            PageMatch.find_versions(page_url, regex, cask: cask, &block)
+          end
         end
       end
     end

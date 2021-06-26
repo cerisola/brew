@@ -53,24 +53,18 @@ module RuboCop
           end
 
           if regex_match_group(patch_url_node, %r{https://github.com/[^/]*/[^/]*/commit/[a-fA-F0-9]*\.diff})
-            problem "GitHub patches should end with .patch, not .diff: #{patch_url}" do |corrector|
-              correct = patch_url_node.source.gsub(/\.diff/, ".patch")
-              corrector.replace(patch_url_node.source_range, correct)
-            end
+            problem "GitHub patches should end with .patch, not .diff: #{patch_url}"
           end
 
-          if regex_match_group(patch_url_node, %r{.*gitlab.*/commit/[a-fA-F0-9]*\.diff})
-            problem "GitLab patches should end with .patch, not .diff: #{patch_url}" do |corrector|
-              correct = patch_url_node.source.gsub(/\.diff/, ".patch")
-              corrector.replace(patch_url_node.source_range, correct)
-            end
+          # Only .diff passes `--full-index` to `git diff` and there is no documented way
+          # to get .patch to behave the same for GitLab.
+          if regex_match_group(patch_url_node, %r{.*gitlab.*/commit/[a-fA-F0-9]*\.patch})
+            problem "GitLab patches should end with .diff, not .patch: #{patch_url}"
           end
 
           gh_patch_param_pattern = %r{https?://github\.com/.+/.+/(?:commit|pull)/[a-fA-F0-9]*.(?:patch|diff)}
           if regex_match_group(patch_url_node, gh_patch_param_pattern) && !patch_url.match?(/\?full_index=\w+$/)
-            problem "GitHub patches should use the full_index parameter: #{patch_url}?full_index=1" do |corrector|
-              corrector.replace(patch_url_node.source_range, "#{patch_url}?full_index=1")
-            end
+            problem "GitHub patches should use the full_index parameter: #{patch_url}?full_index=1"
           end
 
           gh_patch_patterns = Regexp.union([%r{/raw\.github\.com/},

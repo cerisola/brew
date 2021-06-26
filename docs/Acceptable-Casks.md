@@ -2,8 +2,7 @@
 
 Some casks should not go in
 [homebrew/cask](https://github.com/Homebrew/homebrew-cask). But there are
-additional [Interesting Taps and Forks](Interesting-Taps-and-Forks.md) and anyone can [start their
-own](Taps.md)!
+additional [Interesting Taps and Forks](Interesting-Taps-and-Forks.md) and anyone can [start their own](Taps.md)!
 
 ## Finding a Home For Your Cask
 
@@ -98,7 +97,7 @@ Amongst other things, the logistics of such requests are unsustainable for Homeb
 
 You should also be able to present clear actionable fixes to those concerns. Simply asking for it without solutions will get your issue closed.
 
-There is a difference between discoverability and searchability however, and while the former (finding new apps you didn’t know about) is unlikely to ever become part of our goals. The latter (identifying the app you know about and want to install) is indeed important to us, and we continue to work on it.
+However, there is a difference between discoverability (finding new apps you didn’t know about) and searchability (identifying the app you know about and want to install). While the former is unlikely to ever become part of our goals, the latter is indeed important to us, and we continue to work on it.
 
 ## Rejected Casks
 
@@ -107,7 +106,7 @@ Before submitting a Cask to any of our repos, you must read [our documentation o
 Common reasons to reject a Cask entirely:
 
 + We have strong reasons to believe including the Cask can put the whole project at risk. Happened only once so far, [with Popcorn Time](https://github.com/Homebrew/homebrew-cask/pull/3954).
-+ The Cask is unreasonably difficult to maintain. Examples include [Audacity](https://github.com/Homebrew/homebrew-cask/pull/27517) and [older Java development Casks](https://github.com/Homebrew/homebrew-cask/issues/57387).
++ The Cask is unreasonably difficult to maintain. Examples once included [Audacity](https://github.com/Homebrew/homebrew-cask/pull/27517) and [older Java development Casks](https://github.com/Homebrew/homebrew-cask/issues/57387).
 + The app is a trial version, and the only way to acquire the full version is through the Mac App Store.
   + Similarly (and trickier to spot), the app has moved to the Mac App Store but still provides old versions via direct download. We reject these in all official repos so users don’t get stuck using an old version, wrongly thinking they’re using the most up-to-date one (which, amongst other things, might be a security risk).
 + The app is both open-source and CLI-only (i.e. it only uses the `binary` artifact). In that case, and [in the spirit of deduplication](https://github.com/Homebrew/homebrew-cask/issues/15603), submit it first to [Homebrew/core](https://github.com/Homebrew/homebrew-core) as a formula that builds from source. If it is rejected, you may then try again as a cask (link us to the issue so we can see the discussion and reasoning for rejection).

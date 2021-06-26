@@ -1,7 +1,6 @@
 # typed: false
 # frozen_string_literal: true
 
-require "cxxstdlib"
 require "formula"
 require "keg"
 require "tab"
@@ -10,7 +9,6 @@ require "caveats"
 require "cleaner"
 require "formula_cellar_checks"
 require "install_renamed"
-require "debrew"
 require "sandbox"
 require "development_tools"
 require "cache_store"
@@ -23,6 +21,7 @@ require "find"
 require "utils/spdx"
 require "deprecate_disable"
 require "unlink"
+require "service"
 
 # Installer for a formula.
 #
@@ -115,25 +114,6 @@ class FormulaInstaller
     @installed = Set.new
   end
 
-  # When no build tools are available and build flags are passed through ARGV,
-  # it's necessary to interrupt the user before any sort of installation
-  # can proceed. Only raises when the user has no developer tools.
-  def self.prevent_build_flags(args)
-    return if DevelopmentTools.installed?
-
-    build_flags = []
-
-    build_flags << "--HEAD" if args.HEAD?
-    build_flags << "--universal" if args.universal?
-    build_flags << "--build-bottle" if args.build_bottle?
-    build_flags << "--build-from-source"
-
-    return if build_flags.empty?
-
-    all_bottled = args.named.to_formulae.all?(&:bottled?)
-    raise BuildFlagsError.new(build_flags, bottled: all_bottled)
-  end
-
   sig { returns(T::Boolean) }
   def build_from_source?
     return true
@@ -198,6 +178,24 @@ class FormulaInstaller
 
   sig { void }
   def prelude
+    type, reason = DeprecateDisable.deprecate_disable_info formula
+    if type.present?
+      case type
+      when :deprecated
+        if reason.present?
+          opoo "#{formula.full_name} has been deprecated because it #{reason}!"
+        else
+          opoo "#{formula.full_name} has been deprecated!"
+        end
+      when :disabled
+        if reason.present?
+          raise CannotInstallFormulaError, "#{formula.full_name} has been disabled because it #{reason}!"
+        end
+
+        raise CannotInstallFormulaError, "#{formula.full_name} has been disabled!"
+      end
+    end
+
     Tab.clear_cache
     verify_deps_exist unless ignore_deps?
     forbidden_license_check
@@ -231,7 +229,7 @@ class FormulaInstaller
        # TODO: re-enable this on Linux when we merge linuxbrew-core into
        # homebrew-core and have full bottle coverage.
        (OS.mac? || ENV["CI"]) &&
-       !build_from_source? && !build_bottle? &&
+       !build_from_source? && !build_bottle? && !formula.head? &&
        formula.tap&.core_tap? && !formula.bottle_unneeded? &&
        # Integration tests override homebrew-core locations
        ENV["HOMEBREW_TEST_TMPDIR"].nil? &&
@@ -248,7 +246,7 @@ class FormulaInstaller
       # check fails)
       elsif !Homebrew::EnvConfig.developer? &&
             (!installed_as_dependency? || !formula.any_version_installed?) &&
-            (!OS.mac? || !OS::Mac.outdated_release?)
+            (!OS.mac? || !OS::Mac.version.outdated_release?)
         <<~EOS
           #{formula}: no bottle available!
         EOS
@@ -267,68 +265,55 @@ class FormulaInstaller
       end
     end
 
-    type, reason = DeprecateDisable.deprecate_disable_info formula
-
-    if type.present?
-      case type
-      when :deprecated
-        if reason.present?
-          opoo "#{formula.full_name} has been deprecated because it #{reason}!"
-        else
-          opoo "#{formula.full_name} has been deprecated!"
-        end
-      when :disabled
-        if reason.present?
-          raise CannotInstallFormulaError, "#{formula.full_name} has been disabled because it #{reason}!"
-        end
-
-        raise CannotInstallFormulaError, "#{formula.full_name} has been disabled!"
-      end
-    end
-
     return if ignore_deps?
 
-    recursive_deps = formula.recursive_dependencies
-    recursive_formulae = recursive_deps.map(&:to_formula)
+    if Homebrew::EnvConfig.developer?
+      # `recursive_dependencies` trims cyclic dependencies, so we do one level and take the recursive deps of that.
+      # Mapping direct dependencies to deeper dependencies in a hash is also useful for the cyclic output below.
+      recursive_dep_map = formula.deps.to_h { |dep| [dep, dep.to_formula.recursive_dependencies] }
 
-    recursive_dependencies = []
-    invalid_arch_dependencies = []
-    recursive_formulae.each do |dep|
-      dep_recursive_dependencies = dep.recursive_dependencies.map(&:to_s)
-      if dep_recursive_dependencies.include?(formula.name)
-        recursive_dependencies << "#{formula.full_name} depends on #{dep.full_name}"
-        recursive_dependencies << "#{dep.full_name} depends on #{formula.full_name}"
+      cyclic_dependencies = []
+      recursive_dep_map.each do |dep, recursive_deps|
+        if [formula.name, formula.full_name].include?(dep.name)
+          cyclic_dependencies << "#{formula.full_name} depends on itself directly"
+        elsif recursive_deps.any? { |rdep| [formula.name, formula.full_name].include?(rdep.name) }
+          cyclic_dependencies << "#{formula.full_name} depends on itself via #{dep.name}"
+        end
       end
 
-      if (tab = Tab.for_formula(dep)) && tab.arch.present? && tab.arch.to_s != Hardware::CPU.arch.to_s
+      if cyclic_dependencies.present?
+        raise CannotInstallFormulaError, <<~EOS
+          #{formula.full_name} contains a recursive dependency on itself:
+            #{cyclic_dependencies.join("\n  ")}
+        EOS
+      end
+
+      # Merge into one list
+      recursive_deps = recursive_dep_map.flat_map { |dep, rdeps| [dep] + rdeps }
+      Dependency.merge_repeats(recursive_deps)
+    else
+      recursive_deps = formula.recursive_dependencies
+    end
+
+    invalid_arch_dependencies = []
+    pinned_unsatisfied_deps = []
+    recursive_deps.each do |dep|
+      if (tab = Tab.for_formula(dep.to_formula)) && tab.arch.present? && tab.arch.to_s != Hardware::CPU.arch.to_s
         invalid_arch_dependencies << "#{dep} was built for #{tab.arch}"
       end
+
+      next unless dep.to_formula.pinned?
+      next if dep.satisfied?(inherited_options_for(dep))
+      next if dep.build? && pour_bottle?
+
+      pinned_unsatisfied_deps << dep
     end
 
-    unless recursive_dependencies.empty?
-      raise CannotInstallFormulaError, <<~EOS
-        #{formula.full_name} contains a recursive dependency on itself:
-          #{recursive_dependencies.join("\n  ")}
-      EOS
-    end
-
-    if recursive_formulae.flat_map(&:recursive_dependencies)
-                         .map(&:to_s)
-                         .include?(formula.name)
-      raise CannotInstallFormulaError, <<~EOS
-        #{formula.full_name} contains a recursive dependency on itself!
-      EOS
-    end
-
-    unless invalid_arch_dependencies.empty?
+    if invalid_arch_dependencies.present?
       raise CannotInstallFormulaError, <<~EOS
         #{formula.full_name} dependencies not built for the #{Hardware::CPU.arch} CPU architecture:
           #{invalid_arch_dependencies.join("\n  ")}
       EOS
-    end
-
-    pinned_unsatisfied_deps = recursive_deps.select do |dep|
-      dep.to_formula.pinned? && !dep.satisfied?(inherited_options_for(dep))
     end
 
     return if pinned_unsatisfied_deps.empty?
@@ -359,30 +344,6 @@ class FormulaInstaller
       Homebrew::Install.perform_build_from_source_checks
     end
 
-    # not in initialize so upgrade can unlink the active keg before calling this
-    # function but after instantiating this class so that it can avoid having to
-    # relink the active keg if possible (because it is slow).
-    if formula.linked_keg.directory?
-      message = <<~EOS
-        #{formula.name} #{formula.linked_version} is already installed
-      EOS
-      if formula.outdated? && !formula.head?
-        message += <<~EOS
-          To upgrade to #{formula.pkg_version}, run:
-            brew upgrade #{formula.full_name}
-        EOS
-      elsif only_deps?
-        message = nil
-      else
-        # some other version is already installed *and* linked
-        message += <<~EOS
-          To install #{formula.pkg_version}, first run:
-            brew unlink #{formula.name}
-        EOS
-      end
-      raise CannotInstallFormulaError, message if message
-    end
-
     # Warn if a more recent version of this formula is available in the tap.
     begin
       if formula.pkg_version < (v = Formulary.factory(formula.full_name, force_bottle: force_bottle?).pkg_version)
@@ -410,10 +371,6 @@ class FormulaInstaller
 
     return if only_deps?
 
-    if build_bottle? && (arch = @bottle_arch) && Hardware::CPU.optimization_flags.exclude?(arch.to_sym)
-      raise CannotInstallFormulaError, "Unrecognized architecture for --bottle-arch: #{arch}"
-    end
-
     formula.deprecated_flags.each do |deprecated_option|
       old_flag = deprecated_option.old_flag
       new_flag = deprecated_option.current_flag
@@ -423,7 +380,7 @@ class FormulaInstaller
     options = display_options(formula).join(" ")
     oh1 "Installing #{Formatter.identifier(formula.full_name)} #{options}".strip if show_header?
 
-    unless formula.tap&.private?
+    if formula.tap&.installed? && !formula.tap&.private?
       action = "#{formula.full_name} #{options}".strip
       Utils::Analytics.report_event("install", action)
 
@@ -520,9 +477,8 @@ class FormulaInstaller
   # being installed.
   def compute_dependencies
     @compute_dependencies ||= begin
-      req_map, req_deps = expand_requirements
-      check_requirements(req_map)
-      expand_dependencies(req_deps + formula.deps)
+      check_requirements(expand_requirements)
+      expand_dependencies
     end
   end
 
@@ -568,10 +524,9 @@ class FormulaInstaller
 
   def expand_requirements
     unsatisfied_reqs = Hash.new { |h, k| h[k] = [] }
-    req_deps = []
     formulae = [formula]
-    formula_deps_map = Dependency.expand(formula)
-                                 .index_by(&:name)
+    formula_deps_map = formula.recursive_dependencies
+                              .index_by(&:name)
 
     while (f = formulae.pop)
       runtime_requirements = runtime_requirements(f)
@@ -595,17 +550,16 @@ class FormulaInstaller
       end
     end
 
-    # Merge the repeated dependencies, which may have different tags.
-    req_deps = Dependency.merge_repeats(req_deps)
-
-    [unsatisfied_reqs, req_deps]
+    unsatisfied_reqs
   end
 
-  def expand_dependencies(deps)
+  def expand_dependencies
     inherited_options = Hash.new { |hash, key| hash[key] = Options.new }
     pour_bottle = pour_bottle?
 
-    expanded_deps = Dependency.expand(formula, deps) do |dependent, dep|
+    # Cache for this expansion only. FormulaInstaller has a lot of inputs which can alter expansion.
+    cache_key = "FormulaInstaller-#{formula.full_name}-#{Time.now.to_f}"
+    expanded_deps = Dependency.expand(formula, cache_key: cache_key) do |dependent, dep|
       inherited_options[dep.name] |= inherited_options_for(dep)
       build = effective_build_options_for(
         dependent,
@@ -614,7 +568,8 @@ class FormulaInstaller
 
       keep_build_test = false
       keep_build_test ||= dep.test? && include_test? && @include_test_formulae.include?(dependent.full_name)
-      keep_build_test ||= dep.build? && !install_bottle_for?(dependent, build) && !dependent.latest_version_installed?
+      keep_build_test ||= dep.build? && !install_bottle_for?(dependent, build) &&
+                          (formula.head? || !dependent.latest_version_installed?)
 
       if dep.prune_from_option?(build) || ((dep.build? || dep.test?) && !keep_build_test)
         Dependency.prune
@@ -782,13 +737,15 @@ class FormulaInstaller
 
     audit_installed if Homebrew::EnvConfig.developer?
 
+    return if !installed_on_request? || installed_as_dependency?
+
     caveats = Caveats.new(formula)
 
     return if caveats.empty?
 
     @show_summary_heading = true
     ohai "Caveats", caveats.to_s
-    Homebrew.messages.record_caveats(formula, caveats)
+    Homebrew.messages.record_caveats(formula.name, caveats)
   end
 
   sig { void }
@@ -797,7 +754,7 @@ class FormulaInstaller
 
     ohai "Finishing up" if verbose?
 
-    install_plist
+    install_service
 
     keg = Keg.new(formula.prefix)
     link(keg)
@@ -823,7 +780,7 @@ class FormulaInstaller
     tab = Tab.for_keg(keg)
     Tab.clear_cache
     f_runtime_deps = formula.runtime_dependencies(read_from_tab: false)
-    tab.runtime_dependencies = Tab.runtime_deps_hash(f_runtime_deps)
+    tab.runtime_dependencies = Tab.runtime_deps_hash(formula, f_runtime_deps)
     tab.write
 
     # let's reset Utils::Git.available? if we just installed git
@@ -1032,15 +989,33 @@ class FormulaInstaller
   end
 
   sig { void }
-  def install_plist
-    return unless formula.plist
+  def install_service
+    if formula.service? && formula.plist
+      ofail "Formula specified both service and plist"
+      return
+    end
 
-    formula.plist_path.atomic_write(formula.plist)
-    formula.plist_path.chmod 0644
+    if formula.service?
+      service_path = formula.systemd_service_path
+      service_path.atomic_write(formula.service.to_systemd_unit)
+      service_path.chmod 0644
+    end
+
+    service = if formula.service?
+      formula.service.to_plist
+    elsif formula.plist
+      formula.plist
+    end
+
+    return unless service
+
+    plist_path = formula.plist_path
+    plist_path.atomic_write(service)
+    plist_path.chmod 0644
     log = formula.var/"log"
-    log.mkpath if formula.plist.include? log.to_s
+    log.mkpath if service.include? log.to_s
   rescue Exception => e # rubocop:disable Lint/RescueException
-    ofail "Failed to install plist file"
+    ofail "Failed to install service files"
     odebug e, e.backtrace
   end
 
@@ -1075,8 +1050,36 @@ class FormulaInstaller
       -I #{$LOAD_PATH.join(File::PATH_SEPARATOR)}
       --
       #{HOMEBREW_LIBRARY_PATH}/postinstall.rb
-      #{formula.path}
     ]
+
+    # Use the formula from the keg if:
+    # * Installing from a local bottle, or
+    # * The formula doesn't exist in the tap (or the tap isn't installed), or
+    # * The formula in the tap has a different pkg_version.
+    #
+    # In all other cases, including if the formula from the keg is unreadable
+    # (third-party taps may `require` some of their own libraries) or if there
+    # is no formula present in the keg (as is the case with old bottles), use
+    # the formula from the tap.
+    formula_path = begin
+      keg_formula_path = formula.opt_prefix/".brew/#{formula.name}.rb"
+      tap_formula_path = formula.path
+      keg_formula = Formulary.factory(keg_formula_path)
+      tap_formula = Formulary.factory(tap_formula_path) if tap_formula_path.exist?
+      other_version_installed = (keg_formula.pkg_version != tap_formula&.pkg_version)
+
+      if formula.local_bottle_path.present? ||
+         !tap_formula_path.exist? ||
+         other_version_installed
+        keg_formula_path
+      else
+        tap_formula_path
+      end
+    rescue FormulaUnavailableError, FormulaUnreadableError
+      tap_formula_path
+    end
+
+    args << formula_path
 
     Utils.safe_fork do
       if Sandbox.available?
@@ -1121,7 +1124,9 @@ class FormulaInstaller
 
     return if only_deps?
 
-    unless pour_bottle?(output_warning: true)
+    if pour_bottle?(output_warning: true)
+      formula.fetch_bottle_tab
+    else
       formula.fetch_patches
       formula.resources.each(&:fetch)
     end
@@ -1144,29 +1149,35 @@ class FormulaInstaller
       downloader.stage
     end
 
-    keg = Keg.new(formula.prefix)
-    tab = Tab.for_keg(keg)
     Tab.clear_cache
 
-    skip_linkage = formula.bottle_specification.skip_relocation?
-    keg.replace_placeholders_with_locations tab.changed_files, skip_linkage: skip_linkage
+    tab = Utils::Bottles.load_tab(formula)
 
-    tab = Tab.for_keg(keg)
-
-    CxxStdlib.check_compatibility(
-      formula, formula.recursive_dependencies,
-      Keg.new(formula.prefix), tab.compiler
-    )
-
-    tab.tap = formula.tap
+    # fill in missing/outdated parts of the tab
+    # keep in sync with Tab#to_bottle_json
+    tab.used_options = []
+    tab.unused_options = []
+    tab.built_as_bottle = true
     tab.poured_from_bottle = true
-    tab.time = Time.now.to_i
-    tab.head = HOMEBREW_REPOSITORY.git_head
-    tab.source["path"] = formula.specified_path.to_s
     tab.installed_as_dependency = installed_as_dependency?
     tab.installed_on_request = installed_on_request?
+    tab.time = Time.now.to_i
     tab.aliases = formula.aliases
+    tab.arch = Hardware::CPU.arch
+    tab.source["versions"]["stable"] = formula.stable.version.to_s
+    tab.source["versions"]["version_scheme"] = formula.version_scheme
+    tab.source["path"] = formula.specified_path.to_s
+    tab.source["tap_git_head"] = formula.tap&.installed? ? formula.tap&.git_head : nil
+    tab.tap = formula.tap
     tab.write
+
+    keg = Keg.new(formula.prefix)
+    skip_linkage = formula.bottle_specification.skip_relocation?
+    # TODO: Remove `with_env` when bottles are built with RPATH relocation enabled
+    # https://github.com/Homebrew/brew/issues/11329
+    with_env(HOMEBREW_RELOCATE_RPATHS: "1") do
+      keg.replace_placeholders_with_locations tab.changed_files, skip_linkage: skip_linkage
+    end
   end
 
   sig { params(output: T.nilable(String)).void }

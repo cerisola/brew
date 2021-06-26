@@ -74,7 +74,7 @@ module Superenv
     self["CMAKE_INCLUDE_PATH"] = determine_cmake_include_path
     self["CMAKE_LIBRARY_PATH"] = determine_cmake_library_path
     self["ACLOCAL_PATH"] = determine_aclocal_path
-    self["M4"] = DevelopmentTools.locate("m4") if deps.any? { |d| d.name == "autoconf" }
+    self["M4"] = "#{HOMEBREW_PREFIX}/opt/m4/bin/m4" if deps.any? { |d| d.name == "libtool" }
     self["HOMEBREW_ISYSTEM_PATHS"] = determine_isystem_paths
     self["HOMEBREW_INCLUDE_PATHS"] = determine_include_paths
     self["HOMEBREW_LIBRARY_PATHS"] = determine_library_paths
@@ -199,10 +199,23 @@ module Superenv
 
   sig { returns(T.nilable(PATH)) }
   def determine_library_paths
-    paths = [
-      keg_only_deps.map(&:opt_lib),
-      HOMEBREW_PREFIX/"lib",
-    ]
+    paths = []
+    if compiler.match?(GNU_GCC_REGEXP)
+      # Add path to GCC runtime libs for version being used to compile,
+      # so that the linker will find those libs before any that may be linked in $HOMEBREW_PREFIX/lib.
+      # https://github.com/Homebrew/brew/pull/11459#issuecomment-851075936
+      begin
+        f = gcc_version_formula(compiler.to_s)
+      rescue FormulaUnavailableError
+        nil
+      else
+        paths << f.opt_lib/"gcc"/f.version.major if f.any_version_installed?
+      end
+    end
+
+    paths << keg_only_deps.map(&:opt_lib)
+    paths << HOMEBREW_PREFIX/"lib"
+
     paths += homebrew_extra_library_paths
     PATH.new(paths).existing
   end
@@ -261,6 +274,9 @@ module Superenv
   sig { returns(String) }
   def determine_optflags
     Hardware::CPU.optimization_flags.fetch(effective_arch)
+  rescue KeyError
+    odebug "Building a bottle for custom architecture (#{effective_arch})..."
+    Hardware::CPU.arch_flag(effective_arch)
   end
 
   sig { returns(String) }
@@ -294,31 +310,8 @@ module Superenv
   end
 
   sig { void }
-  def universal_binary
-    odisabled "ENV.universal_binary"
-
-    check_for_compiler_universal_support
-
-    self["HOMEBREW_ARCHFLAGS"] = Hardware::CPU.universal_archs.as_arch_flags
-  end
-
-  sig { void }
   def permit_arch_flags
     append_to_cccfg "K"
-  end
-
-  sig { void }
-  def m32
-    odisabled "ENV.m32"
-
-    append "HOMEBREW_ARCHFLAGS", "-m32"
-  end
-
-  sig { void }
-  def m64
-    odisabled "ENV.m64"
-
-    append "HOMEBREW_ARCHFLAGS", "-m64"
   end
 
   sig { void }
@@ -332,36 +325,16 @@ module Superenv
     append_to_cccfg "g" if compiler == :clang
   end
 
-  sig { void }
-  def libstdcxx
-    odisabled "ENV.libstdcxx"
-
-    append_to_cccfg "h" if compiler == :clang
-  end
-
   # @private
   sig { void }
   def refurbish_args
     append_to_cccfg "O"
   end
 
-  %w[O3 O2 Os].each do |opt|
-    define_method opt do
-      odisabled "ENV.#{opt}"
-
-      send(:[]=, "HOMEBREW_OPTIMIZATION_LEVEL", opt)
-    end
-  end
-
   %w[O1 O0].each do |opt|
     define_method opt do
       send(:[]=, "HOMEBREW_OPTIMIZATION_LEVEL", opt)
     end
-  end
-
-  sig { void }
-  def set_x11_env_if_installed
-    odisabled "ENV.set_x11_env_if_installed"
   end
 end
 

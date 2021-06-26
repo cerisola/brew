@@ -115,7 +115,9 @@ module Homebrew
   def upgrade_outdated_formulae(formulae, args:)
     return false if args.cask?
 
-    FormulaInstaller.prevent_build_flags(args)
+    if args.build_from_source? && !DevelopmentTools.installed?
+      raise BuildFlagsError.new(["--build-from-source"], bottled: formulae.all?(&:bottled?))
+    end
 
     Install.perform_preinstall_checks
 
@@ -172,9 +174,36 @@ module Homebrew
       puts formulae_upgrades.join("\n")
     end
 
-    Upgrade.upgrade_formulae(formulae_to_install, args: args)
+    unless args.dry_run?
+      Upgrade.upgrade_formulae(
+        formulae_to_install,
+        flags:                      args.flags_only,
+        installed_on_request:       args.named.present?,
+        force_bottle:               args.force_bottle?,
+        build_from_source_formulae: args.build_from_source_formulae,
+        interactive:                args.interactive?,
+        keep_tmp:                   args.keep_tmp?,
+        force:                      args.force?,
+        debug:                      args.debug?,
+        quiet:                      args.quiet?,
+        verbose:                    args.verbose?,
+      )
+    end
 
-    Upgrade.check_installed_dependents(formulae_to_install, args: args)
+    Upgrade.check_installed_dependents(
+      formulae_to_install,
+      flags:                      args.flags_only,
+      dry_run:                    args.dry_run?,
+      installed_on_request:       args.named.present?,
+      force_bottle:               args.force_bottle?,
+      build_from_source_formulae: args.build_from_source_formulae,
+      interactive:                args.interactive?,
+      keep_tmp:                   args.keep_tmp?,
+      force:                      args.force?,
+      debug:                      args.debug?,
+      quiet:                      args.quiet?,
+      verbose:                    args.verbose?,
+    )
 
     true
   end

@@ -21,6 +21,7 @@ module GitHub
         #{ALL_SCOPES_URL}
       #{Utils::Shell.set_variable_in_profile("HOMEBREW_GITHUB_API_TOKEN", "your_token_here")}
   EOS
+  GITHUB_PERSONAL_ACCESS_TOKEN_REGEX = /^(?:[a-f0-9]{40}|ghp_\w{36,251})$/.freeze
 
   # Helper functions to access the GitHub API.
   #
@@ -63,7 +64,7 @@ module GitHub
     class AuthenticationFailedError < Error
       def initialize(github_message)
         @github_message = github_message
-        message = +"GitHub #{github_message}:"
+        message = +"GitHub API Error: #{github_message}\n"
         message << if Homebrew::EnvConfig.github_api_token
           <<~EOS
             HOMEBREW_GITHUB_API_TOKEN may be invalid or expired; check:
@@ -115,10 +116,8 @@ module GitHub
     # but only if that password looks like a GitHub Personal Access Token.
     sig { returns(T.nilable(String)) }
     def keychain_username_password
-      github_credentials = Utils.popen(["git", "credential-osxkeychain", "get"], "w+") do |pipe|
+      github_credentials = Utils.popen_write("git", "credential-osxkeychain", "get") do |pipe|
         pipe.write "protocol=https\nhost=github.com\n"
-        pipe.close_write
-        pipe.read
       end
       github_username = github_credentials[/username=(.+)/, 1]
       github_password = github_credentials[/password=(.+)/, 1]
@@ -127,7 +126,7 @@ module GitHub
       # Don't use passwords from the keychain unless they look like
       # GitHub Personal Access Tokens:
       #   https://github.com/cerisola/brew/issues/6862#issuecomment-572610344
-      return unless /^[a-f0-9]{40}$/i.match?(github_password)
+      return unless GITHUB_PERSONAL_ACCESS_TOKEN_REGEX.match?(github_password)
 
       github_password
     rescue Errno::EPIPE
@@ -139,9 +138,7 @@ module GitHub
     end
 
     def credentials
-      @credentials ||= begin
-        Homebrew::EnvConfig.github_api_token || keychain_username_password
-      end
+      @credentials ||= Homebrew::EnvConfig.github_api_token || keychain_username_password
     end
 
     sig { returns(Symbol) }
@@ -196,7 +193,7 @@ module GitHub
       data_tmpfile = nil
       if data
         begin
-          data = JSON.generate data
+          data = JSON.pretty_generate data
           data_tmpfile = Tempfile.new("github_api_post", HOMEBREW_TEMP)
         rescue JSON::ParserError => e
           raise Error, "Failed to parse JSON request:\n#{e.message}\n#{data}", e.backtrace
@@ -258,7 +255,7 @@ module GitHub
 
     def open_graphql(query, scopes: [].freeze)
       data = { query: query }
-      result = open_rest("https://api.github.com/graphql", scopes: scopes, data: data, request_method: "POST")
+      result = open_rest("#{API_URL}/graphql", scopes: scopes, data: data, request_method: "POST")
 
       if result["errors"].present?
         raise Error, result["errors"].map { |e|
@@ -286,15 +283,17 @@ module GitHub
         meta[key] = value.strip
       end
 
-      if meta.fetch("x-ratelimit-remaining", 1).to_i <= 0
-        reset = meta.fetch("x-ratelimit-reset").to_i
-        raise RateLimitExceededError.new(reset, message)
-      end
-
       credentials_error_message(meta, scopes)
 
       case http_code
-      when "401", "403"
+      when "401"
+        raise AuthenticationFailedError, message
+      when "403"
+        if meta.fetch("x-ratelimit-remaining", 1).to_i <= 0
+          reset = meta.fetch("x-ratelimit-reset").to_i
+          raise RateLimitExceededError.new(reset, message)
+        end
+
         raise AuthenticationFailedError, message
       when "404"
         raise MissingAuthenticationError if credentials_type == :none && scopes.present?

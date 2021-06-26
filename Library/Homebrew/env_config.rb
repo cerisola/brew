@@ -33,12 +33,6 @@ module Homebrew
         description:  "Use this as the `bat` configuration file.",
         default_text: "`$HOME/.bat/config`.",
       },
-      HOMEBREW_BINTRAY_KEY:                   {
-        description: "Use this API key when accessing the Bintray API (where bottles are stored).",
-      },
-      HOMEBREW_BINTRAY_USER:                  {
-        description: "Use this username when accessing the Bintray API (where bottles are stored).",
-      },
       HOMEBREW_BOOTSNAP:                      {
         description: "If set, use Bootsnap to speed up repeated `brew` calls. "\
                      "A no-op when using Homebrew's vendored, relocatable Ruby on macOS (as it doesn't work).",
@@ -52,8 +46,8 @@ module Homebrew
                       "download from the prefix `http://localhost:8080/`. " \
                       "If bottles are not available at `HOMEBREW_BOTTLE_DOMAIN` " \
                       "they will be downloaded from the default bottle domain.",
-        default_text: "macOS: `https://homebrew.bintray.com/`, " \
-                      "Linux: `https://linuxbrew.bintray.com/`.",
+        default_text: "macOS: `https://ghcr.io/v2/homebrew/core`, " \
+                      "Linux: `https://ghcr.io/v2/linuxbrew/core`.",
         default:      HOMEBREW_BOTTLE_DEFAULT_DOMAIN,
       },
       HOMEBREW_BREW_GIT_REMOTE:               {
@@ -261,6 +255,10 @@ module Homebrew
         description: "If set, `brew install`, `brew upgrade` and `brew reinstall` will never automatically " \
                      "cleanup installed/upgraded/reinstalled formulae or all formulae every " \
                      "`HOMEBREW_CLEANUP_PERIODIC_FULL_DAYS` days.",
+        boolean:     true,
+      },
+      HOMEBREW_NO_INSTALL_UPGRADE:            {
+        description: "If set, `brew install` will not automatically upgrade installed but outdated formulae",
         boolean:     true,
       },
       HOMEBREW_PRY:                           {

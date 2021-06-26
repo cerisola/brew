@@ -9,14 +9,14 @@ describe BottleSpecification do
   describe "#sha256" do
     it "works without cellar" do
       checksums = {
-        snow_leopard_32: "deadbeef" * 8,
-        snow_leopard:    "faceb00c" * 8,
-        lion:            "baadf00d" * 8,
-        mountain_lion:   "8badf00d" * 8,
+        arm64_big_sur: "deadbeef" * 8,
+        big_sur:       "faceb00c" * 8,
+        catalina:      "baadf00d" * 8,
+        mojave:        "8badf00d" * 8,
       }
 
       checksums.each_pair do |cat, digest|
-        bottle_spec.sha256(digest => cat)
+        bottle_spec.sha256(cat => digest)
         checksum, = bottle_spec.checksum_for(cat)
         expect(Checksum.new(digest)).to eq(checksum)
       end
@@ -24,14 +24,14 @@ describe BottleSpecification do
 
     it "works with cellar" do
       checksums = [
-        { cellar: :any_skip_relocation, tag: :snow_leopard_32, digest: "deadbeef" * 8 },
-        { cellar: :any, tag: :snow_leopard, digest: "faceb00c" * 8 },
-        { cellar: "/usr/local/Cellar", tag: :lion, digest: "baadf00d" * 8 },
-        { cellar: Homebrew::DEFAULT_CELLAR, tag: :mountain_lion, digest: "8badf00d" * 8 },
+        { cellar: :any_skip_relocation, tag: :arm64_big_sur,  digest: "deadbeef" * 8 },
+        { cellar: :any, tag: :big_sur, digest: "faceb00c" * 8 },
+        { cellar: "/usr/local/Cellar", tag: :catalina, digest: "baadf00d" * 8 },
+        { cellar: Homebrew::DEFAULT_CELLAR, tag: :mojave, digest: "8badf00d" * 8 },
       ]
 
       checksums.each do |checksum|
-        bottle_spec.sha256(checksum[:tag] => checksum[:digest], cellar: checksum[:cellar])
+        bottle_spec.sha256(cellar: checksum[:cellar], checksum[:tag] => checksum[:digest])
         digest, tag, cellar = bottle_spec.checksum_for(checksum[:tag])
         expect(Checksum.new(checksum[:digest])).to eq(digest)
         expect(checksum[:tag]).to eq(tag)
@@ -41,7 +41,7 @@ describe BottleSpecification do
     end
   end
 
-  %w[root_url prefix cellar rebuild].each do |method|
+  %w[root_url rebuild].each do |method|
     specify "##{method}" do
       object = Object.new
       bottle_spec.public_send(method, object)
