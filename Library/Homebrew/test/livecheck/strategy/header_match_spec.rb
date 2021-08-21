@@ -30,7 +30,7 @@ describe Homebrew::Livecheck::Strategy::HeaderMatch do
       location:            {
         "date"           => "Fri, 01 Jan 2021 01:23:45 GMT",
         "content-type"   => "text/html; charset=utf-8",
-        "location"       => "https://github.com/Homebrew/brew/releases/tag/#{versions[:location].first}",
+        "location"       => "https://github.com/cerisola/brew/releases/tag/#{versions[:location].first}",
         "content-length" => "117",
       },
     }
