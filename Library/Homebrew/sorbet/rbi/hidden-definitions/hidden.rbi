@@ -110,7 +110,7 @@ class ActiveSupport::Cache::Entry
 
   def expires_at=(value); end
 
-  def initialize(value, compress: T.unsafe(nil), compress_threshold: T.unsafe(nil), version: T.unsafe(nil), expires_in: T.unsafe(nil), **_); end
+  def initialize(value, compress: T.unsafe(nil), compress_threshold: T.unsafe(nil), version: T.unsafe(nil), expires_in: T.unsafe(nil), **arg); end
 
   def mismatched?(version); end
 
@@ -127,7 +127,7 @@ class ActiveSupport::Cache::FileStore
   include ::ActiveSupport::Cache::Strategy::LocalCache
   def cache_path(); end
 
-  def initialize(cache_path, options=T.unsafe(nil)); end
+  def initialize(cache_path, **options); end
   DIR_FORMATTER = ::T.let(nil, ::T.untyped)
   FILENAME_MAX_SIZE = ::T.let(nil, ::T.untyped)
   FILEPATH_MAX_SIZE = ::T.let(nil, ::T.untyped)
@@ -440,7 +440,7 @@ class ActiveSupport::Callbacks::Filters::Environment
 end
 
 class ActiveSupport::Callbacks::Filters::Environment
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -480,6 +480,36 @@ end
 
 module ActiveSupport::Concern
   def self.extended(base); end
+end
+
+module ActiveSupport::Concurrency
+end
+
+class ActiveSupport::Concurrency::ShareLock
+  include ::MonitorMixin
+  def exclusive(purpose: T.unsafe(nil), compatible: T.unsafe(nil), after_compatible: T.unsafe(nil), no_wait: T.unsafe(nil)); end
+
+  def initialize(); end
+
+  def raw_state(); end
+
+  def sharing(); end
+
+  def start_exclusive(purpose: T.unsafe(nil), compatible: T.unsafe(nil), no_wait: T.unsafe(nil)); end
+
+  def start_sharing(); end
+
+  def stop_exclusive(compatible: T.unsafe(nil)); end
+
+  def stop_sharing(); end
+
+  def yield_shares(purpose: T.unsafe(nil), compatible: T.unsafe(nil), block_share: T.unsafe(nil)); end
+end
+
+class ActiveSupport::Concurrency::ShareLock
+end
+
+module ActiveSupport::Concurrency
 end
 
 module ActiveSupport::Configurable
@@ -532,6 +562,14 @@ class ActiveSupport::CurrentAttributes
   def _reset_callbacks(); end
 
   def _run_reset_callbacks(&block); end
+
+  def attributes(); end
+
+  def attributes=(attributes); end
+
+  def reset(); end
+
+  def set(set_attributes); end
 end
 
 class ActiveSupport::CurrentAttributes
@@ -553,9 +591,17 @@ class ActiveSupport::CurrentAttributes
 
   def self.before_reset(&block); end
 
+  def self.clear_all(); end
+
   def self.instance(); end
 
+  def self.reset(*args, &block); end
+
+  def self.reset_all(); end
+
   def self.resets(&block); end
+
+  def self.set(*args, &block); end
 end
 
 module ActiveSupport::Dependencies
@@ -1239,7 +1285,7 @@ class ActiveSupport::ExecutionWrapper::CompleteHook
 end
 
 class ActiveSupport::ExecutionWrapper::CompleteHook
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -1253,7 +1299,7 @@ class ActiveSupport::ExecutionWrapper::RunHook
 end
 
 class ActiveSupport::ExecutionWrapper::RunHook
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -1317,7 +1363,7 @@ module ActiveSupport::ForkTracker
 end
 
 module ActiveSupport::ForkTracker::CoreExt
-  def fork(*_); end
+  def fork(*arg); end
 end
 
 module ActiveSupport::ForkTracker::CoreExt
@@ -1651,7 +1697,7 @@ class ActiveSupport::Notifications::Fanout::Subscribers::AllMessages
 
   def initialize(delegate); end
 
-  def matches?(_); end
+  def matches?(arg); end
 
   def publish(name, *args); end
 
@@ -1659,7 +1705,7 @@ class ActiveSupport::Notifications::Fanout::Subscribers::AllMessages
 
   def subscribed_to?(name); end
 
-  def unsubscribe!(*_); end
+  def unsubscribe!(*arg); end
 end
 
 class ActiveSupport::Notifications::Fanout::Subscribers::AllMessages
@@ -1926,7 +1972,7 @@ class ActiveSupport::OrderedOptions
 
   def []=(key, value); end
 
-  def _get(_); end
+  def _get(arg); end
 
   def method_missing(name, *args); end
 end
@@ -2029,7 +2075,7 @@ end
 class ActiveSupport::SafeBuffer
   def %(args); end
 
-  def *(*_); end
+  def *(*arg); end
 
   def +(other); end
 
@@ -2426,11 +2472,11 @@ class ActiveSupport::TimeWithZone
 
   def advance(options); end
 
-  def after?(_); end
+  def after?(arg); end
 
   def ago(other); end
 
-  def before?(_); end
+  def before?(arg); end
 
   def between?(min, max); end
 
@@ -2694,8 +2740,6 @@ class Addressable::Template
 
   def extract(uri, processor=T.unsafe(nil)); end
 
-  def generate(params=T.unsafe(nil), recall=T.unsafe(nil), options=T.unsafe(nil)); end
-
   def initialize(pattern); end
 
   def keys(); end
@@ -2794,6 +2838,8 @@ end
 
 class Array
   include ::MessagePack::CoreExt
+  def abbrev(pattern=T.unsafe(nil)); end
+
   def compact_blank!(); end
 
   def extract_options!(); end
@@ -2830,7 +2876,9 @@ class Array
 end
 
 class Array
-  def self.try_convert(_); end
+  def self.parse(string); end
+
+  def self.try_convert(arg); end
 
   def self.wrap(object); end
 end
@@ -2891,6 +2939,13 @@ class Binding
   def clone(); end
 
   def irb(); end
+end
+
+module Blank
+end
+
+module Blank
+  def self.included(base); end
 end
 
 module Bootsnap
@@ -2983,6 +3038,8 @@ module Bootsnap::LoadPathCache::ChangeObserver::ArrayMixin
 
   def []=(*args, &block); end
 
+  def append(*entries); end
+
   def clear(*args, &block); end
 
   def collect!(*args, &block); end
@@ -3008,6 +3065,8 @@ module Bootsnap::LoadPathCache::ChangeObserver::ArrayMixin
   def map!(*args, &block); end
 
   def pop(*args, &block); end
+
+  def prepend(*entries); end
 
   def push(*entries); end
 
@@ -3287,7 +3346,7 @@ class Bundler::Fetcher::CompactIndex::ClientFetcher
 end
 
 class Bundler::Fetcher::CompactIndex::ClientFetcher
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -3554,7 +3613,7 @@ module Bundler::Plugin::API::Source
 
   def dependency_names=(dependency_names); end
 
-  def double_check_for(*_); end
+  def double_check_for(*arg); end
 
   def eql?(other); end
 
@@ -3813,7 +3872,7 @@ class Bundler::VersionRanges::NEq
 end
 
 class Bundler::VersionRanges::NEq
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -3848,13 +3907,13 @@ class Bundler::VersionRanges::ReqR::Endpoint
 end
 
 class Bundler::VersionRanges::ReqR::Endpoint
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
 
 class Bundler::VersionRanges::ReqR
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -3966,7 +4025,7 @@ class Byebug::Breakpoint
 
   def id(); end
 
-  def initialize(_, _1, _2); end
+  def initialize(arg, arg1, arg2); end
 
   def pos(); end
 
@@ -4179,17 +4238,17 @@ class Byebug::Context
 
   def frame=(pos); end
 
-  def frame_binding(*_); end
+  def frame_binding(*arg); end
 
-  def frame_class(*_); end
+  def frame_class(*arg); end
 
-  def frame_file(*_); end
+  def frame_file(*arg); end
 
-  def frame_line(*_); end
+  def frame_line(*arg); end
 
-  def frame_method(*_); end
+  def frame_method(*arg); end
 
-  def frame_self(*_); end
+  def frame_self(*arg); end
 
   def full_location(); end
 
@@ -4205,11 +4264,11 @@ class Byebug::Context
 
   def stack_size(); end
 
-  def step_into(*_); end
+  def step_into(*arg); end
 
-  def step_out(*_); end
+  def step_out(*arg); end
 
-  def step_over(*_); end
+  def step_over(*arg); end
 
   def stop_reason(); end
 
@@ -5808,6 +5867,22 @@ module Cask::Utils
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
+class Caveats
+  def empty?(*args, &block); end
+
+  def to_s(*args, &block); end
+end
+
+class Checksum
+  def [](*args, &block); end
+
+  def empty?(*args, &block); end
+
+  def length(*args, &block); end
+
+  def to_s(*args, &block); end
+end
+
 class Class
   def any_instance(); end
 
@@ -5854,7 +5929,7 @@ class CodeRay::Duo
 end
 
 class CodeRay::Duo
-  def self.[](*_); end
+  def self.[](*arg); end
 end
 
 module CodeRay::Encoders
@@ -6135,11 +6210,11 @@ class CodeRay::Tokens
 
   def split_into_parts(*sizes); end
 
-  def text_token(*_); end
+  def text_token(*arg); end
 
   def to_s(); end
 
-  def tokens(*_); end
+  def tokens(*arg); end
 end
 
 class CodeRay::Tokens
@@ -6202,8 +6277,353 @@ module CodeRay
   def self.scanner(lang, options=T.unsafe(nil), &block); end
 end
 
+module Commander
+  VERSION = ::T.let(nil, ::T.untyped)
+end
+
+class Commander::Command
+  def action(*args, &block); end
+
+  def call(args=T.unsafe(nil)); end
+
+  def description(); end
+
+  def description=(description); end
+
+  def example(description, command); end
+
+  def examples(); end
+
+  def examples=(examples); end
+
+  def global_options(); end
+
+  def initialize(name); end
+
+  def name(); end
+
+  def name=(name); end
+
+  def option(*args, &block); end
+
+  def option_proc(switches); end
+
+  def options(); end
+
+  def options=(options); end
+
+  def parse_options_and_call_procs(*args); end
+
+  def proxy_option_struct(); end
+
+  def proxy_options(); end
+
+  def proxy_options=(proxy_options); end
+
+  def run(*args); end
+
+  def summary(); end
+
+  def summary=(summary); end
+
+  def syntax(); end
+
+  def syntax=(syntax); end
+
+  def when_called(*args, &block); end
+end
+
+class Commander::Command::Options
+  include ::Blank
+  def __hash__(); end
+
+  def default(defaults=T.unsafe(nil)); end
+
+  def method_missing(meth, *args); end
+end
+
+class Commander::Command::Options
+end
+
+class Commander::Command
+end
+
+module Commander::Delegates
+  def add_command(*args, &block); end
+
+  def alias_command(*args, &block); end
+
+  def always_trace!(*args, &block); end
+
+  def command(*args, &block); end
+
+  def default_command(*args, &block); end
+
+  def defined_commands(*args, &block); end
+
+  def global_option(*args, &block); end
+
+  def never_trace!(*args, &block); end
+
+  def program(*args, &block); end
+
+  def run!(*args, &block); end
+end
+
+module Commander::Delegates
+end
+
+module Commander::HelpFormatter
+end
+
+class Commander::HelpFormatter::Base
+  def initialize(runner); end
+
+  def render(); end
+
+  def render_command(command); end
+end
+
+class Commander::HelpFormatter::Base
+end
+
+class Commander::HelpFormatter::Context
+  def decorate_binding(_bind); end
+
+  def initialize(target); end
+end
+
+class Commander::HelpFormatter::Context
+end
+
+class Commander::HelpFormatter::ProgramContext
+  def decorate_binding(bind); end
+
+  def max_aliases_length(bind); end
+
+  def max_command_length(bind); end
+
+  def max_key_length(hash, default=T.unsafe(nil)); end
+end
+
+class Commander::HelpFormatter::ProgramContext
+end
+
+class Commander::HelpFormatter::Terminal
+  def template(name); end
+end
+
+class Commander::HelpFormatter::Terminal
+end
+
+class Commander::HelpFormatter::TerminalCompact
+end
+
+class Commander::HelpFormatter::TerminalCompact
+end
+
+module Commander::HelpFormatter
+  def self.indent(amount, text); end
+end
+
+module Commander::Methods
+  include ::Commander::UI
+  include ::Commander::UI::AskForClass
+  include ::Commander::Delegates
+end
+
+module Commander::Methods
+end
+
+module Commander::Platform
+end
+
+module Commander::Platform
+  def self.jruby?(); end
+end
+
+class Commander::Runner
+  def active_command(); end
+
+  def add_command(command); end
+
+  def alias?(name); end
+
+  def alias_command(alias_name, name, *args); end
+
+  def always_trace!(); end
+
+  def args_without_command_name(); end
+
+  def command(name, &block); end
+
+  def command_exists?(name); end
+
+  def command_name_from_args(); end
+
+  def commands(); end
+
+  def create_default_commands(); end
+
+  def default_command(name); end
+
+  def expand_optionally_negative_switches(switches); end
+
+  def global_option(*args, &block); end
+
+  def global_option_proc(switches, &block); end
+
+  def help_formatter(); end
+
+  def help_formatter_alias_defaults(); end
+
+  def help_formatter_aliases(); end
+
+  def initialize(args=T.unsafe(nil)); end
+
+  def never_trace!(); end
+
+  def options(); end
+
+  def parse_global_options(); end
+
+  def program(key, *args, &block); end
+
+  def program_defaults(); end
+
+  def remove_global_options(options, args); end
+
+  def require_program(*keys); end
+
+  def require_valid_command(command=T.unsafe(nil)); end
+
+  def run!(); end
+
+  def run_active_command(); end
+
+  def say(*args); end
+
+  def valid_command_names_from(*args); end
+
+  def version(); end
+end
+
+class Commander::Runner::CommandError
+end
+
+class Commander::Runner::CommandError
+end
+
+class Commander::Runner::InvalidCommandError
+end
+
+class Commander::Runner::InvalidCommandError
+end
+
+class Commander::Runner
+  def self.instance(); end
+
+  def self.separate_switches_from_description(*args); end
+
+  def self.switch_to_sym(switch); end
+end
+
+module Commander::UI
+end
+
+module Commander::UI::AskForClass
+  def ask_for_array(prompt); end
+
+  def ask_for_file(prompt); end
+
+  def ask_for_float(prompt); end
+
+  def ask_for_integer(prompt); end
+
+  def ask_for_pathname(prompt); end
+
+  def ask_for_regexp(prompt); end
+
+  def ask_for_string(prompt); end
+
+  def ask_for_symbol(prompt); end
+
+  def method_missing(method_name, *arguments, &block); end
+  DEPRECATED_CONSTANTS = ::T.let(nil, ::T.untyped)
+end
+
+module Commander::UI::AskForClass
+end
+
+class Commander::UI::ProgressBar
+  def completed?(); end
+
+  def erase_line(); end
+
+  def finished?(); end
+
+  def generate_tokens(); end
+
+  def increment(tokens=T.unsafe(nil)); end
+
+  def initialize(total, options=T.unsafe(nil)); end
+
+  def percent_complete(); end
+
+  def progress_bar(); end
+
+  def show(); end
+
+  def steps_remaining(); end
+
+  def time_elapsed(); end
+
+  def time_remaining(); end
+end
+
+class Commander::UI::ProgressBar
+end
+
+module Commander::UI
+  def self.applescript(script); end
+
+  def self.ask_editor(input=T.unsafe(nil), preferred_editor=T.unsafe(nil)); end
+
+  def self.available_editor(preferred=T.unsafe(nil)); end
+
+  def self.choose(message=T.unsafe(nil), *choices, &block); end
+
+  def self.color(*args); end
+
+  def self.converse(prompt, responses=T.unsafe(nil)); end
+
+  def self.enable_paging(); end
+
+  def self.io(input=T.unsafe(nil), output=T.unsafe(nil), &block); end
+
+  def self.log(action, *args); end
+
+  def self.password(message=T.unsafe(nil), mask=T.unsafe(nil)); end
+
+  def self.progress(arr, options=T.unsafe(nil)); end
+
+  def self.replace_tokens(str, hash); end
+
+  def self.say_error(*args); end
+
+  def self.say_ok(*args); end
+
+  def self.say_warning(*args); end
+
+  def self.speak(message, voice=T.unsafe(nil), rate=T.unsafe(nil)); end
+end
+
+module Commander
+  def self.configure(*configuration_opts, &configuration_block); end
+end
+
 class CompilerSelector::Compiler
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -6454,7 +6874,7 @@ class Date
 
   def compare_with_coercion(other); end
 
-  def compare_without_coercion(_); end
+  def compare_without_coercion(arg); end
 
   def default_inspect(); end
 
@@ -6470,13 +6890,13 @@ class Date
 
   def minus_with_duration(other); end
 
-  def minus_without_duration(_); end
+  def minus_without_duration(arg); end
 
   def noon(); end
 
   def plus_with_duration(other); end
 
-  def plus_without_duration(_); end
+  def plus_without_duration(arg); end
 
   def since(seconds); end
 
@@ -6645,7 +7065,7 @@ module DateAndTime::Compatibility
 end
 
 class Debrew::Menu::Entry
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -6758,7 +7178,7 @@ end
 class DidYouMean::NullChecker
   def corrections(); end
 
-  def initialize(*_); end
+  def initialize(*arg); end
 end
 
 class DidYouMean::PlainFormatter
@@ -6839,7 +7259,7 @@ class Dir
 end
 
 class Dir
-  def self.exists?(_); end
+  def self.exists?(arg); end
 end
 
 module DiskUsageExtension
@@ -7051,21 +7471,19 @@ class EmbeddedPatch
 end
 
 class Encoding
-  def _dump(*_); end
+  def _dump(*arg); end
 end
 
 class Encoding::Converter
-  def initialize(*_); end
+  def initialize(*arg); end
 end
 
 class Encoding
-  def self._load(_); end
+  def self._load(arg); end
 end
 
 module Enumerable
   include ::ActiveSupport::ToJsonWithActiveSupportEncoder
-  def chain(*_); end
-
   def compact_blank(); end
 
   def exclude?(object); end
@@ -7090,7 +7508,7 @@ module Enumerable
 end
 
 class Enumerator
-  def +(_); end
+  def +(arg); end
 
   def each_with_index(); end
 end
@@ -7104,7 +7522,7 @@ class Enumerator::ArithmeticSequence
 
   def exclude_end?(); end
 
-  def last(*_); end
+  def last(*arg); end
 
   def step(); end
 end
@@ -7119,9 +7537,9 @@ class Enumerator::Chain
 end
 
 class Enumerator::Generator
-  def each(*_, &blk); end
+  def each(*arg, &blk); end
 
-  def initialize(*_); end
+  def initialize(*arg); end
 end
 
 class Errno::EAUTH
@@ -7289,7 +7707,7 @@ end
 
 class Etc::Group
   extend ::Enumerable
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.each(&blk); end
 
@@ -7328,7 +7746,7 @@ end
 
 class Etc::Passwd
   extend ::Enumerable
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.each(&blk); end
 
@@ -7390,7 +7808,7 @@ class FalseClass
 end
 
 class Fiber
-  def transfer(*_); end
+  def transfer(*arg); end
 end
 
 class Fiber
@@ -7400,7 +7818,7 @@ end
 class File
   def self.atomic_write(file_name, temp_dir=T.unsafe(nil)); end
 
-  def self.exists?(_); end
+  def self.exists?(arg); end
 
   def self.probe_stat_in(dir); end
 end
@@ -7460,7 +7878,7 @@ module FormulaCellarChecks
 end
 
 class FormulaConflict
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -7492,7 +7910,7 @@ module Forwardable
 end
 
 module GC
-  def garbage_collect(*_); end
+  def garbage_collect(*arg); end
 end
 
 module GC
@@ -8185,12 +8603,1083 @@ class Hash
 end
 
 class Hash
-  def self.try_convert(_); end
+  def self.try_convert(arg); end
+end
+
+class HighLine
+  include ::HighLine::BuiltinStyles
+  include ::HighLine::CustomErrors
+  def agree(yes_or_no_question, character=T.unsafe(nil)); end
+
+  def ask(template_or_question, answer_type=T.unsafe(nil), &details); end
+
+  def choose(*items, &details); end
+
+  def color(string, *colors); end
+
+  def color_code(*colors); end
+
+  def get_response_character_mode(question); end
+
+  def get_response_getc_mode(question); end
+
+  def get_response_line_mode(question); end
+
+  def indent(increase=T.unsafe(nil), statement=T.unsafe(nil), multiline=T.unsafe(nil)); end
+
+  def indent_level(); end
+
+  def indent_level=(indent_level); end
+
+  def indent_size(); end
+
+  def indent_size=(indent_size); end
+
+  def indentation(); end
+
+  def initialize(input=T.unsafe(nil), output=T.unsafe(nil), wrap_at=T.unsafe(nil), page_at=T.unsafe(nil), indent_size=T.unsafe(nil), indent_level=T.unsafe(nil)); end
+
+  def input(); end
+
+  def key(); end
+
+  def key=(key); end
+
+  def list(items, mode=T.unsafe(nil), option=T.unsafe(nil)); end
+
+  def multi_indent(); end
+
+  def multi_indent=(multi_indent); end
+
+  def new_scope(); end
+
+  def newline(); end
+
+  def output(); end
+
+  def output_cols(); end
+
+  def output_rows(); end
+
+  def page_at(); end
+
+  def page_at=(setting); end
+
+  def puts(*args); end
+
+  def render_statement(statement); end
+
+  def reset_use_color(); end
+
+  def say(statement); end
+
+  def shell_style_lambda(menu); end
+
+  def terminal(); end
+
+  def track_eof(); end
+
+  def track_eof=(track_eof); end
+
+  def track_eof?(); end
+
+  def uncolor(string); end
+
+  def use_color(); end
+
+  def use_color=(use_color); end
+
+  def use_color?(); end
+
+  def wrap_at(); end
+
+  def wrap_at=(setting); end
+  VERSION = ::T.let(nil, ::T.untyped)
+end
+
+module HighLine::BuiltinStyles
+  BASIC_COLORS = ::T.let(nil, ::T.untyped)
+  BLACK = ::T.let(nil, ::T.untyped)
+  BLACK_STYLE = ::T.let(nil, ::T.untyped)
+  BLINK = ::T.let(nil, ::T.untyped)
+  BLINK_STYLE = ::T.let(nil, ::T.untyped)
+  BLUE = ::T.let(nil, ::T.untyped)
+  BLUE_STYLE = ::T.let(nil, ::T.untyped)
+  BOLD = ::T.let(nil, ::T.untyped)
+  BOLD_STYLE = ::T.let(nil, ::T.untyped)
+  BRIGHT_BLACK = ::T.let(nil, ::T.untyped)
+  BRIGHT_BLACK_STYLE = ::T.let(nil, ::T.untyped)
+  BRIGHT_BLUE = ::T.let(nil, ::T.untyped)
+  BRIGHT_BLUE_STYLE = ::T.let(nil, ::T.untyped)
+  BRIGHT_CYAN = ::T.let(nil, ::T.untyped)
+  BRIGHT_CYAN_STYLE = ::T.let(nil, ::T.untyped)
+  BRIGHT_GRAY = ::T.let(nil, ::T.untyped)
+  BRIGHT_GRAY_STYLE = ::T.let(nil, ::T.untyped)
+  BRIGHT_GREEN = ::T.let(nil, ::T.untyped)
+  BRIGHT_GREEN_STYLE = ::T.let(nil, ::T.untyped)
+  BRIGHT_GREY = ::T.let(nil, ::T.untyped)
+  BRIGHT_GREY_STYLE = ::T.let(nil, ::T.untyped)
+  BRIGHT_MAGENTA = ::T.let(nil, ::T.untyped)
+  BRIGHT_MAGENTA_STYLE = ::T.let(nil, ::T.untyped)
+  BRIGHT_NONE = ::T.let(nil, ::T.untyped)
+  BRIGHT_NONE_STYLE = ::T.let(nil, ::T.untyped)
+  BRIGHT_RED = ::T.let(nil, ::T.untyped)
+  BRIGHT_RED_STYLE = ::T.let(nil, ::T.untyped)
+  BRIGHT_WHITE = ::T.let(nil, ::T.untyped)
+  BRIGHT_WHITE_STYLE = ::T.let(nil, ::T.untyped)
+  BRIGHT_YELLOW = ::T.let(nil, ::T.untyped)
+  BRIGHT_YELLOW_STYLE = ::T.let(nil, ::T.untyped)
+  CLEAR = ::T.let(nil, ::T.untyped)
+  CLEAR_STYLE = ::T.let(nil, ::T.untyped)
+  COLORS = ::T.let(nil, ::T.untyped)
+  COLOR_LIST = ::T.let(nil, ::T.untyped)
+  CONCEALED = ::T.let(nil, ::T.untyped)
+  CONCEALED_STYLE = ::T.let(nil, ::T.untyped)
+  CYAN = ::T.let(nil, ::T.untyped)
+  CYAN_STYLE = ::T.let(nil, ::T.untyped)
+  DARK = ::T.let(nil, ::T.untyped)
+  DARK_STYLE = ::T.let(nil, ::T.untyped)
+  ERASE_CHAR = ::T.let(nil, ::T.untyped)
+  ERASE_CHAR_STYLE = ::T.let(nil, ::T.untyped)
+  ERASE_LINE = ::T.let(nil, ::T.untyped)
+  ERASE_LINE_STYLE = ::T.let(nil, ::T.untyped)
+  GRAY = ::T.let(nil, ::T.untyped)
+  GRAY_STYLE = ::T.let(nil, ::T.untyped)
+  GREEN = ::T.let(nil, ::T.untyped)
+  GREEN_STYLE = ::T.let(nil, ::T.untyped)
+  GREY = ::T.let(nil, ::T.untyped)
+  GREY_STYLE = ::T.let(nil, ::T.untyped)
+  LIGHT_BLACK = ::T.let(nil, ::T.untyped)
+  LIGHT_BLACK_STYLE = ::T.let(nil, ::T.untyped)
+  LIGHT_BLUE = ::T.let(nil, ::T.untyped)
+  LIGHT_BLUE_STYLE = ::T.let(nil, ::T.untyped)
+  LIGHT_CYAN = ::T.let(nil, ::T.untyped)
+  LIGHT_CYAN_STYLE = ::T.let(nil, ::T.untyped)
+  LIGHT_GRAY = ::T.let(nil, ::T.untyped)
+  LIGHT_GRAY_STYLE = ::T.let(nil, ::T.untyped)
+  LIGHT_GREEN = ::T.let(nil, ::T.untyped)
+  LIGHT_GREEN_STYLE = ::T.let(nil, ::T.untyped)
+  LIGHT_GREY = ::T.let(nil, ::T.untyped)
+  LIGHT_GREY_STYLE = ::T.let(nil, ::T.untyped)
+  LIGHT_MAGENTA = ::T.let(nil, ::T.untyped)
+  LIGHT_MAGENTA_STYLE = ::T.let(nil, ::T.untyped)
+  LIGHT_NONE = ::T.let(nil, ::T.untyped)
+  LIGHT_NONE_STYLE = ::T.let(nil, ::T.untyped)
+  LIGHT_RED = ::T.let(nil, ::T.untyped)
+  LIGHT_RED_STYLE = ::T.let(nil, ::T.untyped)
+  LIGHT_WHITE = ::T.let(nil, ::T.untyped)
+  LIGHT_WHITE_STYLE = ::T.let(nil, ::T.untyped)
+  LIGHT_YELLOW = ::T.let(nil, ::T.untyped)
+  LIGHT_YELLOW_STYLE = ::T.let(nil, ::T.untyped)
+  MAGENTA = ::T.let(nil, ::T.untyped)
+  MAGENTA_STYLE = ::T.let(nil, ::T.untyped)
+  NONE = ::T.let(nil, ::T.untyped)
+  NONE_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BLACK = ::T.let(nil, ::T.untyped)
+  ON_BLACK_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BLUE = ::T.let(nil, ::T.untyped)
+  ON_BLUE_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_BLACK = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_BLACK_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_BLUE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_BLUE_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_CYAN = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_CYAN_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_GRAY = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_GRAY_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_GREEN = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_GREEN_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_GREY = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_GREY_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_MAGENTA = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_MAGENTA_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_NONE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_NONE_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_RED = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_RED_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_WHITE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_WHITE_STYLE = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_YELLOW = ::T.let(nil, ::T.untyped)
+  ON_BRIGHT_YELLOW_STYLE = ::T.let(nil, ::T.untyped)
+  ON_CYAN = ::T.let(nil, ::T.untyped)
+  ON_CYAN_STYLE = ::T.let(nil, ::T.untyped)
+  ON_GRAY = ::T.let(nil, ::T.untyped)
+  ON_GRAY_STYLE = ::T.let(nil, ::T.untyped)
+  ON_GREEN = ::T.let(nil, ::T.untyped)
+  ON_GREEN_STYLE = ::T.let(nil, ::T.untyped)
+  ON_GREY = ::T.let(nil, ::T.untyped)
+  ON_GREY_STYLE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_BLACK = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_BLACK_STYLE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_BLUE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_BLUE_STYLE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_CYAN = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_CYAN_STYLE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_GRAY = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_GRAY_STYLE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_GREEN = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_GREEN_STYLE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_GREY = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_GREY_STYLE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_MAGENTA = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_MAGENTA_STYLE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_NONE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_NONE_STYLE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_RED = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_RED_STYLE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_WHITE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_WHITE_STYLE = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_YELLOW = ::T.let(nil, ::T.untyped)
+  ON_LIGHT_YELLOW_STYLE = ::T.let(nil, ::T.untyped)
+  ON_MAGENTA = ::T.let(nil, ::T.untyped)
+  ON_MAGENTA_STYLE = ::T.let(nil, ::T.untyped)
+  ON_NONE = ::T.let(nil, ::T.untyped)
+  ON_NONE_STYLE = ::T.let(nil, ::T.untyped)
+  ON_RED = ::T.let(nil, ::T.untyped)
+  ON_RED_STYLE = ::T.let(nil, ::T.untyped)
+  ON_WHITE = ::T.let(nil, ::T.untyped)
+  ON_WHITE_STYLE = ::T.let(nil, ::T.untyped)
+  ON_YELLOW = ::T.let(nil, ::T.untyped)
+  ON_YELLOW_STYLE = ::T.let(nil, ::T.untyped)
+  RED = ::T.let(nil, ::T.untyped)
+  RED_STYLE = ::T.let(nil, ::T.untyped)
+  RESET = ::T.let(nil, ::T.untyped)
+  RESET_STYLE = ::T.let(nil, ::T.untyped)
+  REVERSE = ::T.let(nil, ::T.untyped)
+  REVERSE_STYLE = ::T.let(nil, ::T.untyped)
+  STYLES = ::T.let(nil, ::T.untyped)
+  STYLE_LIST = ::T.let(nil, ::T.untyped)
+  UNDERLINE = ::T.let(nil, ::T.untyped)
+  UNDERLINE_STYLE = ::T.let(nil, ::T.untyped)
+  UNDERSCORE = ::T.let(nil, ::T.untyped)
+  UNDERSCORE_STYLE = ::T.let(nil, ::T.untyped)
+  WHITE = ::T.let(nil, ::T.untyped)
+  WHITE_STYLE = ::T.let(nil, ::T.untyped)
+  YELLOW = ::T.let(nil, ::T.untyped)
+  YELLOW_STYLE = ::T.let(nil, ::T.untyped)
+end
+
+module HighLine::BuiltinStyles::ClassMethods
+  def const_missing(name); end
+  RGB_COLOR_PATTERN = ::T.let(nil, ::T.untyped)
+end
+
+module HighLine::BuiltinStyles::ClassMethods
+end
+
+module HighLine::BuiltinStyles
+  def self.included(base); end
+end
+
+class HighLine::ColorScheme
+  def [](color_tag); end
+
+  def []=(color_tag, constants); end
+
+  def definition(color_tag); end
+
+  def include?(color_tag); end
+
+  def initialize(h=T.unsafe(nil)); end
+
+  def keys(); end
+
+  def load_from_hash(h); end
+
+  def to_hash(); end
+end
+
+class HighLine::ColorScheme
+end
+
+module HighLine::CustomErrors
+end
+
+class HighLine::CustomErrors::ExplainableError
+  def explanation_key(); end
+end
+
+class HighLine::CustomErrors::ExplainableError
+end
+
+class HighLine::CustomErrors::NoAutoCompleteMatch
+end
+
+class HighLine::CustomErrors::NoAutoCompleteMatch
+end
+
+class HighLine::CustomErrors::NoConfirmationQuestionError
+end
+
+class HighLine::CustomErrors::NoConfirmationQuestionError
+end
+
+class HighLine::CustomErrors::NotInRangeQuestionError
+end
+
+class HighLine::CustomErrors::NotInRangeQuestionError
+end
+
+class HighLine::CustomErrors::NotValidQuestionError
+end
+
+class HighLine::CustomErrors::NotValidQuestionError
+end
+
+class HighLine::CustomErrors::QuestionError
+end
+
+class HighLine::CustomErrors::QuestionError
+end
+
+module HighLine::CustomErrors
+end
+
+class HighLine::List
+  def col_down(); end
+
+  def col_down_mode(); end
+
+  def cols(); end
+
+  def cols=(cols); end
+
+  def initialize(items, options=T.unsafe(nil)); end
+
+  def items(); end
+
+  def list(); end
+
+  def row_join_str_size(); end
+
+  def row_join_string(); end
+
+  def row_join_string=(row_join_string); end
+
+  def slice_by_cols(); end
+
+  def slice_by_rows(); end
+
+  def to_a(); end
+
+  def transpose(); end
+
+  def transpose_mode(); end
+end
+
+class HighLine::List
+end
+
+class HighLine::ListRenderer
+  def highline(); end
+
+  def initialize(items, mode=T.unsafe(nil), option=T.unsafe(nil), highline); end
+
+  def items(); end
+
+  def mode(); end
+
+  def option(); end
+
+  def render(); end
+end
+
+class HighLine::ListRenderer
+end
+
+class HighLine::Menu
+  def add_item(item); end
+
+  def all_items(); end
+
+  def build_item(*args); end
+
+  def choice(name, help=T.unsafe(nil), text=T.unsafe(nil), &action); end
+
+  def choices(*names, &action); end
+
+  def decorate_index(index); end
+
+  def decorate_item(text, ix); end
+
+  def find_item_from_selection(items, selection); end
+
+  def flow(); end
+
+  def flow=(flow); end
+
+  def gather_selected(highline_context, selections, details=T.unsafe(nil)); end
+
+  def get_item_by_letter(items, selection); end
+
+  def get_item_by_number(items, selection); end
+
+  def header(); end
+
+  def header=(header); end
+
+  def help(topic, help); end
+
+  def hidden(name, help=T.unsafe(nil), &action); end
+
+  def index(); end
+
+  def index=(style); end
+
+  def index_color(); end
+
+  def index_color=(index_color); end
+
+  def index_suffix(); end
+
+  def index_suffix=(index_suffix); end
+
+  def init_help(); end
+
+  def initialize(); end
+
+  def layout(); end
+
+  def layout=(new_layout); end
+
+  def list_option(); end
+
+  def list_option=(list_option); end
+
+  def map_items_by_index(); end
+
+  def map_items_by_name(); end
+
+  def mark_for_decoration(text, ix); end
+
+  def nil_on_handled(); end
+
+  def nil_on_handled=(nil_on_handled); end
+
+  def options(); end
+
+  def parse_list(); end
+
+  def prompt(); end
+
+  def prompt=(prompt); end
+
+  def select(highline_context, selection, details=T.unsafe(nil)); end
+
+  def select_by(); end
+
+  def select_by=(select_by); end
+
+  def shell(); end
+
+  def shell=(shell); end
+
+  def show_default_if_any(); end
+
+  def to_ary(); end
+
+  def update_responses(); end
+
+  def value_for_array_selections(items, selections, details); end
+
+  def value_for_hash_selections(items, selections, details); end
+
+  def value_for_selected_item(item, details); end
+end
+
+class HighLine::Menu::Item
+  def action(); end
+
+  def help(); end
+
+  def initialize(name, attributes); end
+
+  def item_help(); end
+
+  def name(); end
+
+  def text(); end
+end
+
+class HighLine::Menu::Item
+end
+
+class HighLine::Menu
+  def self.index_color(); end
+
+  def self.index_color=(index_color); end
+end
+
+class HighLine::Paginator
+  def continue_paging?(); end
+
+  def highline(); end
+
+  def initialize(highline); end
+
+  def page_print(text); end
+end
+
+class HighLine::Paginator
+end
+
+class HighLine::Question
+  include ::HighLine::CustomErrors
+  def above(); end
+
+  def above=(above); end
+
+  def answer(); end
+
+  def answer=(answer); end
+
+  def answer_or_default(answer_string); end
+
+  def answer_type(); end
+
+  def answer_type=(answer_type); end
+
+  def ask_on_error_msg(); end
+
+  def below(); end
+
+  def below=(below); end
+
+  def build_responses(message_source=T.unsafe(nil)); end
+
+  def build_responses_new_hash(message_source); end
+
+  def case(); end
+
+  def case=(arg); end
+
+  def change_case(answer_string); end
+
+  def character(); end
+
+  def character=(character); end
+
+  def check_range(); end
+
+  def choices_complete(answer_string); end
+
+  def completion(); end
+
+  def completion=(completion); end
+
+  def confirm(); end
+
+  def confirm=(confirm); end
+
+  def confirm_question(highline); end
+
+  def convert(); end
+
+  def default(); end
+
+  def default=(default); end
+
+  def default_responses_hash(); end
+
+  def directory(); end
+
+  def directory=(directory); end
+
+  def echo(); end
+
+  def echo=(echo); end
+
+  def expected_range(); end
+
+  def final_response(error); end
+
+  def final_responses(); end
+
+  def first_answer(); end
+
+  def first_answer=(first_answer); end
+
+  def first_answer?(); end
+
+  def format_answer(answer_string); end
+
+  def gather(); end
+
+  def gather=(gather); end
+
+  def get_echo_for_response(response); end
+
+  def get_response(highline); end
+
+  def get_response_or_default(highline); end
+
+  def glob(); end
+
+  def glob=(glob); end
+
+  def in(); end
+
+  def in=(arg); end
+
+  def in_range?(); end
+
+  def initialize(template, answer_type); end
+
+  def limit(); end
+
+  def limit=(limit); end
+
+  def overwrite(); end
+
+  def overwrite=(overwrite); end
+
+  def readline(); end
+
+  def readline=(readline); end
+
+  def remove_whitespace(answer_string); end
+
+  def responses(); end
+
+  def selection(); end
+
+  def show_question(highline); end
+
+  def template(); end
+
+  def template=(template); end
+
+  def valid_answer?(); end
+
+  def validate(); end
+
+  def validate=(validate); end
+
+  def verify_match(); end
+
+  def verify_match=(verify_match); end
+
+  def whitespace(); end
+
+  def whitespace=(whitespace); end
+end
+
+class HighLine::Question::AnswerConverter
+  def answer(*args, &block); end
+
+  def answer=(*args, &block); end
+
+  def answer_type(*args, &block); end
+
+  def check_range(*args, &block); end
+
+  def choices_complete(*args, &block); end
+
+  def convert(); end
+
+  def directory(*args, &block); end
+
+  def initialize(question); end
+
+  def to_array(); end
+
+  def to_file(); end
+
+  def to_float(); end
+
+  def to_integer(); end
+
+  def to_pathname(); end
+
+  def to_proc(); end
+
+  def to_regexp(); end
+
+  def to_string(); end
+
+  def to_symbol(); end
+end
+
+class HighLine::Question::AnswerConverter
+  extend ::Forwardable
+end
+
+class HighLine::Question
+  def self.build(template_or_question, answer_type=T.unsafe(nil), &details); end
+end
+
+class HighLine::QuestionAsker
+  include ::HighLine::CustomErrors
+  def ask_once(); end
+
+  def gather_answers(); end
+
+  def gather_hash(); end
+
+  def gather_integer(); end
+
+  def gather_regexp(); end
+
+  def initialize(question, highline); end
+
+  def question(); end
+end
+
+class HighLine::QuestionAsker
+end
+
+class HighLine::SampleColorScheme
+  def initialize(_h=T.unsafe(nil)); end
+  SAMPLE_SCHEME = ::T.let(nil, ::T.untyped)
+end
+
+class HighLine::SampleColorScheme
+end
+
+class HighLine::Statement
+  def highline(); end
+
+  def initialize(source, highline); end
+
+  def source(); end
+
+  def statement(); end
+
+  def template_string(); end
+end
+
+class HighLine::Statement
+  def self.const_missing(constant); end
+end
+
+class HighLine::String
+  include ::HighLine::StringExtensions
+  def bright_black(); end
+
+  def bright_blue(); end
+
+  def bright_cyan(); end
+
+  def bright_gray(); end
+
+  def bright_green(); end
+
+  def bright_grey(); end
+
+  def bright_magenta(); end
+
+  def bright_none(); end
+
+  def bright_red(); end
+
+  def bright_white(); end
+
+  def bright_yellow(); end
+
+  def color(*args); end
+
+  def concealed(); end
+
+  def dark(); end
+
+  def foreground(*args); end
+
+  def gray(); end
+
+  def grey(); end
+
+  def light_gray(); end
+
+  def light_grey(); end
+
+  def light_none(); end
+
+  def method_missing(method, *_args); end
+
+  def none(); end
+
+  def on(arg); end
+
+  def on_bright_black(); end
+
+  def on_bright_blue(); end
+
+  def on_bright_cyan(); end
+
+  def on_bright_gray(); end
+
+  def on_bright_green(); end
+
+  def on_bright_grey(); end
+
+  def on_bright_magenta(); end
+
+  def on_bright_none(); end
+
+  def on_bright_red(); end
+
+  def on_bright_white(); end
+
+  def on_bright_yellow(); end
+
+  def on_gray(); end
+
+  def on_grey(); end
+
+  def on_light_gray(); end
+
+  def on_light_grey(); end
+
+  def on_light_none(); end
+
+  def on_none(); end
+
+  def on_rgb(*colors); end
+
+  def reset(); end
+
+  def rgb(*colors); end
+
+  def uncolor(); end
+end
+
+class HighLine::String
+end
+
+module HighLine::StringExtensions
+  STYLE_METHOD_NAME_PATTERN = ::T.let(nil, ::T.untyped)
+end
+
+module HighLine::StringExtensions
+  def self.define_builtin_style_methods(base); end
+
+  def self.define_style_support_methods(base); end
+
+  def self.included(base); end
+end
+
+class HighLine::Style
+  def blue(); end
+
+  def bright(); end
+
+  def builtin(); end
+
+  def builtin=(builtin); end
+
+  def code(); end
+
+  def color(string); end
+
+  def green(); end
+
+  def initialize(defn=T.unsafe(nil)); end
+
+  def light(); end
+
+  def list(); end
+
+  def name(); end
+
+  def on(); end
+
+  def red(); end
+
+  def rgb(); end
+
+  def rgb=(rgb); end
+
+  def to_hash(); end
+
+  def variant(new_name, options=T.unsafe(nil)); end
+end
+
+class HighLine::Style
+  def self.ansi_rgb_to_hex(ansi_number); end
+
+  def self.clear_index(); end
+
+  def self.code_index(); end
+
+  def self.index(style); end
+
+  def self.list(); end
+
+  def self.rgb(*colors); end
+
+  def self.rgb_hex(*colors); end
+
+  def self.rgb_number(*parts); end
+
+  def self.rgb_parts(hex); end
+
+  def self.uncolor(string); end
+end
+
+class HighLine::TemplateRenderer
+  def answer(*args, &block); end
+
+  def answer_type(*args, &block); end
+
+  def color(*args, &block); end
+
+  def header(*args, &block); end
+
+  def highline(); end
+
+  def initialize(template, source, highline); end
+
+  def key(*args, &block); end
+
+  def list(*args, &block); end
+
+  def menu(); end
+
+  def method_missing(method, *args); end
+
+  def prompt(*args, &block); end
+
+  def render(); end
+
+  def source(); end
+
+  def template(); end
+end
+
+class HighLine::TemplateRenderer
+  extend ::Forwardable
+  def self.const_missing(name); end
+end
+
+class HighLine::Terminal
+  def character_mode(); end
+
+  def get_character(); end
+
+  def get_line(question, highline); end
+
+  def get_line_default(highline); end
+
+  def get_line_with_readline(question, highline); end
+
+  def initialize(input, output); end
+
+  def initialize_system_extensions(); end
+
+  def input(); end
+
+  def jruby?(); end
+
+  def output(); end
+
+  def raw_no_echo_mode(); end
+
+  def raw_no_echo_mode_exec(); end
+
+  def readline_read(question); end
+
+  def restore_mode(); end
+
+  def rubinius?(); end
+
+  def terminal_size(); end
+
+  def windows?(); end
+end
+
+class HighLine::Terminal::IOConsole
+end
+
+class HighLine::Terminal::IOConsole
+end
+
+class HighLine::Terminal
+  def self.get_terminal(input, output); end
+end
+
+module HighLine::Wrapper
+end
+
+module HighLine::Wrapper
+  def self.actual_length(string_with_escapes); end
+
+  def self.wrap(text, wrap_at); end
+end
+
+class HighLine
+  extend ::HighLine::BuiltinStyles::ClassMethods
+  extend ::SingleForwardable
+  def self.String(s); end
+
+  def self.Style(*args); end
+
+  def self.color(*args, &block); end
+
+  def self.color_code(*args, &block); end
+
+  def self.color_scheme(); end
+
+  def self.color_scheme=(color_scheme); end
+
+  def self.colorize_strings(); end
+
+  def self.default_instance(); end
+
+  def self.default_instance=(default_instance); end
+
+  def self.find_or_create_style(arg); end
+
+  def self.find_or_create_style_list(*args); end
+
+  def self.reset(); end
+
+  def self.reset_color_scheme(); end
+
+  def self.reset_use_color(*args, &block); end
+
+  def self.supports_rgb_color?(); end
+
+  def self.track_eof=(*args, &block); end
+
+  def self.track_eof?(*args, &block); end
+
+  def self.uncolor(*args, &block); end
+
+  def self.use_color=(*args, &block); end
+
+  def self.use_color?(*args, &block); end
+
+  def self.using_color_scheme?(); end
 end
 
 module Homebrew
   MAX_PORT = ::T.let(nil, ::T.untyped)
   MIN_PORT = ::T.let(nil, ::T.untyped)
+end
+
+module Homebrew::API::Analytics
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Homebrew::API::Bottle
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Homebrew::API::Cask
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Homebrew::API::Formula
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Homebrew::API::Versions
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Homebrew::API
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
 end
 
 module Homebrew::Assertions
@@ -8309,6 +9798,8 @@ module Homebrew::EnvConfig
   def self.display(); end
 
   def self.display_install_times?(); end
+
+  def self.docker_registry_token(); end
 
   def self.editor(); end
 
@@ -8497,7 +9988,7 @@ class Homebrew::Livecheck::Strategy::Sparkle::Item
 end
 
 class Homebrew::Livecheck::Strategy::Sparkle::Item
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -8515,6 +10006,31 @@ end
 module Homebrew::Livecheck::Strategy
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Homebrew::Parlour
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class Homebrew::Service
+  def bin(*args, &block); end
+
+  def etc(*args, &block); end
+
+  def libexec(*args, &block); end
+
+  def opt_bin(*args, &block); end
+
+  def opt_libexec(*args, &block); end
+
+  def opt_pkgshare(*args, &block); end
+
+  def opt_prefix(*args, &block); end
+
+  def opt_sbin(*args, &block); end
+
+  def var(*args, &block); end
 end
 
 class Homebrew::Service
@@ -9463,13 +10979,13 @@ module Hpricot
 
   def self.build(ele=T.unsafe(nil), assigns=T.unsafe(nil), &blk); end
 
-  def self.css(_, _1, _2); end
+  def self.css(arg, arg1, arg2); end
 
   def self.make(input=T.unsafe(nil), opts=T.unsafe(nil), &blk); end
 
   def self.parse(input=T.unsafe(nil), opts=T.unsafe(nil), &blk); end
 
-  def self.scan(*_); end
+  def self.scan(*arg); end
 
   def self.uxs(str); end
 end
@@ -9509,9 +11025,9 @@ class IO
 
   def echo?(); end
 
-  def getch(*_); end
+  def getch(*arg); end
 
-  def getpass(*_); end
+  def getpass(*arg); end
 
   def goto(); end
 
@@ -9521,7 +11037,7 @@ class IO
 
   def noecho(); end
 
-  def nonblock(*_); end
+  def nonblock(*arg); end
 
   def nonblock=(nonblock); end
 
@@ -9531,21 +11047,21 @@ class IO
 
   def oflush(); end
 
-  def pathconf(_); end
+  def pathconf(arg); end
 
   def pressed?(); end
 
-  def raw(*_); end
+  def raw(*arg); end
 
-  def raw!(*_); end
+  def raw!(*arg); end
 
   def ready?(); end
 
-  def wait(*_); end
+  def wait(*arg); end
 
-  def wait_readable(*_); end
+  def wait_readable(*arg); end
 
-  def wait_writable(*_); end
+  def wait_writable(*arg); end
 
   def winsize(); end
 
@@ -9553,7 +11069,7 @@ class IO
 end
 
 class IO
-  def self.console(*_); end
+  def self.console(*arg); end
 end
 
 class IPAddr
@@ -9570,7 +11086,7 @@ module IRB
 end
 
 class IRB::Context
-  def __exit__(*_); end
+  def __exit__(*arg); end
 
   def __inspect__(); end
 
@@ -9595,7 +11111,7 @@ class IRB::DefaultEncodings
 end
 
 class IRB::DefaultEncodings
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -9810,11 +11326,11 @@ class Integer
 end
 
 class JSON::Ext::Generator::State
-  def self.from_state(_); end
+  def self.from_state(arg); end
 end
 
 class JSON::Ext::Parser
-  def initialize(*_); end
+  def initialize(*arg); end
 end
 
 JSON::Parser = JSON::Ext::Parser
@@ -9851,11 +11367,19 @@ end
 module Kernel
   include ::ActiveSupport::ForkTracker::CoreExtPrivate
   include ::ActiveSupport::ForkTracker::CoreExt
+  def agree(*args, &block); end
+
+  def ask(*args, &block); end
+
+  def choose(*args, &block); end
+
   def itself(); end
 
   def object_id(); end
 
   def pretty_inspect(); end
+
+  def say(*args, &block); end
 
   def then(); end
 
@@ -9863,6 +11387,7 @@ module Kernel
 end
 
 module Kernel
+  extend ::Forwardable
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
   def self.at_exit(); end
@@ -9871,7 +11396,7 @@ module Kernel
 
   def self.gem(dep, *reqs); end
 
-  def self.load(*_); end
+  def self.load(*arg); end
 
   def self.require(path); end
 end
@@ -11239,6 +12764,12 @@ module MachO
   def self.open(filename); end
 end
 
+module MachOShim
+  def dylib_id(*args, &block); end
+
+  def rpaths(*args, &block); end
+end
+
 Markdown = RDiscount
 
 module MessagePack
@@ -11246,9 +12777,9 @@ module MessagePack
 end
 
 class MessagePack::Packer
-  def write_bin(_); end
+  def write_bin(arg); end
 
-  def write_bin_header(_); end
+  def write_bin_header(arg); end
 end
 
 module MessagePack::Time
@@ -11282,7 +12813,7 @@ class MessagePack::Timestamp
 end
 
 class MessagePack::Unpacker
-  def feed_reference(_); end
+  def feed_reference(arg); end
 
   def freeze?(); end
 end
@@ -11389,83 +12920,6 @@ end
 class Migrator
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
-end
-
-class MiniPortile
-  def activate(); end
-
-  def apply_patch(patch_file); end
-
-  def compile(); end
-
-  def configure(); end
-
-  def configure_options(); end
-
-  def configure_options=(configure_options); end
-
-  def configured?(); end
-
-  def cook(); end
-
-  def download(); end
-
-  def downloaded?(); end
-
-  def extract(); end
-
-  def files(); end
-
-  def files=(files); end
-
-  def host(); end
-
-  def host=(host); end
-
-  def initialize(name, version); end
-
-  def install(); end
-
-  def installed?(); end
-
-  def logger(); end
-
-  def logger=(logger); end
-
-  def name(); end
-
-  def original_host(); end
-
-  def patch(); end
-
-  def patch_files(); end
-
-  def patch_files=(patch_files); end
-
-  def path(); end
-
-  def target(); end
-
-  def target=(target); end
-
-  def version(); end
-  KEYRING_NAME = ::T.let(nil, ::T.untyped)
-  TAR_EXECUTABLES = ::T.let(nil, ::T.untyped)
-  VERSION = ::T.let(nil, ::T.untyped)
-end
-
-class MiniPortile
-  def self.mingw?(); end
-
-  def self.mswin?(); end
-
-  def self.windows?(); end
-end
-
-class MiniPortileCMake
-end
-
-class MiniPortileCMake
 end
 
 MiniTest = Minitest
@@ -11660,7 +13114,7 @@ class Minitest::Expectation
 end
 
 class Minitest::Expectation
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -11756,7 +13210,7 @@ class Minitest::Mock
 
   def __call(name, data); end
 
-  def __respond_to?(*_); end
+  def __respond_to?(*arg); end
 
   def class(*args, &b); end
 
@@ -12489,7 +13943,6 @@ module NKF
 end
 
 class NameError
-  include ::DidYouMean::Correctable
   def missing_name(); end
 
   def missing_name?(name); end
@@ -12610,9 +14063,13 @@ Net::HTTPServerErrorCode = Net::HTTPServerError
 
 Net::HTTPSession = Net::HTTP
 
-Net::HTTPSuccess::EXCEPTION_TYPE = Net::HTTPError
+class Net::HTTPSuccess
+end
 
-Net::HTTPSuccessCode = Net::HTTPSuccess
+Net::HTTPSuccessCode::EXCEPTION_TYPE = Net::HTTPError
+
+class Net::HTTPSuccess
+end
 
 class Net::HTTPURITooLong
   HAS_BODY = ::T.let(nil, ::T.untyped)
@@ -12652,9 +14109,9 @@ class NilClass
   include ::MessagePack::CoreExt
   def to_d(); end
 
-  def try(_method_name=T.unsafe(nil), *_); end
+  def try(_method_name=T.unsafe(nil), *arg); end
 
-  def try!(_method_name=T.unsafe(nil), *_); end
+  def try!(_method_name=T.unsafe(nil), *arg); end
 end
 
 class NoSeedProgressFormatter
@@ -12762,16 +14219,20 @@ module OS
 end
 
 class Object
-  include ::Minitest::Expectations
+  include ::ActiveSupport::Dependencies::Loadable
   include ::ActiveSupport::Tryable
+  include ::Minitest::Expectations
   include ::Utils::Curl
   include ::SystemCommand::Mixin
-  include ::ActiveSupport::Dependencies::Loadable
   include ::ActiveSupport::ForkTracker::CoreExtPrivate
   include ::ActiveSupport::ForkTracker::CoreExt
   def acts_like?(duck); end
 
+  def get_binding(); end
+
   def html_safe?(); end
+
+  def or_ask(*args, &details); end
 
   def pry(object=T.unsafe(nil), hash=T.unsafe(nil)); end
 
@@ -12885,7 +14346,7 @@ class OpenSSL::BN
 
   def -@(); end
 
-  def /(_); end
+  def /(arg); end
 
   def negative?(); end
 end
@@ -12900,11 +14361,11 @@ class OpenSSL::KDF::KDFError
 end
 
 module OpenSSL::KDF
-  def self.hkdf(*_); end
+  def self.hkdf(*arg); end
 
-  def self.pbkdf2_hmac(*_); end
+  def self.pbkdf2_hmac(*arg); end
 
-  def self.scrypt(*_); end
+  def self.scrypt(*arg); end
 end
 
 class OpenSSL::OCSP::Request
@@ -12918,7 +14379,7 @@ class OpenSSL::PKey::EC
 end
 
 class OpenSSL::PKey::EC::Point
-  def to_octet_string(_); end
+  def to_octet_string(arg); end
 end
 
 module OpenSSL::SSL
@@ -12940,8 +14401,6 @@ module OpenSSL::SSL
 end
 
 class OpenSSL::SSL::SSLContext
-  def add_certificate(*_); end
-
   def alpn_protocols(); end
 
   def alpn_protocols=(alpn_protocols); end
@@ -12999,58 +14458,6 @@ module OpenSSL
   def self.fips_mode(); end
 end
 
-class OpenURI::Buffer
-  def <<(str); end
-
-  def io(); end
-
-  def size(); end
-  StringMax = ::T.let(nil, ::T.untyped)
-end
-
-class OpenURI::Buffer
-end
-
-class OpenURI::HTTPError
-  def initialize(message, io); end
-end
-
-class OpenURI::HTTPRedirect
-  def initialize(message, io, uri); end
-end
-
-module OpenURI::Meta
-  def content_type_parse(); end
-
-  def meta_add_field(name, value); end
-
-  def meta_add_field2(name, values); end
-
-  def meta_setup_encoding(); end
-  RE_LWS = ::T.let(nil, ::T.untyped)
-  RE_PARAMETERS = ::T.let(nil, ::T.untyped)
-  RE_QUOTED_STRING = ::T.let(nil, ::T.untyped)
-  RE_TOKEN = ::T.let(nil, ::T.untyped)
-end
-
-module OpenURI::Meta
-  def self.init(obj, src=T.unsafe(nil)); end
-end
-
-module OpenURI
-  def self.check_options(options); end
-
-  def self.open_http(buf, target, proxy, options); end
-
-  def self.open_loop(uri, options); end
-
-  def self.open_uri(name, *rest); end
-
-  def self.redirectable?(uri1, uri2); end
-
-  def self.scan_open_optional_arguments(*rest); end
-end
-
 class Option
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
@@ -13059,6 +14466,10 @@ end
 class Options
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class PATH
+  def each(*args, &block); end
 end
 
 class PATH
@@ -13246,10 +14657,6 @@ class Parlour::TypedObject
   extend ::T::InterfaceWrapper::Helpers
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
-end
-
-module Parlour::Types
-  TypeLike = ::T.let(nil, ::T.untyped)
 end
 
 class Parlour::Types::Proc::Parameter
@@ -14158,11 +15565,11 @@ end
 class Pathname
   include ::ELFShim
   include ::MachOShim
-  def fnmatch?(*_); end
+  def fnmatch?(*arg); end
 
-  def glob(*_); end
+  def glob(*arg); end
 
-  def make_symlink(_); end
+  def make_symlink(arg); end
 end
 
 class Pathname
@@ -14170,12 +15577,24 @@ class Pathname
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
+class PkgVersion
+  def major(*args, &block); end
+
+  def major_minor(*args, &block); end
+
+  def major_minor_patch(*args, &block); end
+
+  def minor(*args, &block); end
+
+  def patch(*args, &block); end
+end
+
 class Proc
   include ::MethodSource::SourceLocation::ProcExtensions
   include ::MethodSource::MethodExtensions
-  def <<(_); end
+  def <<(arg); end
 
-  def >>(_); end
+  def >>(arg); end
 
   def clone(); end
 end
@@ -15267,7 +16686,7 @@ class Pry::Command::ShowInfo
 
   def header_options(); end
 
-  def initialize(*_); end
+  def initialize(*arg); end
 
   def method_header(code_object, line_num); end
 
@@ -15370,7 +16789,7 @@ class Pry::Command::Whereami
 
   def code?(); end
 
-  def initialize(*_); end
+  def initialize(*arg); end
 
   def location(); end
 end
@@ -16780,7 +18199,7 @@ class Pry::Pager::PageTracker
 end
 
 class Pry::Pager::SimplePager
-  def initialize(*_); end
+  def initialize(*arg); end
 end
 
 class Pry::Pager::SimplePager
@@ -16793,7 +18212,7 @@ class Pry::Pager::StopPaging
 end
 
 class Pry::Pager::SystemPager
-  def initialize(*_); end
+  def initialize(*arg); end
 end
 
 class Pry::Pager::SystemPager
@@ -17468,9 +18887,9 @@ class RDiscount
 
   def text(); end
 
-  def to_html(*_); end
+  def to_html(*arg); end
 
-  def toc_content(*_); end
+  def toc_content(*arg); end
   VERSION = ::T.let(nil, ::T.untyped)
 end
 
@@ -17574,7 +18993,7 @@ class RSpec::Core::Bisect::ExampleSetDescriptor
 end
 
 class RSpec::Core::Bisect::ExampleSetDescriptor
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -18780,7 +20199,7 @@ class RSpec::Core::Formatters::DeprecationFormatter::GeneratedDeprecationMessage
 end
 
 class RSpec::Core::Formatters::DeprecationFormatter::GeneratedDeprecationMessage
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -18822,7 +20241,7 @@ class RSpec::Core::Formatters::DeprecationFormatter::SpecifiedDeprecationMessage
 end
 
 class RSpec::Core::Formatters::DeprecationFormatter::SpecifiedDeprecationMessage
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -18889,7 +20308,7 @@ module RSpec::Core::Formatters::ExceptionPresenter::Factory::EmptyBacktraceForma
 end
 
 module RSpec::Core::Formatters::ExceptionPresenter::Factory::EmptyBacktraceFormatter
-  def self.format_backtrace(*_); end
+  def self.format_backtrace(*arg); end
 end
 
 class RSpec::Core::Formatters::ExceptionPresenter::Factory
@@ -19145,6 +20564,8 @@ module RSpec::Core::HashImitatable
 
   def any?(*args, &block); end
 
+  def assert_valid_keys(*args, &block); end
+
   def assoc(*args, &block); end
 
   def chain(*args, &block); end
@@ -19178,6 +20599,18 @@ module RSpec::Core::HashImitatable
   def deep_merge(*args, &block); end
 
   def deep_merge!(*args, &block); end
+
+  def deep_stringify_keys(*args, &block); end
+
+  def deep_stringify_keys!(*args, &block); end
+
+  def deep_symbolize_keys(*args, &block); end
+
+  def deep_symbolize_keys!(*args, &block); end
+
+  def deep_transform_keys(*args, &block); end
+
+  def deep_transform_keys!(*args, &block); end
 
   def default(*args, &block); end
 
@@ -19361,7 +20794,15 @@ module RSpec::Core::HashImitatable
 
   def store(*args, &block); end
 
+  def stringify_keys(*args, &block); end
+
+  def stringify_keys!(*args, &block); end
+
   def sum(*args, &block); end
+
+  def symbolize_keys(*args, &block); end
+
+  def symbolize_keys!(*args, &block); end
 
   def take(*args, &block); end
 
@@ -19374,6 +20815,10 @@ module RSpec::Core::HashImitatable
   def to_hash(*args, &block); end
 
   def to_msgpack(*args, &block); end
+
+  def to_options(*args, &block); end
+
+  def to_options!(*args, &block); end
 
   def to_plist(*args, &block); end
 
@@ -19476,7 +20921,7 @@ class RSpec::Core::Hooks::Hook
 end
 
 class RSpec::Core::Hooks::Hook
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -19561,7 +21006,7 @@ class RSpec::Core::Invocations::PrintHelp
 end
 
 class RSpec::Core::Invocations::PrintHelp
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -19586,7 +21031,7 @@ class RSpec::Core::LegacyExampleGroupHash
 end
 
 module RSpec::Core::MemoizedHelpers
-  def initialize(*_); end
+  def initialize(*arg); end
 
   def is_expected(); end
 
@@ -19813,7 +21258,7 @@ class RSpec::Core::Notifications::DeprecationNotification
 end
 
 class RSpec::Core::Notifications::DeprecationNotification
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.from_hash(data); end
 
@@ -19827,7 +21272,7 @@ class RSpec::Core::Notifications::ExampleNotification
 end
 
 class RSpec::Core::Notifications::ExampleNotification
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.for(example); end
 
@@ -19887,7 +21332,7 @@ class RSpec::Core::Notifications::GroupNotification
 end
 
 class RSpec::Core::Notifications::GroupNotification
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -19899,7 +21344,7 @@ class RSpec::Core::Notifications::MessageNotification
 end
 
 class RSpec::Core::Notifications::MessageNotification
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -19963,7 +21408,7 @@ class RSpec::Core::Notifications::SeedNotification
 end
 
 class RSpec::Core::Notifications::SeedNotification
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -19986,7 +21431,7 @@ class RSpec::Core::Notifications::StartNotification
 end
 
 class RSpec::Core::Notifications::StartNotification
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -20037,7 +21482,7 @@ class RSpec::Core::Notifications::SummaryNotification
 end
 
 class RSpec::Core::Notifications::SummaryNotification
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -20128,6 +21573,8 @@ class RSpec::Core::OutputWrapper
 
   def autoclose?(*args, &block); end
 
+  def beep(*args, &block); end
+
   def binmode(*args, &block); end
 
   def binmode?(*args, &block); end
@@ -20150,6 +21597,14 @@ class RSpec::Core::OutputWrapper
 
   def codepoints(*args, &block); end
 
+  def cooked(*args, &block); end
+
+  def cooked!(*args, &block); end
+
+  def cursor(*args, &block); end
+
+  def cursor=(*args, &block); end
+
   def each(*args, &block); end
 
   def each_byte(*args, &block); end
@@ -20159,6 +21614,10 @@ class RSpec::Core::OutputWrapper
   def each_codepoint(*args, &block); end
 
   def each_line(*args, &block); end
+
+  def echo=(*args, &block); end
+
+  def echo?(*args, &block); end
 
   def eof(*args, &block); end
 
@@ -20180,7 +21639,15 @@ class RSpec::Core::OutputWrapper
 
   def getc(*args, &block); end
 
+  def getch(*args, &block); end
+
+  def getpass(*args, &block); end
+
   def gets(*args, &block); end
+
+  def goto(*args, &block); end
+
+  def iflush(*args, &block); end
 
   def initialize(output); end
 
@@ -20189,6 +21656,8 @@ class RSpec::Core::OutputWrapper
   def internal_encoding(*args, &block); end
 
   def ioctl(*args, &block); end
+
+  def ioflush(*args, &block); end
 
   def isatty(*args, &block); end
 
@@ -20200,6 +21669,8 @@ class RSpec::Core::OutputWrapper
 
   def method_missing(name, *args, &block); end
 
+  def noecho(*args, &block); end
+
   def nonblock(*args, &block); end
 
   def nonblock=(*args, &block); end
@@ -20207,6 +21678,8 @@ class RSpec::Core::OutputWrapper
   def nonblock?(*args, &block); end
 
   def nread(*args, &block); end
+
+  def oflush(*args, &block); end
 
   def output(); end
 
@@ -20222,6 +21695,8 @@ class RSpec::Core::OutputWrapper
 
   def pread(*args, &block); end
 
+  def pressed?(*args, &block); end
+
   def print(*args, &block); end
 
   def printf(*args, &block); end
@@ -20231,6 +21706,10 @@ class RSpec::Core::OutputWrapper
   def puts(*args, &block); end
 
   def pwrite(*args, &block); end
+
+  def raw(*args, &block); end
+
+  def raw!(*args, &block); end
 
   def read(*args, &block); end
 
@@ -20287,6 +21766,10 @@ class RSpec::Core::OutputWrapper
   def wait_readable(*args, &block); end
 
   def wait_writable(*args, &block); end
+
+  def winsize(*args, &block); end
+
+  def winsize=(*args, &block); end
 
   def write(*args, &block); end
 
@@ -20546,7 +22029,7 @@ class RSpec::Core::SharedContext::Recording
 end
 
 class RSpec::Core::SharedContext::Recording
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -20818,7 +22301,7 @@ class RSpec::Expectations::BlockSnippetExtractor::BlockLocator
 end
 
 class RSpec::Expectations::BlockSnippetExtractor::BlockLocator
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -20842,7 +22325,7 @@ class RSpec::Expectations::BlockSnippetExtractor::BlockTokenExtractor
 end
 
 class RSpec::Expectations::BlockSnippetExtractor::BlockTokenExtractor
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -21340,7 +22823,7 @@ class RSpec::Matchers::AliasedMatcher
 
   def initialize(base_matcher, description_block); end
 
-  def method_missing(*_); end
+  def method_missing(*arg); end
 end
 
 class RSpec::Matchers::AliasedMatcher
@@ -21662,7 +23145,7 @@ class RSpec::Matchers::BuiltIn::Compound::Or
 end
 
 class RSpec::Matchers::BuiltIn::Compound::SequentialEvaluator
-  def initialize(actual, *_); end
+  def initialize(actual, *arg); end
 
   def matcher_matches?(matcher); end
 end
@@ -21724,7 +23207,7 @@ class RSpec::Matchers::BuiltIn::ContainExactly::PairingsMaximizer::Solution
 end
 
 class RSpec::Matchers::BuiltIn::ContainExactly::PairingsMaximizer::Solution
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -23747,7 +25230,7 @@ class RSpec::Mocks::Proxy::SpecificMessage
 end
 
 class RSpec::Mocks::Proxy::SpecificMessage
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -24410,7 +25893,7 @@ class RSpec::Support::ObjectFormatter::BaseInspector
 end
 
 class RSpec::Support::ObjectFormatter::BaseInspector
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.can_inspect?(_object); end
 
@@ -24455,7 +25938,7 @@ class RSpec::Support::ObjectFormatter::InspectableItem
 end
 
 class RSpec::Support::ObjectFormatter::InspectableItem
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -24961,7 +26444,7 @@ class Rack::Auth::Digest::Request
 
   def nonce(); end
 
-  def respond_to?(sym, *_); end
+  def respond_to?(sym, *arg); end
 end
 
 class Rack::Auth::Digest::Request
@@ -25565,7 +27048,7 @@ class Rack::MockResponse
 end
 
 class Rack::MockResponse
-  def self.[](*_); end
+  def self.[](*arg); end
 end
 
 module Rack::Multipart
@@ -25690,7 +27173,7 @@ class Rack::Multipart::Parser::MultipartInfo
 end
 
 class Rack::Multipart::Parser::MultipartInfo
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -26271,9 +27754,9 @@ class Rack::Session::Abstract::Persisted
 end
 
 class Rack::Session::Abstract::PersistedSecure
-  def extract_session_id(*_); end
+  def extract_session_id(*arg); end
 
-  def generate_sid(*_); end
+  def generate_sid(*arg); end
 end
 
 class Rack::Session::Abstract::PersistedSecure::SecureSessionHash
@@ -26522,11 +28005,11 @@ module Rack
 end
 
 class Random
-  def self.bytes(_); end
+  def self.bytes(arg); end
 end
 
 class Range
-  def %(_); end
+  def %(arg); end
 
   def entries(); end
 
@@ -26631,7 +28114,7 @@ class Resource
 end
 
 class Resource::Partial
-  def self.[](*_); end
+  def self.[](*arg); end
 
   def self.members(); end
 end
@@ -26900,6 +28383,8 @@ end
 RspecJunitFormatter = RSpecJUnitFormatter
 
 module RuboCop::AST::CollectionNode
+  def abbrev(*args, &block); end
+
   def compact_blank(*args, &block); end
 
   def compact_blank!(*args, &block); end
@@ -26922,7 +28407,15 @@ module RuboCop::AST::CollectionNode
 
   def pluck(*args, &block); end
 
+  def to_default_s(*args, &block); end
+
+  def to_formatted_s(*args, &block); end
+
   def to_msgpack(*args, &block); end
+
+  def to_sentence(*args, &block); end
+
+  def to_xml(*args, &block); end
 
   def without(*args, &block); end
 end
@@ -26946,11 +28439,8 @@ class RuboCop::AST::NodePattern::Parser
 end
 
 module RuboCop::AST::NodePattern::Sets
-  SET_BEGINNING_OF_DAY_BEGINNING_OF_WEEK_BEGINNING_OF_MONTH_ETC = ::T.let(nil, ::T.untyped)
   SET_BUILD_RECOMMENDED_TEST_OPTIONAL = ::T.let(nil, ::T.untyped)
   SET_DEPENDS_ON_USES_FROM_MACOS = ::T.let(nil, ::T.untyped)
-  SET_END_OF_DAY_END_OF_WEEK_END_OF_MONTH_ETC = ::T.let(nil, ::T.untyped)
-  SET_EQL_EQ_BE = ::T.let(nil, ::T.untyped)
   SET_INCLUDE_WITH_WITHOUT = ::T.let(nil, ::T.untyped)
   SET_SYSTEM_SHELL_OUTPUT_PIPE_OUTPUT = ::T.let(nil, ::T.untyped)
   SET_WITH_WITHOUT = ::T.let(nil, ::T.untyped)
@@ -28162,13 +29652,13 @@ end
 module RubyVM::MJIT
   def self.enabled?(); end
 
-  def self.pause(*_); end
+  def self.pause(*arg); end
 
   def self.resume(); end
 end
 
 class RubyVM
-  def self.resolve_feature_path(_); end
+  def self.resolve_feature_path(arg); end
 end
 
 class Sandbox
@@ -29201,6 +30691,7 @@ end
 
 module Spoom::Cli::Helper
   extend ::T::Sig
+  extend ::T::Helpers
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
 end
@@ -29509,13 +31000,13 @@ end
 class StringScanner
   def bol?(); end
 
-  def initialize(*_); end
+  def initialize(*arg); end
   Id = ::T.let(nil, ::T.untyped)
   Version = ::T.let(nil, ::T.untyped)
 end
 
 class Struct
-  def filter(*_); end
+  def filter(*arg); end
 end
 
 module Superenv
@@ -29641,7 +31132,7 @@ class Time
 
   def compare_with_coercion(other); end
 
-  def compare_without_coercion(_); end
+  def compare_without_coercion(arg); end
 
   def end_of_day(); end
 
@@ -29651,7 +31142,7 @@ class Time
 
   def eql_with_coercion(other); end
 
-  def eql_without_coercion(_); end
+  def eql_without_coercion(arg); end
 
   def in(seconds); end
 
@@ -29667,7 +31158,7 @@ class Time
 
   def minus_without_coercion(other); end
 
-  def minus_without_duration(_); end
+  def minus_without_duration(arg); end
 
   def next_day(days=T.unsafe(nil)); end
 
@@ -29679,7 +31170,7 @@ class Time
 
   def plus_with_duration(other); end
 
-  def plus_without_duration(_); end
+  def plus_without_duration(arg); end
 
   def prev_day(days=T.unsafe(nil)); end
 
@@ -29704,9 +31195,9 @@ end
 class Time
   def self.===(other); end
 
-  def self.at_with_coercion(*args, **kwargs); end
+  def self.at_with_coercion(*args); end
 
-  def self.at_without_coercion(*_); end
+  def self.at_without_coercion(*arg); end
 
   def self.current(); end
 
@@ -29732,7 +31223,7 @@ class Time
 end
 
 class TracePoint
-  def __enable(_, _1); end
+  def __enable(arg, arg1); end
 
   def eval_script(); end
 
@@ -29786,35 +31277,12 @@ module Tty
   def self.yellow(); end
 end
 
-module URI
-  include ::URI::RFC2396_REGEXP
-end
-
-class URI::FTP
-  def buffer_open(buf, proxy, options); end
-end
-
 class URI::FTP
   def self.new2(user, password, host, port, path, typecode=T.unsafe(nil), arg_check=T.unsafe(nil)); end
 end
 
 class URI::File
-  def check_password(user); end
-
-  def check_user(user); end
-
-  def check_userinfo(user); end
-
-  def set_userinfo(v); end
-  COMPONENT = ::T.let(nil, ::T.untyped)
   DEFAULT_PORT = ::T.let(nil, ::T.untyped)
-end
-
-class URI::File
-end
-
-class URI::HTTP
-  def buffer_open(buf, proxy, options); end
 end
 
 class URI::LDAP
@@ -29855,10 +31323,6 @@ class URI::MailTo
   def initialize(*arg); end
 end
 
-URI::Parser = URI::RFC2396_Parser
-
-URI::REGEXP = URI::RFC2396_REGEXP
-
 class URI::RFC2396_Parser
   def initialize(opts=T.unsafe(nil)); end
 end
@@ -29879,7 +31343,6 @@ module URI::Util
 end
 
 module URI
-  extend ::URI::Escape
   def self.get_encoding(label); end
 end
 
@@ -30028,6 +31491,10 @@ end
 class User
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class Utils::AST::FormulaAST
+  def process(*args, &block); end
 end
 
 class Utils::AST::FormulaAST
@@ -30390,17 +31857,17 @@ module Zeitwerk
 end
 
 class Zlib::Deflate
-  def initialize(*_); end
+  def initialize(*arg); end
 end
 
 class Zlib::GzipReader
-  def initialize(*_); end
+  def initialize(*arg); end
 end
 
 class Zlib::GzipWriter
-  def initialize(*_); end
+  def initialize(*arg); end
 end
 
 class Zlib::Inflate
-  def initialize(*_); end
+  def initialize(*arg); end
 end
