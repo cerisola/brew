@@ -154,15 +154,34 @@ module Homebrew
       @cleaned_up_paths = Set.new
     end
 
-    def self.install_formula_clean!(f)
+    def self.install_formula_clean!(f, dry_run: false)
       return if Homebrew::EnvConfig.no_install_cleanup?
 
-      cleanup = Cleanup.new
+      cleanup = Cleanup.new(dry_run: dry_run)
       if cleanup.periodic_clean_due?
         cleanup.periodic_clean!
-      elsif f.latest_version_installed?
+      elsif f.latest_version_installed? && !cleanup.skip_clean_formula?(f)
+        ohai "Running `brew cleanup #{f}`..."
+        puts_no_install_cleanup_disable_message_if_not_already!
         cleanup.cleanup_formula(f)
       end
+    end
+
+    def self.puts_no_install_cleanup_disable_message_if_not_already!
+      return if Homebrew::EnvConfig.no_env_hints?
+      return if Homebrew::EnvConfig.no_install_cleanup?
+      return if @puts_no_install_cleanup_disable_message_if_not_already
+
+      puts "Disable this behaviour by setting HOMEBREW_NO_INSTALL_CLEANUP."
+      puts "Hide these hints with HOMEBREW_NO_ENV_HINTS (see `man brew`)."
+      @puts_no_install_cleanup_disable_message_if_not_already = true
+    end
+
+    def skip_clean_formula?(f)
+      return false if Homebrew::EnvConfig.no_cleanup_formulae.blank?
+
+      skip_clean_formulae = Homebrew::EnvConfig.no_cleanup_formulae.split(",")
+      skip_clean_formulae.include?(f.name) || (skip_clean_formulae & f.aliases).present?
     end
 
     def periodic_clean_due?
@@ -180,13 +199,24 @@ module Homebrew
     def periodic_clean!
       return false unless periodic_clean_due?
 
-      ohai "`brew cleanup` has not been run in #{CLEANUP_DEFAULT_DAYS} days, running now..."
+      if dry_run?
+        ohai "Would run `brew cleanup` which has not been run in the last #{CLEANUP_DEFAULT_DAYS} days"
+      else
+        ohai "`brew cleanup` has not been run in the last #{CLEANUP_DEFAULT_DAYS} days, running now..."
+      end
+
+      Cleanup.puts_no_install_cleanup_disable_message_if_not_already!
+      return if dry_run?
+
       clean!(quiet: true, periodic: true)
     end
 
     def clean!(quiet: false, periodic: false)
       if args.empty?
-        Formula.installed.sort_by(&:name).each do |formula|
+        Formula.installed
+               .sort_by(&:name)
+               .reject { |f| skip_clean_formula?(f) }
+               .each do |formula|
           cleanup_formula(formula, quiet: quiet, ds_store: false, cache_db: false)
         end
         cleanup_cache
@@ -223,7 +253,12 @@ module Homebrew
             nil
           end
 
-          cleanup_formula(formula) if formula
+          if formula && skip_clean_formula?(formula)
+            onoe "Refusing to clean #{formula} because it is listed in " \
+                 "#{Tty.bold}HOMEBREW_NO_CLEANUP_FORMULAE#{Tty.reset}!"
+          elsif formula
+            cleanup_formula(formula)
+          end
           cleanup_cask(cask) if cask
         end
       end
@@ -250,7 +285,7 @@ module Homebrew
 
     def cleanup_keg(keg)
       cleanup_path(keg) { keg.uninstall(raise_failures: true) }
-    rescue Errno::EACCES => e
+    rescue Errno::EACCES, Errno::ENOTEMPTY => e
       opoo e.message
       unremovable_kegs << keg
     end

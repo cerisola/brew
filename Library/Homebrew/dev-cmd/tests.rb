@@ -48,11 +48,9 @@ module Homebrew
   def run_buildpulse
     require "formula"
 
-    unless Formula["buildpulse-test-reporter"].any_version_installed?
-      ohai "Installing `buildpulse-test-reporter` for reporting test flakiness..."
-      with_env(HOMEBREW_NO_AUTO_UPDATE: "1", HOMEBREW_NO_BOOTSNAP: "1") do
-        safe_system HOMEBREW_BREW_FILE, "install", "buildpulse-test-reporter"
-      end
+    with_env(HOMEBREW_NO_AUTO_UPDATE: "1", HOMEBREW_NO_BOOTSNAP: "1") do
+      ensure_formula_installed!("buildpulse-test-reporter",
+                                reason: "reporting test flakiness")
     end
 
     ENV["BUILDPULSE_ACCESS_KEY_ID"] = ENV["HOMEBREW_BUILDPULSE_ACCESS_KEY_ID"]
@@ -168,12 +166,12 @@ module Homebrew
 
       unless OS.mac?
         bundle_args << "--tag" << "~needs_macos" << "--tag" << "~cask"
-        files = files.reject { |p| p =~ %r{^test/(os/mac|cask)(/.*|_spec\.rb)$} }
+        files = files.grep_v(%r{^test/(os/mac|cask)(/.*|_spec\.rb)$})
       end
 
       unless OS.linux?
         bundle_args << "--tag" << "~needs_linux"
-        files = files.reject { |p| p =~ %r{^test/os/linux(/.*|_spec\.rb)$} }
+        files = files.grep_v(%r{^test/os/linux(/.*|_spec\.rb)$})
       end
 
       puts "Randomized with seed #{seed}"

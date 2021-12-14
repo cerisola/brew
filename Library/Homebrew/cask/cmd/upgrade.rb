@@ -95,8 +95,8 @@ module Cask
 
         outdated_casks = if casks.empty?
           Caskroom.casks(config: Config.from_args(args)).select do |cask|
-            cask.outdated?(greedy: greedy, greedy_latest: args.greedy_latest?,
-                           greedy_auto_updates: args.greedy_auto_updates?)
+            cask.outdated?(greedy: greedy, greedy_latest: greedy_latest,
+                           greedy_auto_updates: greedy_auto_updates)
           end
         else
           casks.select do |cask|
@@ -120,20 +120,20 @@ module Cask
         return false if outdated_casks.empty?
 
         if casks.empty? && !greedy
-          if !args.greedy_auto_updates? && !args.greedy_latest?
-            ohai "Casks with 'auto_updates true' or 'version :latest'
-            will not be upgraded; pass `--greedy` to upgrade them."
+          if !greedy_auto_updates && !greedy_latest
+            ohai "Casks with 'auto_updates true' or 'version :latest' " \
+                 "will not be upgraded; pass `--greedy` to upgrade them."
           end
-          if args.greedy_auto_updates? && !args.greedy_latest?
+          if greedy_auto_updates && !greedy_latest
             ohai "Casks with 'version :latest' will not be upgraded; pass `--greedy-latest` to upgrade them."
           end
-          if !args.greedy_auto_updates? && args.greedy_latest?
+          if !greedy_auto_updates && greedy_latest
             ohai "Casks with 'auto_updates true' will not be upgraded; pass `--greedy-auto-updates` to upgrade them."
           end
         end
 
         verb = dry_run ? "Would upgrade" : "Upgrading"
-        oh1 "#{verb} #{outdated_casks.count} #{"outdated package".pluralize(outdated_casks.count)}:"
+        oh1 "#{verb} #{outdated_casks.count} outdated #{"package".pluralize(outdated_casks.count)}:"
 
         caught_exceptions = []
 
@@ -166,6 +166,7 @@ module Cask
       )
         require "cask/installer"
 
+        start_time = Time.now
         odebug "Started upgrade process for Cask #{old_cask}"
         old_config = old_cask.config
 
@@ -203,7 +204,9 @@ module Cask
           # Start new cask's installation steps
           new_cask_installer.check_conflicts
 
-          puts new_cask_installer.caveats if new_cask_installer.caveats
+          if (caveats = new_cask_installer.caveats)
+            puts caveats
+          end
 
           new_cask_installer.fetch
 
@@ -226,6 +229,9 @@ module Cask
           old_cask_installer.revert_upgrade if started_upgrade
           raise e
         end
+
+        end_time = Time.now
+        Homebrew.messages.package_installed(new_cask.token, end_time - start_time)
       end
     end
   end

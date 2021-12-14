@@ -529,6 +529,28 @@ module Homebrew
       url
     end
 
+    # Fetch with brewed curl if using the download or homepage URL
+    # and the download URL specifies `using: :homebrew_curl`.
+    sig { params(formula_or_cask: T.any(Formula, Cask::Cask), url: String).returns(T::Boolean) }
+    def use_homebrew_curl?(formula_or_cask, url)
+      if checkable_urls(formula_or_cask).include?(url)
+        case formula_or_cask
+        when Formula
+          [:stable, :head].any? do |spec_name|
+            next false unless (spec = formula_or_cask.send(spec_name))
+
+            spec.using == :homebrew_curl
+          end
+        when Cask::Cask
+          formula_or_cask.url.using == :homebrew_curl
+        else
+          T.absurd(formula_or_cask)
+        end
+      else
+        false
+      end
+    end
+
     # Identifies the latest version of the formula and returns a Hash containing
     # the version information. Returns nil if a latest version couldn't be found.
     sig {
@@ -626,13 +648,10 @@ module Homebrew
         end
 
         if livecheck_strategy.present?
-          if livecheck_strategy == :page_match && (livecheck_regex.blank? && livecheck_strategy_block.blank?)
-            odebug "#{strategy_name} strategy requires a regex or block"
-            next
-          elsif livecheck_url.blank?
+          if livecheck_url.blank?
             odebug "#{strategy_name} strategy requires a URL"
             next
-          elsif strategies.exclude?(strategy)
+          elsif livecheck_strategy != :page_match && strategies.exclude?(strategy)
             odebug "#{strategy_name} strategy does not apply to this URL"
             next
           end
@@ -640,10 +659,16 @@ module Homebrew
 
         next if strategy.blank?
 
+        homebrew_curl = case strategy_name
+        when "PageMatch", "HeaderMatch"
+          use_homebrew_curl?((referenced_formula_or_cask || formula_or_cask), url)
+        end
+
         strategy_data = strategy.find_versions(
-          url:   url,
-          regex: livecheck_regex,
-          cask:  cask,
+          url:           url,
+          regex:         livecheck_regex,
+          homebrew_curl: homebrew_curl,
+          cask:          cask,
           &livecheck_strategy_block
         )
         match_version_map = strategy_data[:matches]
@@ -658,9 +683,13 @@ module Homebrew
         end
 
         if debug
-          puts "URL (strategy):   #{strategy_data[:url]}" if strategy_data[:url] != url
-          puts "URL (final):      #{strategy_data[:final_url]}" if strategy_data[:final_url]
-          puts "Regex (strategy): #{strategy_data[:regex].inspect}" if strategy_data[:regex] != livecheck_regex
+          if strategy_data[:url].present? && strategy_data[:url] != url
+            puts "URL (strategy):   #{strategy_data[:url]}"
+          end
+          puts "URL (final):      #{strategy_data[:final_url]}" if strategy_data[:final_url].present?
+          if strategy_data[:regex].present? && strategy_data[:regex] != livecheck_regex
+            puts "Regex (strategy): #{strategy_data[:regex].inspect}"
+          end
           puts "Cached?:          Yes" if strategy_data[:cached] == true
         end
 

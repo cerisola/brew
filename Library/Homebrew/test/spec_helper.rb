@@ -146,7 +146,7 @@ RSpec.configure do |config|
   end
 
   config.before(:each, :needs_svn) do
-    svn_shim = HOMEBREW_SHIMS_PATH/"scm/svn"
+    svn_shim = HOMEBREW_SHIMS_PATH/"shared/svn"
     skip "Subversion is not installed." unless quiet_system svn_shim, "--version"
 
     svn_shim_path = Pathname(Utils.popen_read(svn_shim, "--homebrew=print-path").chomp.presence)
@@ -167,6 +167,15 @@ RSpec.configure do |config|
     ENV["PATH"] = PATH.new(ENV["PATH"])
                       .append(svn.dirname)
                       .append(svnadmin.dirname)
+  end
+
+  config.before(:each, :needs_tls13) do
+    unless curl_supports_tls13?
+      ENV["HOMEBREW_CURL"] = ENV["HOMEBREW_BREWED_CURL_PATH"]
+      skip "A `curl` with TLS 1.3 support is required." unless curl_supports_tls13?
+    end
+  rescue FormulaUnavailableError
+    skip "No `curl` formula is available."
   end
 
   config.before(:each, :needs_unzip) do
@@ -195,6 +204,7 @@ RSpec.configure do |config|
     Requirement.clear_cache
     FormulaInstaller.clear_attempted
     FormulaInstaller.clear_installed
+    FormulaInstaller.clear_fetched
 
     TEST_DIRECTORIES.each(&:mkpath)
 

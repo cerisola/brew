@@ -125,7 +125,10 @@ module Homebrew
         # dependencies. Therefore before performing other checks we need to be
         # sure --force flag is passed.
         if f.outdated?
-          return true unless Homebrew::EnvConfig.no_install_upgrade?
+          unless Homebrew::EnvConfig.no_install_upgrade?
+            puts "#{f.name} #{f.linked_version} is already installed but outdated (so it will be upgraded)."
+            return true
+          end
 
           optlinked_version = Keg.for(f.opt_prefix).version
           onoe <<~EOS
@@ -209,6 +212,28 @@ module Homebrew
           Or to force-install it, run:
             brew install #{f} --force
         EOS
+      elsif f.linked?
+        message = "#{f.name} #{f.linked_version} is already installed"
+        if f.outdated? && !head
+          unless Homebrew::EnvConfig.no_install_upgrade?
+            puts "#{message} but outdated (so it will be upgraded)."
+            return true
+          end
+
+          onoe <<~EOS
+            #{message}
+            To upgrade to #{f.pkg_version}, run:
+              brew upgrade #{f.full_name}
+          EOS
+        elsif only_dependencies
+          return true
+        else
+          onoe <<~EOS
+            #{message}
+            To install #{f.pkg_version}, first run:
+              brew unlink #{f.name}
+          EOS
+        end
       else
         # If none of the above is true and the formula is linked, then
         # FormulaInstaller will handle this case.
@@ -229,8 +254,8 @@ module Homebrew
       false
     end
 
-    def install_formula(
-      f,
+    def install_formulae(
+      formulae_to_install,
       build_bottle: false,
       force_bottle: false,
       bottle_arch: nil,
@@ -247,75 +272,57 @@ module Homebrew
       quiet: false,
       verbose: false
     )
-      f.print_tap_action
-      build_options = f.build
+      formula_installers = formulae_to_install.map do |f|
+        Migrator.migrate_if_needed(f, force: force)
+        build_options = f.build
 
-      fi = FormulaInstaller.new(
-        f,
-        options:                    build_options.used_options,
-        build_bottle:               build_bottle,
-        force_bottle:               force_bottle,
-        bottle_arch:                bottle_arch,
-        ignore_deps:                ignore_deps,
-        only_deps:                  only_deps,
-        include_test_formulae:      include_test_formulae,
-        build_from_source_formulae: build_from_source_formulae,
-        cc:                         cc,
-        git:                        git,
-        interactive:                interactive,
-        keep_tmp:                   keep_tmp,
-        force:                      force,
-        debug:                      debug,
-        quiet:                      quiet,
-        verbose:                    verbose,
-      )
+        fi = FormulaInstaller.new(
+          f,
+          options:                    build_options.used_options,
+          build_bottle:               build_bottle,
+          force_bottle:               force_bottle,
+          bottle_arch:                bottle_arch,
+          ignore_deps:                ignore_deps,
+          only_deps:                  only_deps,
+          include_test_formulae:      include_test_formulae,
+          build_from_source_formulae: build_from_source_formulae,
+          cc:                         cc,
+          git:                        git,
+          interactive:                interactive,
+          keep_tmp:                   keep_tmp,
+          force:                      force,
+          debug:                      debug,
+          quiet:                      quiet,
+          verbose:                    verbose,
+        )
 
-      if f.linked_keg.directory?
-        if Homebrew::EnvConfig.no_install_upgrade?
-          message = <<~EOS
-            #{f.name} #{f.linked_version} is already installed
-          EOS
-          message += if f.outdated? && !f.head?
-            <<~EOS
-              To upgrade to #{f.pkg_version}, run:
-                brew upgrade #{f.full_name}
-            EOS
-          else
-            <<~EOS
-              To install #{f.pkg_version}, first run:
-                brew unlink #{f.name}
-            EOS
-          end
-          raise CannotInstallFormulaError, message unless only_deps
-        elsif f.outdated? && !f.head?
-          puts "#{f.name} #{f.linked_version} is installed but outdated"
-          kegs = Upgrade.outdated_kegs(f)
-          linked_kegs = kegs.select(&:linked?)
-          Upgrade.print_upgrade_message(f, fi.options)
-        end
-      end
-
-      fi.prelude
-      fi.fetch
-
-      kegs.each(&:unlink) if kegs.present?
-
-      fi.install
-      fi.finish
-    rescue FormulaInstallationAlreadyAttemptedError
-      # We already attempted to install f as part of the dependency tree of
-      # another formula. In that case, don't generate an error, just move on.
-      nil
-    rescue CannotInstallFormulaError => e
-      ofail e.message
-    ensure
-      # Re-link kegs if upgrade fails
-      begin
-        linked_kegs.each(&:link) if linked_kegs.present? && !f.latest_version_installed?
-        rescue
+        begin
+          fi.prelude
+          fi.fetch
+          fi
+        rescue CannotInstallFormulaError => e
+          ofail e.message
           nil
+        rescue UnsatisfiedRequirements, DownloadError, ChecksumMismatchError => e
+          ofail "#{f}: #{e}"
+          nil
+        end
+      end.compact
+
+      formula_installers.each do |fi|
+        install_formula(fi)
+        Cleanup.install_formula_clean!(fi.formula)
       end
     end
+
+    def install_formula(formula_installer)
+      f = formula_installer.formula
+
+      upgrade = f.linked? && f.outdated? && !f.head? && !Homebrew::EnvConfig.no_install_upgrade?
+
+      Upgrade.install_formula(formula_installer, upgrade: upgrade)
+    end
+    private_class_method :install_formula
   end
 end
 

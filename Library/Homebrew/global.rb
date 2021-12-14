@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require_relative "startup"
@@ -133,8 +133,5 @@ require "utils"
 require "official_taps"
 require "tap"
 require "tap_constants"
-
-# Enables `patchelf.rb` write support.
-HOMEBREW_PATCHELF_RB_WRITE = ENV["HOMEBREW_NO_PATCHELF_RB_WRITE"].blank?.freeze
 
 require "compat/late" unless Homebrew::EnvConfig.no_compat?

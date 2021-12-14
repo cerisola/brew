@@ -64,7 +64,7 @@ class Formula
   include Utils::Shebang
   include Utils::Shell
   include Context
-  include OnOS
+  include OnOS # TODO: 3.3.0: deprecate OnOS usage in instance methods.
   extend Enumerable
   extend Forwardable
   extend Cachable
@@ -262,7 +262,7 @@ class Formula
   end
 
   def spec_eval(name)
-    spec = self.class.send(name)
+    spec = self.class.send(name).dup
     return unless spec.url
 
     spec.owner = self
@@ -310,7 +310,13 @@ class Formula
 
   # The path that was specified to find this formula.
   def specified_path
-    alias_path || path
+    default_specified_path = Pathname(alias_path) if alias_path.present?
+    default_specified_path ||= path
+
+    return default_specified_path if default_specified_path.presence&.exist?
+    return local_bottle_path if local_bottle_path.presence&.exist?
+
+    default_specified_path
   end
 
   # The name specified to find this formula.
@@ -371,9 +377,9 @@ class Formula
 
   # The Bottle object for given tag.
   # @private
-  sig { params(tag: T.nilable(String)).returns(T.nilable(Bottle)) }
+  sig { params(tag: T.nilable(Symbol)).returns(T.nilable(Bottle)) }
   def bottle_for_tag(tag = nil)
-    Bottle.new(self, bottle_specification, tag) if bottled?
+    Bottle.new(self, bottle_specification, tag) if bottled?(tag)
   end
 
   # The description of the software.
@@ -487,6 +493,9 @@ class Formula
   # Dependencies provided by macOS for the currently active {SoftwareSpec}.
   delegate uses_from_macos_elements: :active_spec
 
+  # Dependency names provided by macOS for the currently active {SoftwareSpec}.
+  delegate uses_from_macos_names: :active_spec
+
   # The {Requirement}s for the currently active {SoftwareSpec}.
   delegate requirements: :active_spec
 
@@ -520,7 +529,7 @@ class Formula
   # exists and is not empty.
   # @private
   def latest_version_installed?
-    latest_prefix = if ENV["HOMEBREW_JSON_CORE"].present? &&
+    latest_prefix = if !head? && Homebrew::EnvConfig.install_from_api? &&
                        (latest_pkg_version = Homebrew::API::Versions.latest_formula_version(name))
       prefix latest_pkg_version
     else
@@ -996,6 +1005,12 @@ class Formula
     opt_prefix/"#{service_name}.service"
   end
 
+  # The generated systemd {.timer} file path.
+  sig { returns(Pathname) }
+  def systemd_timer_path
+    opt_prefix/"#{service_name}.timer"
+  end
+
   # The service specification of the software.
   def service
     return unless service?
@@ -1340,7 +1355,7 @@ class Formula
     Formula.cache[:outdated_kegs][cache_key] ||= begin
       all_kegs = []
       current_version = T.let(false, T::Boolean)
-      latest_version = if ENV["HOMEBREW_JSON_CORE"].present? && (core_formula? || tap.blank?)
+      latest_version = if !head? && Homebrew::EnvConfig.install_from_api? && (core_formula? || tap.blank?)
         Homebrew::API::Versions.latest_formula_version(name) || pkg_version
       else
         pkg_version
@@ -1440,9 +1455,9 @@ class Formula
 
   # @private
   def ==(other)
-    instance_of?(other.class) &&
+    self.class == other.class &&
       name == other.name &&
-      active_spec == other.active_spec
+      active_spec_sym == other.active_spec_sym
   end
   alias eql? ==
 
@@ -1519,10 +1534,13 @@ class Formula
   end
 
   # Standard parameters for Go builds.
-  sig { params(ldflags: T.nilable(String)).returns(T::Array[String]) }
-  def std_go_args(ldflags: nil)
-    args = ["-trimpath", "-o=#{bin/name}"]
-    args += ["-ldflags=#{ldflags}"] if ldflags
+  sig {
+    params(output:  T.any(String, Pathname),
+           ldflags: T.nilable(T.any(String, T::Array[String]))).returns(T::Array[String])
+  }
+  def std_go_args(output: bin/name, ldflags: nil)
+    args = ["-trimpath", "-o=#{output}"]
+    args += ["-ldflags=#{Array(ldflags).join(" ")}"] if ldflags
     args
   end
 
@@ -1665,9 +1683,9 @@ class Formula
   end
 
   # @private
-  def self.each(&block)
+  def self.each(&_block)
     files.each do |file|
-      block.call Formulary.factory(file)
+      yield Formulary.factory(file)
     rescue FormulaUnavailableError, FormulaUnreadableError => e
       # Don't let one broken formula break commands. But do complain.
       onoe "Failed to import: #{file}"
@@ -1903,7 +1921,6 @@ class Formula
   # @private
   def to_hash
     dependencies = deps
-    uses_from_macos = uses_from_macos_elements || []
 
     hsh = {
       "name"                     => name,
@@ -1925,6 +1942,7 @@ class Formula
       "version_scheme"           => version_scheme,
       "bottle"                   => {},
       "keg_only"                 => keg_only?,
+      "keg_only_reason"          => keg_only_reason&.to_hash,
       "bottle_disabled"          => bottle_disabled?,
       "options"                  => [],
       "build_dependencies"       => dependencies.select(&:build?)
@@ -1941,7 +1959,7 @@ class Formula
       "optional_dependencies"    => dependencies.select(&:optional?)
                                                 .map(&:name)
                                                 .uniq,
-      "uses_from_macos"          => uses_from_macos.uniq,
+      "uses_from_macos"          => uses_from_macos_elements.uniq,
       "requirements"             => [],
       "conflicts_with"           => conflicts.map(&:name),
       "caveats"                  => caveats&.gsub(HOMEBREW_PREFIX, "$(brew --prefix)"),
@@ -2032,17 +2050,17 @@ class Formula
       "root_url" => bottle_spec.root_url,
       "files"    => {},
     }
-    bottle_spec.collector.each_key do |os|
-      collector_os = bottle_spec.collector[os]
-      os_cellar = collector_os[:cellar]
+    bottle_spec.collector.each_tag do |tag|
+      tag_spec = bottle_spec.collector.specification_for(tag)
+      os_cellar = tag_spec.cellar
       os_cellar = os_cellar.inspect if os_cellar.is_a?(Symbol)
 
-      checksum = collector_os[:checksum].hexdigest
-      filename = Bottle::Filename.create(self, os, bottle_spec.rebuild)
+      checksum = tag_spec.checksum.hexdigest
+      filename = Bottle::Filename.create(self, tag, bottle_spec.rebuild)
       path, = Utils::Bottles.path_resolved_basename(bottle_spec.root_url, name, checksum, filename)
       url = "#{bottle_spec.root_url}/#{path}"
 
-      hash["files"][os] = {
+      hash["files"][tag.to_sym] = {
         "cellar" => os_cellar,
         "url"    => url,
         "sha256" => checksum,

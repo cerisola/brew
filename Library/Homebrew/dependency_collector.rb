@@ -45,7 +45,7 @@ class DependencyCollector
   end
 
   def cache_key(spec)
-    if spec.is_a?(Resource) && spec.download_strategy == CurlDownloadStrategy
+    if spec.is_a?(Resource) && spec.download_strategy <= CurlDownloadStrategy
       File.extname(spec.url)
     else
       spec
@@ -79,6 +79,10 @@ class DependencyCollector
 
   def xz_dep_if_needed(tags)
     Dependency.new("xz", tags) unless which("xz")
+  end
+
+  def zstd_dep_if_needed(tags)
+    Dependency.new("zstd", tags) unless which("zstd")
   end
 
   def unzip_dep_if_needed(tags)
@@ -144,7 +148,7 @@ class DependencyCollector
     strategy = spec.download_strategy
 
     if strategy <= HomebrewCurlDownloadStrategy
-      brewed_curl_dep_if_needed(tags)
+      @deps << brewed_curl_dep_if_needed(tags)
       parse_url_spec(spec.url, tags)
     elsif strategy <= CurlDownloadStrategy
       parse_url_spec(spec.url, tags)
@@ -171,6 +175,7 @@ class DependencyCollector
   def parse_url_spec(url, tags)
     case File.extname(url)
     when ".xz"          then xz_dep_if_needed(tags)
+    when ".zst"         then zstd_dep_if_needed(tags)
     when ".zip"         then unzip_dep_if_needed(tags)
     when ".bz2"         then bzip2_dep_if_needed(tags)
     when ".lha", ".lzh" then Dependency.new("lha", tags)

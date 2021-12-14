@@ -50,10 +50,11 @@ module Homebrew
       if args.update?
         excluded_gems = [
           "did_you_mean", # RBI file is already provided by Sorbet
+          "webrobots", # RBI file is bugged
         ]
 
         ohai "Updating Tapioca RBI files..."
-        system "bundle", "exec", "tapioca", "sync", "--exclude", *excluded_gems
+        system "bundle", "exec", "tapioca", "gem", "--exclude", *excluded_gems
         system "bundle", "exec", "parlour"
         system "bundle", "exec", "srb", "rbi", "hidden-definitions"
         system "bundle", "exec", "srb", "rbi", "todo"
@@ -96,10 +97,6 @@ module Homebrew
       end
 
       srb_exec = %w[bundle exec srb tc]
-
-      # As-of Sorbet 0.5.9030 there's a lot of complaints about superclass/class
-      # relationships in RSpec (that we don't control)
-      srb_exec << "--suppress-error-code" << "5067"
 
       srb_exec << "--quiet" if args.quiet?
 

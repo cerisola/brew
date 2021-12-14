@@ -92,7 +92,7 @@ __brew_complete_tapped() {
   for dir in "${taplib}"/*/*
   do
     [[ -d "${dir}" ]] || continue
-    dir="${dir#${taplib}/}"
+    dir="${dir#"${taplib}"/}"
     dir="${dir/homebrew-/}"
     taps="${taps} ${dir}"
   done
@@ -124,6 +124,8 @@ _brew___cache() {
   case "${cur}" in
     -*)
       __brewcomp "
+      --HEAD
+      --bottle-tag
       --build-from-source
       --cask
       --debug
@@ -268,6 +270,7 @@ _brew__s() {
   case "${cur}" in
     -*)
       __brewcomp "
+      --archlinux
       --cask
       --closed
       --debian
@@ -434,6 +437,7 @@ _brew_bump() {
       --limit
       --no-pull-requests
       --quiet
+      --start-with
       --verbose
       "
       return
@@ -466,7 +470,7 @@ _brew_bump_cask_pr() {
       --url
       --verbose
       --version
-      --write
+      --write-only
       "
       return
       ;;
@@ -500,7 +504,7 @@ _brew_bump_formula_pr() {
       --url
       --verbose
       --version
-      --write
+      --write-only
       "
       return
       ;;
@@ -520,6 +524,7 @@ _brew_bump_revision() {
       --message
       --quiet
       --verbose
+      --write-only
       "
       return
       ;;
@@ -702,9 +707,11 @@ _brew_deps() {
       --annotate
       --cask
       --debug
+      --dot
       --for-each
       --formula
       --full-name
+      --graph
       --help
       --include-build
       --include-optional
@@ -777,6 +784,7 @@ _brew_dispatch_build_bottle() {
       --macos
       --quiet
       --tap
+      --timeout
       --upload
       --verbose
       --workflow
@@ -835,6 +843,7 @@ _brew_edit() {
       --debug
       --formula
       --help
+      --print-path
       --quiet
       --verbose
       "
@@ -1260,6 +1269,7 @@ _brew_linkage() {
       --help
       --quiet
       --reverse
+      --strict
       --test
       --verbose
       "
@@ -1350,7 +1360,9 @@ _brew_log() {
   case "${cur}" in
     -*)
       __brewcomp "
+      --cask
       --debug
+      --formula
       --help
       --max-count
       --oneline
@@ -1365,6 +1377,7 @@ _brew_log() {
     *)
   esac
   __brew_complete_formulae
+  __brew_complete_casks
 }
 
 _brew_ls() {
@@ -1395,29 +1408,13 @@ _brew_ls() {
   __brew_complete_installed_casks
 }
 
-_brew_man() {
-  local cur="${COMP_WORDS[COMP_CWORD]}"
-  case "${cur}" in
-    -*)
-      __brewcomp "
-      --debug
-      --fail-if-not-changed
-      --help
-      --quiet
-      --verbose
-      "
-      return
-      ;;
-    *)
-  esac
-}
-
 _brew_migrate() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   case "${cur}" in
     -*)
       __brewcomp "
       --debug
+      --dry-run
       --force
       --help
       --quiet
@@ -1579,7 +1576,6 @@ _brew_pr_pull() {
   case "${cur}" in
     -*)
       __brewcomp "
-      --archive-item
       --artifact
       --autosquash
       --branch-okay
@@ -1613,17 +1609,16 @@ _brew_pr_upload() {
   case "${cur}" in
     -*)
       __brewcomp "
-      --archive-item
       --committer
       --debug
       --dry-run
-      --github-org
       --help
       --keep-old
       --no-commit
       --quiet
       --root-url
       --root-url-using
+      --upload-only
       --verbose
       --warn-on-upload-failure
       "
@@ -1806,6 +1801,7 @@ _brew_search() {
   case "${cur}" in
     -*)
       __brewcomp "
+      --archlinux
       --cask
       --closed
       --debian
@@ -1897,6 +1893,7 @@ _brew_tap() {
   case "${cur}" in
     -*)
       __brewcomp "
+      --custom-remote
       --debug
       --force-auto-update
       --full
@@ -1940,6 +1937,7 @@ _brew_tap_new() {
       __brewcomp "
       --branch
       --debug
+      --github-packages
       --help
       --no-git
       --pull-label
@@ -2494,7 +2492,6 @@ _brew() {
     ln) _brew_ln ;;
     log) _brew_log ;;
     ls) _brew_ls ;;
-    man) _brew_man ;;
     migrate) _brew_migrate ;;
     missing) _brew_missing ;;
     options) _brew_options ;;

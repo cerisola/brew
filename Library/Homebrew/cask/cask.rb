@@ -6,6 +6,7 @@ require "cask/config"
 require "cask/dsl"
 require "cask/metadata"
 require "searchable"
+require "api"
 
 module Cask
   # An instance of a cask.
@@ -19,13 +20,13 @@ module Cask
     extend Searchable
     include Metadata
 
-    attr_reader :token, :sourcefile_path, :config, :default_config
+    attr_reader :token, :sourcefile_path, :source, :config, :default_config
 
     def self.each(&block)
       return to_enum unless block
 
       Tap.flat_map(&:cask_files).each do |f|
-        block.call CaskLoader::FromTapPathLoader.new(f).load(config: nil)
+        yield CaskLoader::FromTapPathLoader.new(f).load(config: nil)
       rescue CaskUnreadableError => e
         opoo e.message
       end
@@ -37,9 +38,10 @@ module Cask
       @tap
     end
 
-    def initialize(token, sourcefile_path: nil, tap: nil, config: nil, &block)
+    def initialize(token, sourcefile_path: nil, source: nil, tap: nil, config: nil, &block)
       @token = token
       @sourcefile_path = sourcefile_path
+      @source = source
       @tap = tap
       @block = block
 
@@ -79,6 +81,23 @@ module Cask
                           .reverse
                           .uniq
                           .reverse
+    end
+
+    def os_versions
+      @os_versions ||= begin
+        version_os_hash = {}
+        actual_version = MacOS.full_version.to_s
+
+        MacOS::Version::SYMBOLS.each do |os_name, os_version|
+          MacOS.full_version = os_version
+          cask = CaskLoader.load(token)
+          version_os_hash[os_name] = cask.version if cask.version != version
+        end
+
+        version_os_hash
+      ensure
+        MacOS.full_version = actual_version
+      end
     end
 
     def full_name
@@ -130,14 +149,21 @@ module Cask
         return []
       end
 
+      latest_version = if Homebrew::EnvConfig.install_from_api? &&
+                          (latest_cask_version = Homebrew::API::Versions.latest_cask_version(token))
+        DSL::Version.new latest_cask_version.to_s
+      else
+        version
+      end
+
       installed = versions
       current   = installed.last
 
       # not outdated unless there is a different version on tap
-      return [] if current == version
+      return [] if current == latest_version
 
       # collect all installed versions that are different than tap version and return them
-      installed.reject { |v| v == version }
+      installed.reject { |v| v == latest_version }
     end
 
     def outdated_info(greedy, verbose, json, greedy_latest, greedy_auto_updates)
@@ -181,6 +207,7 @@ module Cask
         "url"            => url,
         "appcast"        => appcast,
         "version"        => version,
+        "versions"       => os_versions,
         "installed"      => versions.last,
         "outdated"       => outdated?,
         "sha256"         => sha256,

@@ -24,14 +24,14 @@ module Homebrew
              description: "List only the names of outdated kegs (takes precedence over `--verbose`)."
       switch "-v", "--verbose",
              description: "Include detailed version information."
-      switch "--formula",
+      switch "--formula", "--formulae",
              description: "List only outdated formulae."
-      switch "--cask",
+      switch "--cask", "--casks",
              description: "List only outdated casks."
       flag   "--json",
              description: "Print output in JSON format. There are two versions: `v1` and `v2`. " \
                           "`v1` is deprecated and is currently the default if no version is specified. " \
-                          "`v2` prints outdated formulae and casks. "
+                          "`v2` prints outdated formulae and casks."
       switch "--fetch-HEAD",
              description: "Fetch the upstream repository to detect if the HEAD installation of the "\
                           "formula is outdated. Otherwise, the repository's HEAD will only be checked for "\
@@ -98,7 +98,8 @@ module Homebrew
         if verbose?
           outdated_kegs = f.outdated_kegs(fetch_head: args.fetch_HEAD?)
 
-          current_version = if ENV["HOMEBREW_JSON_CORE"].present? && (f.core_formula? || f.tap.blank?)
+          current_version = if !f.head? && Homebrew::EnvConfig.install_from_api? &&
+                               (f.core_formula? || f.tap.blank?)
             Homebrew::API::Versions.latest_formula_version(f.name)&.to_s || f.pkg_version.to_s
           elsif f.alias_changed? && !f.latest_formula.latest_version_installed?
             latest = f.latest_formula

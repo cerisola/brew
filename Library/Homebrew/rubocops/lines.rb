@@ -55,7 +55,6 @@ module RuboCop
               "# if this fails, try separate make/make install steps",
               "# The URL of the archive",
               "## Naming --",
-              "# if your formula requires any X11/XQuartz components",
               "# if your formula fails when building in parallel",
               "# Remove unrecognized options if warned by configure",
               '# system "cmake',
@@ -212,6 +211,32 @@ module RuboCop
         end
       end
 
+      # This cop makes sure that formulae do not depend on `pyoxidizer` at build-time
+      # or run-time.
+      #
+      # @api private
+      class PyoxidizerCheck < FormulaCop
+        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          # Disallow use of PyOxidizer as a dependency in core
+          return unless formula_tap == "homebrew-core"
+
+          find_method_with_args(body_node, :depends_on, "pyoxidizer") do
+            problem "Formulae in homebrew/core should not use '#{@offensive_node.source}'."
+          end
+
+          [
+            :build,
+            [:build],
+            [:build, :test],
+            [:test, :build],
+          ].each do |type|
+            find_method_with_args(body_node, :depends_on, "pyoxidizer" => type) do
+              problem "Formulae in homebrew/core should not use '#{@offensive_node.source}'."
+            end
+          end
+        end
+      end
+
       # This cop makes sure that the safe versions of `popen_*` calls are used.
       #
       # @api private
@@ -347,6 +372,92 @@ module RuboCop
         end
       end
 
+      # This cop makes sure that OS conditionals are consistent.
+      #
+      # @api private
+      class OSConditionals < FormulaCop
+        extend AutoCorrector
+
+        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          no_on_os_method_names = [:install, :post_install].freeze
+          no_on_os_block_names = [:service, :test].freeze
+          [[:on_macos, :mac?], [:on_linux, :linux?]].each do |on_method_name, if_method_name|
+            if_method_and_class = "if OS.#{if_method_name}"
+            no_on_os_method_names.each do |formula_method_name|
+              method_node = find_method_def(body_node, formula_method_name)
+              next unless method_node
+              next unless method_called_ever?(method_node, on_method_name)
+
+              problem "Don't use '#{on_method_name}' in 'def #{formula_method_name}', " \
+                      "use '#{if_method_and_class}' instead." do |corrector|
+                block_node = offending_node.parent
+                next if block_node.type != :block
+
+                # TODO: could fix corrector to handle this but punting for now.
+                next if block_node.single_line?
+
+                source_range = offending_node.source_range.join(offending_node.parent.loc.begin)
+                corrector.replace(source_range, if_method_and_class)
+              end
+            end
+
+            no_on_os_block_names.each do |formula_block_name|
+              block_node = find_block(body_node, formula_block_name)
+              next unless block_node
+              next unless method_called_in_block?(block_node, on_method_name)
+
+              problem "Don't use '#{on_method_name}' in '#{formula_block_name} do', " \
+                      "use '#{if_method_and_class}' instead." do |corrector|
+                block_node = offending_node.parent
+                next if block_node.type != :block
+
+                # TODO: could fix corrector to handle this but punting for now.
+                next if block_node.single_line?
+
+                source_range = offending_node.source_range.join(offending_node.parent.loc.begin)
+                corrector.replace(source_range, if_method_and_class)
+              end
+            end
+
+            # Don't restrict OS.mac? or OS.linux? usage in taps; they don't care
+            # as much as we do about e.g. formulae.brew.sh generation, often use
+            # platform-specific URLs and we don't want to add DSLs to support
+            # that case.
+            next if formula_tap != "homebrew-core"
+
+            find_instance_method_call(body_node, "OS", if_method_name) do |method|
+              valid = T.let(false, T::Boolean)
+              method.each_ancestor do |ancestor|
+                valid_method_names = case ancestor.type
+                when :def
+                  no_on_os_method_names
+                when :block
+                  no_on_os_block_names
+                else
+                  next
+                end
+                next unless valid_method_names.include?(ancestor.method_name)
+
+                valid = true
+                break
+              end
+              next if valid
+
+              offending_node(method)
+              problem "Don't use '#{if_method_and_class}', use '#{on_method_name} do' instead." do |corrector|
+                if_node = method.parent
+                next if if_node.type != :if
+
+                # TODO: could fix corrector to handle this but punting for now.
+                next if if_node.unless?
+
+                corrector.replace(if_node.source_range, "#{on_method_name} do\n#{if_node.body.source}\nend")
+              end
+            end
+          end
+        end
+      end
+
       # This cop checks for other miscellaneous style violations.
       #
       # @api private
@@ -369,14 +480,6 @@ module RuboCop
           [:rebuild, :version_scheme].each do |method_name|
             find_method_with_args(body_node, method_name, 0) do
               problem "'#{method_name} 0' should be removed"
-            end
-          end
-
-          [:mac?, :linux?].each do |method_name|
-            next if formula_tap != "homebrew-core" || file_path&.include?("linuxbrew")
-
-            find_instance_method_call(body_node, "OS", method_name) do |check|
-              problem "Don't use #{check.source}; homebrew/core only supports macOS"
             end
           end
 

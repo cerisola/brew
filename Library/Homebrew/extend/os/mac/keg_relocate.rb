@@ -95,7 +95,7 @@ class Keg
     links = file.method(linkage_type)
                 .call
                 .uniq
-                .reject { |fn| fn =~ /^@(loader_|executable_|r)path/ }
+                .grep_v(/^@(loader_|executable_|r)path/)
     links.each(&block)
   end
 
@@ -171,6 +171,11 @@ class Keg
       "/usr/bin/perl#{MacOS.preferred_perl_version}"
     end
     relocation.add_replacement_pair(:perl, PERL_PLACEHOLDER, perl_path)
+
+    if (openjdk = openjdk_dep_name_if_applicable)
+      openjdk_path = HOMEBREW_PREFIX/"opt"/openjdk/"libexec/openjdk.jdk/Contents/Home"
+      relocation.add_replacement_pair(:java, JAVA_PLACEHOLDER, openjdk_path.to_s)
+    end
 
     relocation
   end

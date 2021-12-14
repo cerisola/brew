@@ -20,13 +20,19 @@ module Superenv
   include SharedEnvExtension
 
   # @private
-  attr_accessor :keg_only_deps, :deps, :run_time_deps, :x11
+  attr_accessor :keg_only_deps, :deps, :run_time_deps
 
   sig { params(base: Superenv).void }
   def self.extended(base)
     base.keg_only_deps = []
     base.deps = []
     base.run_time_deps = []
+  end
+
+  # The location of Homebrew's shims on this OS.
+  sig { returns(Pathname) }
+  def self.shims_path
+    HOMEBREW_SHIMS_PATH/"super"
   end
 
   # @private
@@ -161,17 +167,11 @@ module Superenv
     ).existing
   end
 
-  sig { returns(T::Array[Pathname]) }
-  def homebrew_extra_aclocal_paths
-    []
-  end
-
   sig { returns(T.nilable(PATH)) }
   def determine_aclocal_path
     PATH.new(
       keg_only_deps.map { |d| d.opt_share/"aclocal" },
       HOMEBREW_PREFIX/"share/aclocal",
-      homebrew_extra_aclocal_paths,
     ).existing
   end
 
@@ -210,12 +210,12 @@ module Superenv
       rescue FormulaUnavailableError
         nil
       else
-        paths << f.opt_lib/"gcc"/f.version.major if f.any_version_installed?
+        paths << (f.opt_lib/"gcc"/f.version.major) if f.any_version_installed?
       end
     end
 
     paths << keg_only_deps.map(&:opt_lib)
-    paths << HOMEBREW_PREFIX/"lib"
+    paths << (HOMEBREW_PREFIX/"lib")
 
     paths += homebrew_extra_library_paths
     PATH.new(paths).existing

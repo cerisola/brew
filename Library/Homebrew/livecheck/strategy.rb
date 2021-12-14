@@ -39,8 +39,6 @@ module Homebrew
       DEFAULT_CURL_ARGS = [
         # Follow redirections to handle mirrors, relocations, etc.
         "--location",
-        "--connect-timeout", CURL_CONNECT_TIMEOUT,
-        "--max-time", CURL_MAX_TIME
       ].freeze
 
       # `curl` arguments used in `Strategy#page_headers` method.
@@ -62,12 +60,14 @@ module Homebrew
 
       # Baseline `curl` options used in {Strategy} methods.
       DEFAULT_CURL_OPTIONS = {
-        print_stdout: false,
-        print_stderr: false,
-        debug:        false,
-        verbose:      false,
-        timeout:      CURL_PROCESS_TIMEOUT,
-        retry:        false,
+        print_stdout:    false,
+        print_stderr:    false,
+        debug:           false,
+        verbose:         false,
+        timeout:         CURL_PROCESS_TIMEOUT,
+        connect_timeout: CURL_CONNECT_TIMEOUT,
+        max_time:        CURL_MAX_TIME,
+        retries:         0,
       }.freeze
 
       # HTTP response head(s) and body are typically separated by a double
@@ -171,16 +171,18 @@ module Homebrew
       # collected into an array of hashes.
       #
       # @param url [String] the URL to fetch
+      # @param homebrew_curl [Boolean] whether to use brewed curl with the URL
       # @return [Array]
-      sig { params(url: String).returns(T::Array[T::Hash[String, String]]) }
-      def self.page_headers(url)
+      sig { params(url: String, homebrew_curl: T::Boolean).returns(T::Array[T::Hash[String, String]]) }
+      def self.page_headers(url, homebrew_curl: false)
         headers = []
 
         [:default, :browser].each do |user_agent|
           stdout, _, status = curl_with_workarounds(
             *PAGE_HEADERS_CURL_ARGS, url,
             **DEFAULT_CURL_OPTIONS,
-            user_agent: user_agent
+            use_homebrew_curl: homebrew_curl,
+            user_agent:        user_agent
           )
 
           while stdout.match?(/\AHTTP.*\r$/)
@@ -203,9 +205,10 @@ module Homebrew
       # array with the error message instead.
       #
       # @param url [String] the URL of the content to check
+      # @param homebrew_curl [Boolean] whether to use brewed curl with the URL
       # @return [Hash]
-      sig { params(url: String).returns(T::Hash[Symbol, T.untyped]) }
-      def self.page_content(url)
+      sig { params(url: String, homebrew_curl: T::Boolean).returns(T::Hash[Symbol, T.untyped]) }
+      def self.page_content(url, homebrew_curl: false)
         original_url = url
 
         stderr = nil
@@ -213,7 +216,8 @@ module Homebrew
           stdout, stderr, status = curl_with_workarounds(
             *PAGE_CONTENT_CURL_ARGS, url,
             **DEFAULT_CURL_OPTIONS,
-            user_agent: user_agent
+            use_homebrew_curl: homebrew_curl,
+            user_agent:        user_agent
           )
           next unless status.success?
 
@@ -247,10 +251,8 @@ module Homebrew
           return data
         end
 
-        /^(?<error_msg>curl: \(\d+\) .+)/ =~ stderr
-        {
-          messages: [error_msg.presence || "cURL failed without an error"],
-        }
+        error_msgs = stderr&.scan(/^curl:.+$/)
+        { messages: error_msgs.presence || ["cURL failed without a detectable error"] }
       end
 
       # Handles the return value from a `strategy` block in a `livecheck`

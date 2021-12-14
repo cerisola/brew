@@ -30,7 +30,7 @@ module Utils
     def git
       return @git if defined?(@git)
 
-      @git = HOMEBREW_SHIMS_PATH/"scm/git"
+      @git = HOMEBREW_SHIMS_PATH/"shared/git"
     end
 
     def remote_exists?(url)
@@ -94,13 +94,11 @@ module Utils
       # we cannot install brewed git if homebrew/core is unavailable.
       if CoreTap.instance.installed?
         begin
-          oh1 "Installing #{Formatter.identifier("git")}"
-
           # Otherwise `git` will be installed from source in tests that need it. This is slow
           # and will also likely fail due to `OS::Linux` and `OS::Mac` being undefined.
           raise "Refusing to install Git on a generic OS." if ENV["HOMEBREW_TEST_GENERIC_OS"]
 
-          safe_system HOMEBREW_BREW_FILE, "install", "git"
+          ensure_formula_installed!("git")
           clear_available_cache
         rescue
           raise "Git is unavailable"
@@ -123,10 +121,11 @@ module Utils
     end
 
     def setup_gpg!
-      return unless Formula["gnupg"].optlinked?
+      gnupg_bin = HOMEBREW_PREFIX/"opt/gnupg/bin"
+      return unless gnupg_bin.directory?
 
       ENV["PATH"] = PATH.new(ENV["PATH"])
-                        .prepend(Formula["gnupg"].opt_bin)
+                        .prepend(gnupg_bin)
     end
 
     # Special case of `git cherry-pick` that permits non-verbose output and

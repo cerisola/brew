@@ -1,7 +1,7 @@
 .\" generated with Ronn/v0.7.3
 .\" http://github.com/rtomayko/ronn/tree/0.7.3
 .
-.TH "BREW" "1" "August 2021" "Homebrew" "brew"
+.TH "BREW" "1" "December 2021" "Homebrew" "brew"
 .
 .SH "NAME"
 \fBbrew\fR \- The Missing Package Manager for macOS (or Linux)
@@ -60,6 +60,9 @@ For the full command list, see the \fICOMMANDS\fR section\.
 .
 .P
 With \fB\-\-verbose\fR or \fB\-\-debug\fR, many commands print extra debugging information\. Note that these options should only appear after a command\.
+.
+.P
+Some command behaviour can be customised with environment variables; see the \fIENVIRONMENT\fR section\.
 .
 .SS "\fBinstall\fR \fIformula\fR"
 Install \fIformula\fR\.
@@ -189,6 +192,14 @@ Include requirements in addition to dependencies for \fIformula\fR\.
 .TP
 \fB\-\-tree\fR
 Show dependencies as a tree\. When given multiple formula arguments, show individual trees for each formula\.
+.
+.TP
+\fB\-\-graph\fR
+Show dependencies as a directed graph\.
+.
+.TP
+\fB\-\-dot\fR
+Show text\-based graph description in DOT format\.
 .
 .TP
 \fB\-\-annotate\fR
@@ -351,7 +362,7 @@ Which type of analytics data to retrieve\. The value for \fIcategory\fR must be 
 .
 .TP
 \fB\-\-github\fR
-Open the GitHub source page for \fIformula\fR in a browser\. To view formula history locally: \fBbrew log \-p\fR \fIformula\fR
+Open the GitHub source page for \fIformula\fR and \fIcask\fR in a browser\. To view the history locally: \fBbrew log \-p\fR \fIformula\fR or \fIcask\fR
 .
 .TP
 \fB\-\-json\fR
@@ -381,7 +392,13 @@ Treat all named arguments as casks\.
 Install a \fIformula\fR or \fIcask\fR\. Additional options specific to a \fIformula\fR may be appended to the command\.
 .
 .P
+Unless \fBHOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK\fR is set, \fBbrew upgrade\fR or \fBbrew reinstall\fR will be run for outdated dependents and dependents with broken linkage, respectively\.
+.
+.P
 Unless \fBHOMEBREW_NO_INSTALL_CLEANUP\fR is set, \fBbrew cleanup\fR will then be run for the installed formulae or, every 30 days, for all formulae\.
+.
+.P
+Unless \fBHOMEBREW_NO_INSTALL_UPGRADE\fR is set, \fBbrew install <formula>\fR will upgrade \fIformula\fR if it is already installed but outdated\.
 .
 .TP
 \fB\-d\fR, \fB\-\-debug\fR
@@ -449,7 +466,7 @@ Optimise bottles for the specified architecture rather than the oldest architect
 .
 .TP
 \fB\-\-display\-times\fR
-Print install times for each formula at the end of the run\.
+Print install times for each package at the end of the run\.
 .
 .TP
 \fB\-i\fR, \fB\-\-interactive\fR
@@ -555,8 +572,8 @@ Reverse the order of the formulae and/or casks sort to list the oldest entries f
 \fB\-t\fR
 Sort formulae and/or casks by time modified, listing most recently modified first\. Has no effect when a formula or cask name is passed as an argument\.
 .
-.SS "\fBlog\fR [\fIoptions\fR] [\fIformula\fR]"
-Show the \fBgit log\fR for \fIformula\fR, or show the log for the Homebrew repository if no formula is provided\.
+.SS "\fBlog\fR [\fIoptions\fR] [\fIformula\fR|\fIcask\fR]"
+Show the \fBgit log\fR for \fIformula\fR or \fIcask\fR, or show the log for the Homebrew repository if no formula or cask is provided\.
 .
 .TP
 \fB\-p\fR, \fB\-\-patch\fR
@@ -578,12 +595,24 @@ Print only one commit\.
 \fB\-n\fR, \fB\-\-max\-count\fR
 Print only a specified number of commits\.
 .
-.SS "\fBmigrate\fR [\fI\-\-force\fR] \fIinstalled_formula\fR [\.\.\.]"
+.TP
+\fB\-\-formula\fR
+Treat all named arguments as formulae\.
+.
+.TP
+\fB\-\-cask\fR
+Treat all named arguments as casks\.
+.
+.SS "\fBmigrate\fR [\fI\-\-force\fR] [\fI\-\-dry\-run\fR] \fIinstalled_formula\fR [\.\.\.]"
 Migrate renamed packages to new names, where \fIformula\fR are old names of packages\.
 .
 .TP
 \fB\-f\fR, \fB\-\-force\fR
 Treat installed \fIformula\fR and provided \fIformula\fR as if they are from the same taps and migrate them anyway\.
+.
+.TP
+\fB\-n\fR, \fB\-\-dry\-run\fR
+Show what would be migrated, but do not actually migrate anything\.
 .
 .SS "\fBmissing\fR [\fI\-\-hide\fR\fB=\fR] [\fIformula\fR \.\.\.]"
 Check the given \fIformula\fR kegs for missing dependencies\. If no \fIformula\fR are provided, check all kegs\. Will exit with a non\-zero status if any kegs are found to be missing dependencies\.
@@ -669,6 +698,9 @@ Syntax\-check all of Homebrew\'s Ruby files (if no \fB<tap>\fR is passed)\.
 .
 .SS "\fBreinstall\fR [\fIoptions\fR] \fIformula\fR|\fIcask\fR [\.\.\.]"
 Uninstall and then reinstall a \fIformula\fR or \fIcask\fR using the same options it was originally installed with, plus any appended options specific to a \fIformula\fR\.
+.
+.P
+Unless \fBHOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK\fR is set, \fBbrew upgrade\fR or \fBbrew reinstall\fR will be run for outdated dependents and dependents with broken linkage, respectively\.
 .
 .P
 Unless \fBHOMEBREW_NO_INSTALL_CLEANUP\fR is set, \fBbrew cleanup\fR will then be run for the reinstalled formulae or, every 30 days, for all formulae\.
@@ -781,6 +813,10 @@ Search for \fItext\fR in the given database\.
 Search for \fItext\fR in the given database\.
 .
 .TP
+\fB\-\-archlinux\fR
+Search for \fItext\fR in the given database\.
+.
+.TP
 \fB\-\-debian\fR
 Search for \fItext\fR in the given database\.
 .
@@ -792,7 +828,7 @@ Search for \fItext\fR in the given database\.
 Print export statements\. When run in a shell, this installation of Homebrew will be added to your \fBPATH\fR, \fBMANPATH\fR, and \fBINFOPATH\fR\.
 .
 .P
-The variables \fBHOMEBREW_PREFIX\fR, \fBHOMEBREW_CELLAR\fR and \fBHOMEBREW_REPOSITORY\fR are also exported to avoid querying them multiple times\. The variable \fBHOMEBREW_SHELLENV_PREFIX\fR will be exported to avoid adding duplicate entries to the environment variables\. Consider adding evaluation of this command\'s output to your dotfiles (e\.g\. \fB~/\.profile\fR, \fB~/\.bash_profile\fR, or \fB~/\.zprofile\fR) with: \fBeval $(brew shellenv)\fR
+The variables \fBHOMEBREW_PREFIX\fR, \fBHOMEBREW_CELLAR\fR and \fBHOMEBREW_REPOSITORY\fR are also exported to avoid querying them multiple times\. To help guarantee idempotence, this command produces no output when Homebrew\'s \fBbin\fR and \fBsbin\fR directores are first and second respectively in your \fBPATH\fR\. Consider adding evaluation of this command\'s output to your dotfiles (e\.g\. \fB~/\.profile\fR, \fB~/\.bash_profile\fR, or \fB~/\.zprofile\fR) with: \fBeval "$(brew shellenv)"\fR
 .
 .SS "\fBtap\fR [\fIoptions\fR] [\fIuser\fR\fB/\fR\fIrepo\fR] [\fIURL\fR]"
 Tap a formula repository\.
@@ -817,6 +853,10 @@ Fetch tap as a shallow clone rather than a full clone\. Useful for continuous in
 .TP
 \fB\-\-force\-auto\-update\fR
 Auto\-update tap even if it is not hosted on GitHub\. By default, only taps hosted on GitHub are auto\-updated (for performance reasons)\.
+.
+.TP
+\fB\-\-custom\-remote\fR
+Install or change a tap with a custom remote\. Useful for mirrors\.
 .
 .TP
 \fB\-\-repair\fR
@@ -905,6 +945,9 @@ Fetch and reset Homebrew and all tap repositories (or any specified \fIrepositor
 Upgrade outdated casks and outdated, unpinned formulae using the same options they were originally installed with, plus any appended brew formula options\. If \fIcask\fR or \fIformula\fR are specified, upgrade only the given \fIcask\fR or \fIformula\fR kegs (unless they are pinned; see \fBpin\fR, \fBunpin\fR)\.
 .
 .P
+Unless \fBHOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK\fR is set, \fBbrew upgrade\fR or \fBbrew reinstall\fR will be run for outdated dependents and dependents with broken linkage, respectively\.
+.
+.P
 Unless \fBHOMEBREW_NO_INSTALL_CLEANUP\fR is set, \fBbrew cleanup\fR will then be run for the upgraded formulae or, every 30 days, for all formulae\.
 .
 .TP
@@ -953,7 +996,7 @@ Retain the temporary files created during installation\.
 .
 .TP
 \fB\-\-display\-times\fR
-Print install times for each formula at the end of the run\.
+Print install times for each package at the end of the run\.
 .
 .TP
 \fB\-\-cask\fR
@@ -1035,6 +1078,14 @@ Show the cache file used when building from source\.
 .TP
 \fB\-\-force\-bottle\fR
 Show the cache file used when pouring a bottle\.
+.
+.TP
+\fB\-\-bottle\-tag\fR
+Show the cache file used when pouring a bottle for the given tag\.
+.
+.TP
+\fB\-\-HEAD\fR
+Show the cache file used when building from HEAD\.
 .
 .TP
 \fB\-\-formula\fR
@@ -1237,7 +1288,7 @@ Use the specified \fIURL\fR as the root of the bottle\'s URL instead of Homebrew
 Use the specified download strategy class for downloading the bottle\'s URL instead of Homebrew\'s default\.
 .
 .SS "\fBbump\fR [\fIoptions\fR] [\fIformula\fR|\fIcask\fR \.\.\.]"
-Display out\-of\-date brew formulae and the latest version available\. Also displays whether a pull request has been opened with the URL\.
+Display out\-of\-date brew formulae and the latest version available\. If the returned current and livecheck versions differ or when querying specific formulae, also displays whether a pull request has been opened with the URL\.
 .
 .TP
 \fB\-\-full\-name\fR
@@ -1259,6 +1310,10 @@ Check only casks\.
 \fB\-\-limit\fR
 Limit number of package results returned\.
 .
+.TP
+\fB\-\-start\-with\fR
+Letter or word that the list of package results should alphabetically follow\.
+.
 .SS "\fBbump\-cask\-pr\fR [\fIoptions\fR] \fIcask\fR"
 Create a pull request to update \fIcask\fR with a new version\.
 .
@@ -1270,12 +1325,12 @@ A best effort to determine the \fISHA\-256\fR will be made if the value is not s
 Print what would be done rather than doing it\.
 .
 .TP
-\fB\-\-write\fR
+\fB\-\-write\-only\fR
 Make the expected file modifications without taking any Git actions\.
 .
 .TP
 \fB\-\-commit\fR
-When passed with \fB\-\-write\fR, generate a new commit after writing changes to the cask file\.
+When passed with \fB\-\-write\-only\fR, generate a new commit after writing changes to the cask file\.
 .
 .TP
 \fB\-\-no\-audit\fR
@@ -1341,12 +1396,12 @@ If a \fIversion\fR is specified, a best effort to determine the \fIURL\fR and \f
 Print what would be done rather than doing it\.
 .
 .TP
-\fB\-\-write\fR
+\fB\-\-write\-only\fR
 Make the expected file modifications without taking any Git actions\.
 .
 .TP
 \fB\-\-commit\fR
-When passed with \fB\-\-write\fR, generate a new commit after writing changes to the formula file\.
+When passed with \fB\-\-write\-only\fR, generate a new commit after writing changes to the formula file\.
 .
 .TP
 \fB\-\-no\-audit\fR
@@ -1404,12 +1459,16 @@ Specify the new commit \fIrevision\fR corresponding to the specified git \fItag\
 \fB\-f\fR, \fB\-\-force\fR
 Ignore duplicate open PRs\. Remove all mirrors if \fB\-\-mirror\fR was not specified\.
 .
-.SS "\fBbump\-revision\fR [\fI\-\-dry\-run\fR] [\fI\-\-message\fR\fB=\fR] \fIformula\fR [\.\.\.]"
+.SS "\fBbump\-revision\fR [\fIoptions\fR] \fIformula\fR [\.\.\.]"
 Create a commit to increment the revision of \fIformula\fR\. If no revision is present, "revision 1" will be added\.
 .
 .TP
 \fB\-n\fR, \fB\-\-dry\-run\fR
 Print what would be done rather than doing it\.
+.
+.TP
+\fB\-\-write\-only\fR
+Make the expected file modifications without taking any Git actions\.
 .
 .TP
 \fB\-\-message\fR
@@ -1527,12 +1586,16 @@ Build bottles for these formulae with GitHub Actions\.
 Target tap repository (default: \fBhomebrew/core\fR)\.
 .
 .TP
+\fB\-\-timeout\fR
+Build timeout (in minutes, default: 60)\.
+.
+.TP
 \fB\-\-issue\fR
 If specified, post a comment to this issue number if the job fails\.
 .
 .TP
 \fB\-\-macos\fR
-Version of macOS the bottle should be built for\.
+Version(s) of macOS the bottle should be built for\.
 .
 .TP
 \fB\-\-workflow\fR
@@ -1554,7 +1617,7 @@ Dispatch bottle for Linux (using self\-hosted runner)\.
 \fB\-\-linux\-wheezy\fR
 Use Debian Wheezy container for building the bottle on Linux\.
 .
-.SS "\fBedit\fR [\fI\-\-formula\fR] [\fI\-\-cask\fR] [\fIformula\fR|\fIcask\fR \.\.\.]"
+.SS "\fBedit\fR [\fIoptions\fR] [\fIformula\fR|\fIcask\fR \.\.\.]"
 Open a \fIformula\fR or \fIcask\fR in the editor set by \fBEDITOR\fR or \fBHOMEBREW_EDITOR\fR, or open the Homebrew repository for editing if no formula is provided\.
 .
 .TP
@@ -1564,6 +1627,10 @@ Treat all named arguments as formulae\.
 .TP
 \fB\-\-cask\fR
 Treat all named arguments as casks\.
+.
+.TP
+\fB\-\-print\-path\fR
+Print the file path to be edited, without opening an editor\.
 .
 .SS "\fBextract\fR [\fI\-\-version\fR\fB=\fR] [\fI\-\-force\fR] \fIformula\fR \fItap\fR"
 Look through repository history to find the most recent version of \fIformula\fR and create a copy in \fItap\fR\. Specifically, the command will create the new formula file at \fItap\fR\fB/Formula/\fR\fIformula\fR\fB@\fR\fIversion\fR\fB\.rb\fR\. If the tap is not installed yet, attempt to install/clone the tap before continuing\. To extract a formula from a tap that is not \fBhomebrew/core\fR use its fully\-qualified form of \fIuser\fR\fB/\fR\fIrepo\fR\fB/\fR\fIformula\fR\.
@@ -1610,6 +1677,10 @@ Check the library links from the given \fIformula\fR kegs\. If no \fIformula\fR 
 .TP
 \fB\-\-test\fR
 Show only missing libraries and exit with a non\-zero status if any missing libraries are found\.
+.
+.TP
+\fB\-\-strict\fR
+Exit with a non\-zero status if any undeclared dependencies with linkage are found\.
 .
 .TP
 \fB\-\-reverse\fR
@@ -1674,7 +1745,7 @@ Pull requests must have this label\.
 .
 .TP
 \fB\-\-without\-labels\fR
-Pull requests must not have these labels (default: \fBdo not merge\fR, \fBnew formula\fR, \fBautomerge\-skip\fR, \fBlinux\-only\fR, \fBlinux to homebrew\-core\fR)\.
+Pull requests must not have these labels (default: \fBdo not merge\fR, \fBnew formula\fR, \fBautomerge\-skip\fR)\.
 .
 .TP
 \fB\-\-without\-approval\fR
@@ -1775,10 +1846,6 @@ Message to include when autosquashing revision bumps, deletions, and rebuilds\.
 Download artifacts with the specified name (default: \fBbottles\fR)\.
 .
 .TP
-\fB\-\-archive\-item\fR
-Upload to the specified Internet Archive item (default: \fBhomebrew\fR)\.
-.
-.TP
 \fB\-\-tap\fR
 Target tap repository (default: \fBhomebrew/core\fR)\.
 .
@@ -1818,16 +1885,12 @@ Do not generate a new commit before uploading\.
 Warn instead of raising an error if the bottle upload fails\. Useful for repairing bottle uploads that previously failed\.
 .
 .TP
+\fB\-\-upload\-only\fR
+Skip running \fBbrew bottle\fR before uploading\.
+.
+.TP
 \fB\-\-committer\fR
 Specify a committer name and email in \fBgit\fR\'s standard author format\.
-.
-.TP
-\fB\-\-archive\-item\fR
-Upload to the specified Internet Archive item (default: \fBhomebrew\fR)\.
-.
-.TP
-\fB\-\-github\-org\fR
-Upload to the specified GitHub organisation\'s GitHub Packages (default: \fBhomebrew\fR)\.
 .
 .TP
 \fB\-\-root\-url\fR
@@ -1937,6 +2000,10 @@ Label name for pull requests ready to be pulled (default: \fBpr\-pull\fR)\.
 .TP
 \fB\-\-branch\fR
 Initialize Git repository and setup GitHub Actions workflows with the specified branch name (default: \fBmain\fR)\.
+.
+.TP
+\fB\-\-github\-packages\fR
+Upload bottles to GitHub Packages\.
 .
 .SS "\fBtest\fR [\fIoptions\fR] \fIinstalled_formula\fR [\.\.\.]"
 Run the test method provided by an installed formula\. There is no standard output or return code, but generally it should notify the user if something is wrong with the installed formula\.
@@ -2492,20 +2559,16 @@ Set the Git author/committer email to the given email\.
 Publish the uploaded bottles\.
 .
 .TP
+\fB\-\-skip\-online\-checks\fR
+Don\'t pass \fB\-\-online\fR to \fBbrew audit\fR and skip \fBbrew livecheck\fR\.
+.
+.TP
 \fB\-\-skip\-dependents\fR
 Don\'t test any dependents\.
 .
 .TP
 \fB\-\-skip\-recursive\-dependents\fR
 Only test the direct dependents\.
-.
-.TP
-\fB\-\-skip\-unbottled\-arm\fR
-Only test bottled formulae on Apple Silicon\.
-.
-.TP
-\fB\-\-skip\-unbottled\-linux\fR
-Only test bottled formulae on Linux\.
 .
 .TP
 \fB\-\-only\-cleanup\-before\fR
@@ -2612,6 +2675,12 @@ Many Homebrew Cask commands accept one or more \fIcask\fR arguments\. These can 
 Note that environment variables must have a value set to be detected\. For example, run \fBexport HOMEBREW_NO_INSECURE_REDIRECT=1\fR rather than just \fBexport HOMEBREW_NO_INSECURE_REDIRECT\fR\.
 .
 .TP
+\fBHOMEBREW_ADDITIONAL_GOOGLE_ANALYTICS_ID\fR
+.
+.br
+Additional Google Analytics tracking ID to emit user behaviour analytics to\. For more information, see: \fIhttps://docs\.brew\.sh/Analytics\fR
+.
+.TP
 \fBHOMEBREW_ARCH\fR
 .
 .br
@@ -2630,7 +2699,7 @@ Prefix all download URLs, including those for bottles, with this value\. For exa
 \fBHOMEBREW_AUTO_UPDATE_SECS\fR
 .
 .br
-Automatically check for updates once per this seconds interval\.
+Run \fBbrew update\fR once every \fBHOMEBREW_AUTO_UPDATE_SECS\fR seconds before some commands, e\.g\. \fBbrew install\fR, \fBbrew upgrade\fR and \fBbrew tap\fR\. Alternatively, disable auto\-update entirely with HOMEBREW_NO_AUTO_UPDATE\.
 .
 .IP
 \fIDefault:\fR \fB300\fR\.
@@ -2648,7 +2717,7 @@ If set, use \fBbat\fR for the \fBbrew cat\fR command\.
 Use this as the \fBbat\fR configuration file\.
 .
 .IP
-\fIDefault:\fR \fB$HOME/\.bat/config\fR\.
+\fIDefault:\fR \fB$HOME/\.config/bat/config\fR\.
 .
 .TP
 \fBHOMEBREW_BOOTSNAP\fR
@@ -2663,7 +2732,7 @@ If set, use Bootsnap to speed up repeated \fBbrew\fR calls\. A no\-op when using
 Use this URL as the download mirror for bottles\. If bottles at that URL are temporarily unavailable, the default bottle domain will be used as a fallback mirror\. For example, \fBHOMEBREW_BOTTLE_DOMAIN=http://localhost:8080\fR will cause all bottles to download from the prefix \fBhttp://localhost:8080/\fR\. If bottles are not available at \fBHOMEBREW_BOTTLE_DOMAIN\fR they will be downloaded from the default bottle domain\.
 .
 .IP
-\fIDefault:\fR macOS: \fBhttps://ghcr\.io/v2/homebrew/core\fR, Linux: \fBhttps://ghcr\.io/v2/linuxbrew/core\fR\.
+\fIDefault:\fR \fBhttps://ghcr\.io/v2/homebrew/core\fR\.
 .
 .TP
 \fBHOMEBREW_BREW_GIT_REMOTE\fR
@@ -2732,7 +2801,7 @@ If set, force colour output on non\-TTY outputs\.
 Use this URL as the Homebrew/homebrew\-core \fBgit\fR(1) remote\.
 .
 .IP
-\fIDefault:\fR macOS: \fBhttps://github\.com/Homebrew/homebrew\-core\fR, Linux: \fBhttps://github\.com/Homebrew/linuxbrew\-core\fR\.
+\fIDefault:\fR \fBhttps://github\.com/Homebrew/homebrew\-core\fR\.
 .
 .TP
 \fBHOMEBREW_CURLRC\fR
@@ -2810,6 +2879,12 @@ Output this many lines of output on formula \fBsystem\fR failures\.
 A space\-separated list of licenses\. Homebrew will refuse to install a formula if it or any of its dependencies has a license on this list\.
 .
 .TP
+\fBHOMEBREW_FORCE_BREWED_CA_CERTIFICATES\fR
+.
+.br
+If set, always use a Homebrew\-installed \fBca\-certificates\fR rather than the system version\. Automatically set if the system version is too old\.
+.
+.TP
 \fBHOMEBREW_FORCE_BREWED_CURL\fR
 .
 .br
@@ -2820,12 +2895,6 @@ If set, always use a Homebrew\-installed \fBcurl\fR(1) rather than the system ve
 .
 .br
 If set, always use a Homebrew\-installed \fBgit\fR(1) rather than the system version\. Automatically set if the system version of \fBgit\fR is too old\.
-.
-.TP
-\fBHOMEBREW_FORCE_HOMEBREW_ON_LINUX\fR
-.
-.br
-If set, running Homebrew on Linux will use URLs for macOS\. This is useful when merging pull requests for macOS while on Linux\.
 .
 .TP
 \fBHOMEBREW_FORCE_VENDOR_RUBY\fR
@@ -2882,10 +2951,13 @@ Print this text before the installation summary of each successful build\.
 \fIDefault:\fR The "Beer Mug" emoji\.
 .
 .TP
-\fBHOMEBREW_INTERNET_ARCHIVE_KEY\fR
+\fBHOMEBREW_INSTALL_FROM_API\fR
 .
 .br
-Use this API key when accessing the Internet Archive S3 API, where bottles are stored\. The format is access:secret\. See https://archive\.org/account/s3\.php
+If set, install formulae and casks in homebrew/core and homebrew/cask taps using Homebrew\'s API instead of needing (large, slow) local checkouts of these repositories\.
+.
+.IP
+\fINote:\fR Setting HOMEBREW_INSTALL_FROM_API is not compatible with Homebrew\'s developer mode so will error (as Homebrew development needs a full clone)\.
 .
 .TP
 \fBHOMEBREW_LIVECHECK_WATCHLIST\fR
@@ -2924,7 +2996,7 @@ If set, do not send analytics\. For more information, see: \fIhttps://docs\.brew
 \fBHOMEBREW_NO_AUTO_UPDATE\fR
 .
 .br
-If set, do not automatically update before running some commands e\.g\. \fBbrew install\fR, \fBbrew upgrade\fR and \fBbrew tap\fR\.
+If set, do not automatically update before running some commands, e\.g\. \fBbrew install\fR, \fBbrew upgrade\fR and \fBbrew tap\fR\. Alternatively, run this less often by setting HOMEBREW_AUTO_UPDATE_SECS to a value higher than the default\.
 .
 .TP
 \fBHOMEBREW_NO_BOOTSNAP\fR
@@ -2936,7 +3008,13 @@ If set, do not use Bootsnap to speed up repeated \fBbrew\fR calls\.
 \fBHOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK\fR
 .
 .br
-If set, do not check for broken dependents after installing, upgrading or reinstalling formulae\.
+If set, do not check for broken linkage of dependents or outdated dependents after installing, upgrading or reinstalling formulae\. This will result in fewer dependents (and their dependencies) being upgraded or reinstalled but may result in more breakage from running \fBbrew install <formula>\fR or \fBbrew upgrade <formula>\fR\.
+.
+.TP
+\fBHOMEBREW_NO_CLEANUP_FORMULAE\fR
+.
+.br
+A comma\-separated list of formulae\. Homebrew will refuse to clean up a formula if it appears on this list\.
 .
 .TP
 \fBHOMEBREW_NO_COLOR\fR
@@ -2963,6 +3041,12 @@ If set, do not print \fBHOMEBREW_INSTALL_BADGE\fR on a successful build\.
 \fINote:\fR Will only try to print emoji on OS X Lion or newer\.
 .
 .TP
+\fBHOMEBREW_NO_ENV_HINTS\fR
+.
+.br
+If set, do not print any hints about changing Homebrew\'s behaviour with environment variables\.
+.
+.TP
 \fBHOMEBREW_NO_GITHUB_API\fR
 .
 .br
@@ -2981,13 +3065,13 @@ If set, forbid redirects from secure HTTPS to insecure HTTP\.
 \fBHOMEBREW_NO_INSTALL_CLEANUP\fR
 .
 .br
-If set, \fBbrew install\fR, \fBbrew upgrade\fR and \fBbrew reinstall\fR will never automatically cleanup installed/upgraded/reinstalled formulae or all formulae every \fBHOMEBREW_CLEANUP_PERIODIC_FULL_DAYS\fR days\.
+If set, \fBbrew install\fR, \fBbrew upgrade\fR and \fBbrew reinstall\fR will never automatically cleanup installed/upgraded/reinstalled formulae or all formulae every \fBHOMEBREW_CLEANUP_PERIODIC_FULL_DAYS\fR days\. Alternatively, HOMEBREW_NO_CLEANUP_FORMULAE allows specifying specific formulae to not clean up\.
 .
 .TP
 \fBHOMEBREW_NO_INSTALL_UPGRADE\fR
 .
 .br
-If set, \fBbrew install\fR will not automatically upgrade installed but outdated formulae
+If set, \fBbrew install <formula>\fR will not upgrade \fB<formula>\fR if it is installed but outdated\.
 .
 .TP
 \fBHOMEBREW_PRY\fR
@@ -2999,7 +3083,16 @@ If set, use Pry for the \fBbrew irb\fR command\.
 \fBHOMEBREW_SIMULATE_MACOS_ON_LINUX\fR
 .
 .br
-If set, running Homebrew on Linux will simulate certain macOS code paths\. This is useful when auditing macOS formulae while on Linux\. Implies \fBHOMEBREW_FORCE_HOMEBREW_ON_LINUX\fR\.
+If set, running Homebrew on Linux will simulate certain macOS code paths\. This is useful when auditing macOS formulae while on Linux\.
+.
+.TP
+\fBHOMEBREW_SSH_CONFIG_PATH\fR
+.
+.br
+If set, Homebrew will use the given config file instead of \fB~/\.ssh/config\fR when fetching \fBgit\fR repos over \fBssh\fR\.
+.
+.IP
+\fIDefault:\fR \fB$HOME/\.ssh/config\fR
 .
 .TP
 \fBHOMEBREW_SKIP_OR_LATER_BOTTLES\fR
@@ -3150,7 +3243,7 @@ Homebrew\'s Technical Steering Committee is Bo Anderson, FX Coudert, Michka Popo
 Homebrew\'s Linux maintainers are Daniel Nachun, Dawid Dziurla, Issy Long, Jonathan Chang, Michka Popoff and Shaun Jackman\.
 .
 .P
-Homebrew\'s other current maintainers are Alexander Bayandin, Bevan Kay, Branch Vincent, Caleb Xu, Carlo Cabrera, Claudia Pellegrino, Connor Mann, Dustin Rodrigues, Eric Knibbe, Maxim Belkin, Miccal Matthews, Michael Cho, Nanda H Krishna, Randall, Sam Ford, Steve Peters, Thierry Moisan, Tom Schoonjans, Vitor Galvao and rui\.
+Homebrew\'s other current maintainers are Alexander Bayandin, Bevan Kay, Branch Vincent, Caleb Xu, Carlo Cabrera, Connor Mann, Dustin Rodrigues, Eric Knibbe, George Adams, Maxim Belkin, Miccal Matthews, Michael Cho, Nanda H Krishna, Randall, Sam Ford, Steve Peters, Thierry Moisan, Tom Schoonjans, Vitor Galvao and rui\.
 .
 .P
 Former maintainers with significant contributions include Jan Viljanen, JCount, commitay, Dominyk Tiller, Tim Smith, Baptiste Fontaine, Xu Cheng, Martin Afanasjew, Brett Koonce, Charlie Sharpsteen, Jack Nagel, Adam Vandenberg, Andrew Janke, Alex Dunn, neutric, Tomasz Pajor, Uladzislau Shablinski, Alyssa Ross, ilovezfs, Chongyu Zhu and Homebrew\'s creator: Max Howell\.

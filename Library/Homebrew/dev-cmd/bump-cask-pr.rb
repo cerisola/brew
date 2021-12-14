@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "cask"
+require "cask/download"
 require "cli/parser"
 require "utils/tar"
 
@@ -21,11 +22,12 @@ module Homebrew
       EOS
       switch "-n", "--dry-run",
              description: "Print what would be done rather than doing it."
-      switch "--write",
+      switch "--write-only",
              description: "Make the expected file modifications without taking any Git actions."
+      switch "--write", hidden: true
       switch "--commit",
-             depends_on:  "--write",
-             description: "When passed with `--write`, generate a new commit after writing changes "\
+             depends_on:  "--write-only",
+             description: "When passed with `--write-only`, generate a new commit after writing changes "\
                           "to the cask file."
       switch "--no-audit",
              description: "Don't run `brew audit` before opening the PR."
@@ -59,6 +61,8 @@ module Homebrew
 
   def bump_cask_pr
     args = bump_cask_pr_args.parse
+
+    odeprecated "`brew bump-cask-pr --write`", "`brew bump-cask-pr --write-only`" if args.write?
 
     # This will be run by `brew style` later so run it first to not start
     # spamming during normal output.
@@ -128,16 +132,15 @@ module Homebrew
                                                         silent:        true)
 
         tmp_cask = Cask::CaskLoader.load(tmp_contents)
-        tmp_config = cask.config
-        tmp_url = tmp_cask.url.to_s
+        tmp_config = tmp_cask.config
 
         if old_hash != :no_check
-          new_hash = fetch_resource(cask, new_version, tmp_url) if new_hash.nil?
+          new_hash = fetch_cask(tmp_contents)[1] if new_hash.nil?
 
           if tmp_contents.include?("Hardware::CPU.intel?")
             other_intel = !Hardware::CPU.intel?
             other_contents = tmp_contents.gsub("Hardware::CPU.intel?", other_intel.to_s)
-            replacement_pairs << fetch_cask(other_contents, new_version)
+            replacement_pairs << fetch_cask(other_contents)
           end
         end
 
@@ -145,7 +148,7 @@ module Homebrew
           next if language == cask.language
 
           lang_config = tmp_config.merge(Cask::Config.new(explicit: { languages: [language] }))
-          replacement_pairs << fetch_cask(tmp_contents, new_version, config: lang_config)
+          replacement_pairs << fetch_cask(tmp_contents, config: lang_config)
         end
       end
     end
@@ -170,6 +173,10 @@ module Homebrew
     branch_name = "bump-#{cask.token}"
     commit_message = "Update #{cask.token}"
     if new_version.present?
+      if new_version.before_comma != old_version.before_comma
+        new_version = new_version.before_comma
+        old_version = old_version.before_comma
+      end
       branch_name += "-#{new_version.tr(",:", "-")}"
       commit_message += " from #{old_version} to #{new_version}"
     end
@@ -184,23 +191,16 @@ module Homebrew
     GitHub.create_bump_pr(pr_info, args: args)
   end
 
-  def fetch_resource(cask, version, url, **specs)
-    resource = Resource.new
-    resource.url(url, specs)
-    resource.owner = Resource.new(cask.token)
-    resource.version = version
-
-    resource_path = resource.fetch
-    Utils::Tar.validate_file(resource_path)
-    resource_path.sha256
-  end
-
-  def fetch_cask(contents, version, config: nil)
+  def fetch_cask(contents, config: nil)
     cask = Cask::CaskLoader.load(contents)
     cask.config = config if config.present?
-    url = cask.url.to_s
     old_hash = cask.sha256.to_s
-    new_hash = fetch_resource(cask, version, url)
+
+    cask_download = Cask::Download.new(cask, quarantine: true)
+    download = cask_download.fetch(verify_download_integrity: false)
+    Utils::Tar.validate_file(download)
+    new_hash = download.sha256
+
     [old_hash, new_hash]
   end
 

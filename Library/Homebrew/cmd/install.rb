@@ -27,8 +27,14 @@ module Homebrew
         Install a <formula> or <cask>. Additional options specific to a <formula> may be
         appended to the command.
 
+        Unless `HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK` is set, `brew upgrade` or `brew reinstall` will be run for
+        outdated dependents and dependents with broken linkage, respectively.
+
         Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for
         the installed formulae or, every 30 days, for all formulae.
+
+        Unless `HOMEBREW_NO_INSTALL_UPGRADE` is set, `brew install <formula>` will upgrade <formula> if it
+        is already installed but outdated.
       EOS
       switch "-d", "--debug",
              description: "If brewing fails, open an interactive debugging session with access to IRB " \
@@ -95,7 +101,7 @@ module Homebrew
         }],
         [:switch, "--display-times", {
           env:         :display_install_times,
-          description: "Print install times for each formula at the end of the run.",
+          description: "Print install times for each package at the end of the run.",
         }],
         [:switch, "-i", "--interactive", {
           description: "Download and patch <formula>, then open a shell. This allows the user to " \
@@ -139,9 +145,11 @@ module Homebrew
 
     args.named.each do |name|
       next if File.exist?(name)
-      next if name !~ HOMEBREW_TAP_FORMULA_REGEX && name !~ HOMEBREW_CASK_TAP_CASK_REGEX
+      next unless name =~ HOMEBREW_TAP_FORMULA_REGEX
 
       tap = Tap.fetch(Regexp.last_match(1), Regexp.last_match(2))
+      next if (tap.core_tap? || tap == "homebrew/cask") && EnvConfig.install_from_api?
+
       tap.install unless tap.installed?
     end
 
@@ -155,7 +163,7 @@ module Homebrew
     end
 
     begin
-      formulae, casks = args.named.to_formulae_and_casks(prefer_loading_from_json: true)
+      formulae, casks = args.named.to_formulae_and_casks(prefer_loading_from_api: true)
                             .partition { |formula_or_cask| formula_or_cask.is_a?(Formula) }
     rescue FormulaOrCaskUnavailableError, Cask::CaskUnavailableError => e
       retry if Tap.install_default_cask_tap_if_necessary(force: args.cask?)
@@ -172,6 +180,7 @@ module Homebrew
         require_sha:    args.require_sha?,
         skip_cask_deps: args.skip_cask_deps?,
         quarantine:     args.quarantine?,
+        quiet:          args.quiet?,
       )
     end
 
@@ -202,28 +211,24 @@ module Homebrew
 
     Install.perform_preinstall_checks(cc: args.cc)
 
-    installed_formulae.each do |f|
-      Migrator.migrate_if_needed(f, force: args.force?)
-      Install.install_formula(
-        f,
-        build_bottle:               args.build_bottle?,
-        force_bottle:               args.force_bottle?,
-        bottle_arch:                args.bottle_arch,
-        ignore_deps:                args.ignore_dependencies?,
-        only_deps:                  args.only_dependencies?,
-        include_test_formulae:      args.include_test_formulae,
-        build_from_source_formulae: args.build_from_source_formulae,
-        cc:                         args.cc,
-        git:                        args.git?,
-        interactive:                args.interactive?,
-        keep_tmp:                   args.keep_tmp?,
-        force:                      args.force?,
-        debug:                      args.debug?,
-        quiet:                      args.quiet?,
-        verbose:                    args.verbose?,
-      )
-      Cleanup.install_formula_clean!(f)
-    end
+    Install.install_formulae(
+      installed_formulae,
+      build_bottle:               args.build_bottle?,
+      force_bottle:               args.force_bottle?,
+      bottle_arch:                args.bottle_arch,
+      ignore_deps:                args.ignore_dependencies?,
+      only_deps:                  args.only_dependencies?,
+      include_test_formulae:      args.include_test_formulae,
+      build_from_source_formulae: args.build_from_source_formulae,
+      cc:                         args.cc,
+      git:                        args.git?,
+      interactive:                args.interactive?,
+      keep_tmp:                   args.keep_tmp?,
+      force:                      args.force?,
+      debug:                      args.debug?,
+      quiet:                      args.quiet?,
+      verbose:                    args.verbose?,
+    )
 
     Upgrade.check_installed_dependents(
       installed_formulae,

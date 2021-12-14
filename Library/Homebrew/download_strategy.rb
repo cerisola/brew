@@ -520,7 +520,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
 
     if Homebrew::EnvConfig.no_insecure_redirect? &&
        url.start_with?("https://") && !resolved_url.start_with?("https://")
-      $stderr.puts "HTTPS to HTTP redirect detected & HOMEBREW_NO_INSECURE_REDIRECT is set."
+      $stderr.puts "HTTPS to HTTP redirect detected and HOMEBREW_NO_INSECURE_REDIRECT is set."
       raise CurlDownloadStrategyError, url
     end
 
@@ -544,6 +544,16 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
 
     args += [meta[:header], meta[:headers]].flatten.compact.flat_map { |h| ["--header", h.strip] }
 
+    if meta[:insecure]
+      unless @insecure_warning_shown
+        opoo "Using --insecure with curl to download `ca-certificates` " \
+             "because we need it installed to download securely from now on. " \
+             "Checksums will still be verified."
+        @insecure_warning_shown = true
+      end
+      args += ["--insecure"]
+    end
+
     args
   end
 
@@ -558,7 +568,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
   end
 
   def curl(*args, **options)
-    args << "--connect-timeout" << "15" unless mirrors.empty?
+    options[:connect_timeout] = 15 unless mirrors.empty?
     super(*_curl_args, *args, **_curl_opts, **command_output_options, **options)
   end
 end
@@ -753,10 +763,7 @@ class SubversionDownloadStrategy < VCSDownloadStrategy
 
     args << "--ignore-externals" if ignore_externals
 
-    if meta[:trust_cert] == true
-      args << "--trust-server-cert"
-      args << "--non-interactive"
-    end
+    args.concat Utils::Svn.invalid_cert_flags if meta[:trust_cert] == true
 
     if target.directory?
       command! "svn", args: ["update", *args], chdir: target.to_s, timeout: timeout&.remaining
@@ -876,9 +883,9 @@ class GitDownloadStrategy < VCSDownloadStrategy
     case @ref_type
     when :branch, :tag
       args << "--branch" << @ref
-      args << "-c" << "advice.detachedHead=false" # silences detached head warning
     end
 
+    args << "-c" << "advice.detachedHead=false" # silences detached head warning
     args << @url << cached_location
   end
 
@@ -887,8 +894,14 @@ class GitDownloadStrategy < VCSDownloadStrategy
     case @ref_type
     when :branch then "+refs/heads/#{@ref}:refs/remotes/origin/#{@ref}"
     when :tag    then "+refs/tags/#{@ref}:refs/tags/#{@ref}"
-    else              "+refs/heads/master:refs/remotes/origin/master"
+    else              default_refspec
     end
+  end
+
+  sig { returns(String) }
+  def default_refspec
+    # https://git-scm.com/book/en/v2/Git-Internals-The-Refspec
+    "+refs/heads/*:refs/remotes/origin/*"
   end
 
   sig { void }
@@ -901,6 +914,9 @@ class GitDownloadStrategy < VCSDownloadStrategy
              chdir: cached_location
     command! "git",
              args:  ["config", "remote.origin.tagOpt", "--no-tags"],
+             chdir: cached_location
+    command! "git",
+             args:  ["config", "advice.detachedHead", "false"],
              chdir: cached_location
   end
 
@@ -1016,6 +1032,7 @@ class GitHubGitDownloadStrategy < GitDownloadStrategy
   end
 
   def github_last_commit
+    # TODO: move to Utils::GitHub
     return if Homebrew::EnvConfig.no_github_api?
 
     output, _, status = curl_output(
@@ -1032,6 +1049,7 @@ class GitHubGitDownloadStrategy < GitDownloadStrategy
   end
 
   def multiple_short_commits_exist?(commit)
+    # TODO: move to Utils::GitHub
     return if Homebrew::EnvConfig.no_github_api?
 
     output, _, status = curl_output(
@@ -1058,6 +1076,30 @@ class GitHubGitDownloadStrategy < GitDownloadStrategy
     else
       super
     end
+  end
+
+  sig { returns(String) }
+  def default_refspec
+    if default_branch
+      "+refs/heads/#{default_branch}:refs/remotes/origin/#{default_branch}"
+    else
+      super
+    end
+  end
+
+  sig { returns(String) }
+  def default_branch
+    return @default_branch if defined?(@default_branch)
+
+    command! "git",
+             args:  ["remote", "set-head", "origin", "--auto"],
+             chdir: cached_location
+
+    result = command! "git",
+                      args:  ["symbolic-ref", "refs/remotes/origin/HEAD"],
+                      chdir: cached_location
+
+    @default_branch = result.stdout[%r{^refs/remotes/origin/(.*)$}, 1]
   end
 end
 
@@ -1316,12 +1358,12 @@ class FossilDownloadStrategy < VCSDownloadStrategy
 
   sig { params(timeout: T.nilable(Time)).void }
   def clone_repo(timeout: nil)
-    silent_command! "fossil", args: ["clone", @url, cached_location], timeout: timeout&.remaining
+    command! "fossil", args: ["clone", @url, cached_location], timeout: timeout&.remaining
   end
 
   sig { params(timeout: T.nilable(Time)).void }
   def update(timeout: nil)
-    silent_command! "fossil", args: ["pull", "-R", cached_location], timeout: timeout&.remaining
+    command! "fossil", args: ["pull", "-R", cached_location], timeout: timeout&.remaining
   end
 end
 

@@ -21,7 +21,6 @@ module RuboCop
           expat
           file-formula
           flex
-          gcore
           gnu-getopt
           gperf
           icu4c
@@ -81,11 +80,9 @@ module RuboCop
           groff
           gzip
           openssl
-          openssl@1.1
           perl
           php
           python
-          python@3
           rsync
           vim
           xz

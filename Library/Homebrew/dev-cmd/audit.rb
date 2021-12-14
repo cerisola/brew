@@ -169,17 +169,16 @@ module Homebrew
     formula_results = audit_formulae.sort.map do |f|
       only = only_cops ? ["style"] : args.only
       options = {
-        new_formula:          new_formula,
-        strict:               strict,
-        online:               online,
-        git:                  args.git?,
-        only:                 only,
-        except:               args.except,
-        spdx_license_data:    spdx_license_data,
-        spdx_exception_data:  spdx_exception_data,
-        tap_audit_exceptions: f.tap&.audit_exceptions,
-        style_offenses:       style_offenses ? style_offenses.for_path(f.path) : nil,
-        display_cop_names:    args.display_cop_names?,
+        new_formula:         new_formula,
+        strict:              strict,
+        online:              online,
+        git:                 args.git?,
+        only:                only,
+        except:              args.except,
+        spdx_license_data:   spdx_license_data,
+        spdx_exception_data: spdx_exception_data,
+        style_offenses:      style_offenses ? style_offenses.for_path(f.path) : nil,
+        display_cop_names:   args.display_cop_names?,
       }.compact
 
       fa = FormulaAuditor.new(f, **options)
@@ -207,14 +206,17 @@ module Homebrew
       require "cask/cmd/abstract_command"
       require "cask/cmd/audit"
 
+      # For switches, we add `|| nil` so that `nil` will be passed instead of `false` if they aren't set.
+      # This way, we can distinguish between "not set" and "set to false".
       Cask::Cmd::Audit.audit_casks(
         *audit_casks,
         download:              nil,
+        # No need for `|| nil` for `--[no-]appcast` because boolean switches are already `nil` if not passed
         appcast:               args.appcast?,
-        online:                args.online?,
-        strict:                args.strict?,
-        new_cask:              args.new_cask?,
-        token_conflicts:       args.token_conflicts?,
+        online:                args.online? || nil,
+        strict:                args.strict? || nil,
+        new_cask:              args.new_cask? || nil,
+        token_conflicts:       args.token_conflicts? || nil,
         quarantine:            nil,
         any_named_args:        !no_named_args,
         language:              nil,

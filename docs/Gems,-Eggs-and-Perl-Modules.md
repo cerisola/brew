@@ -20,6 +20,7 @@ will let you add packages to Python 3.y as yourself, which
 is probably safer than changing the group ownership of the directory.
 
 ### So why was I using sudo?
+
 Habit maybe?
 
 One reason is executables go in `/usr/local/bin`. Usually this isn’t a
@@ -28,6 +29,7 @@ writable location. But if you installed Homebrew as we recommend on macOS Intel,
 install the development tools you need without risking the use of sudo.
 
 ### Python packages (eggs) without sudo using system’s Python
+
 _This is only recommended if you **don't** use a brewed Python._
 
 On macOS, any [Python version X.Y also searches in
@@ -118,7 +120,7 @@ Then put the appropriate incantation in your shell’s startup, e.g. for
 [`local::lib`](https://metacpan.org/pod/local::lib) docs.
 
 ```sh
-eval $(perl -I$HOME/perl5/lib/perl5 -Mlocal::lib)
+eval "$(perl -I$HOME/perl5/lib/perl5 -Mlocal::lib)"
 ```
 
 Now (after you restart your shell) `cpan` or `perl -MCPAN -eshell` etc.

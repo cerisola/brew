@@ -59,7 +59,7 @@ module FormulaCellarChecks
       install to "libexec" and then symlink or wrap binaries into "bin".
       See formulae 'activemq', 'jruby', etc. for examples.
       The offending files are:
-        #{jars * "\n        "}
+        #{jars * "\n  "}
     EOS
   end
 
@@ -84,7 +84,7 @@ module FormulaCellarChecks
       Non-libraries were installed to "#{formula.lib}".
       Installing non-libraries to "lib" is discouraged.
       The offending files are:
-        #{non_libraries * "\n        "}
+        #{non_libraries * "\n  "}
     EOS
   end
 
@@ -114,7 +114,7 @@ module FormulaCellarChecks
       Homebrew suggests that this software is installed to "libexec" and then
       symlinked as needed.
       The offending files are:
-        #{generics * "\n        "}
+        #{generics * "\n  "}
     EOS
   end
 
@@ -127,7 +127,7 @@ module FormulaCellarChecks
       These '.pth' files are likely to cause link conflicts.
       Please invoke `setup.py` using 'Language::Python.setup_install_args'.
       The offending files are:
-        #{pth_found * "\n        "}
+        #{pth_found * "\n  "}
     EOS
   end
 
@@ -165,7 +165,7 @@ module FormulaCellarChecks
       They should instead be installed into:
         #{share}/emacs/site-lisp/#{name}
       The offending files are:
-        #{elisps * "\n        "}
+        #{elisps * "\n  "}
     EOS
   end
 
@@ -199,9 +199,9 @@ module FormulaCellarChecks
 
     <<~EOS
       Packages have been installed for:
-        #{pythons * "\n        "}
+        #{pythons * "\n  "}
       but this formula depends on:
-        #{python_deps * "\n        "}
+        #{python_deps * "\n  "}
     EOS
   end
 
@@ -287,7 +287,7 @@ module FormulaCellarChecks
   def check_cpuid_instruction(formula)
     return unless formula.prefix.directory?
     # TODO: add methods to `utils/ast` to allow checking for method use
-    return unless formula.path.read.include? "ENV.runtime_cpu_detection"
+    return unless (formula.prefix/".brew/#{formula.name}.rb").read.include? "ENV.runtime_cpu_detection"
     # Checking for `cpuid` only makes sense on Intel:
     # https://en.wikipedia.org/wiki/CPUID
     return unless Hardware::CPU.intel?
@@ -332,14 +332,17 @@ module FormulaCellarChecks
     end.map(&:to_h) # To prevent transformation into nested arrays
 
     universal_binaries_expected = if formula.tap.present? && formula.tap.core_tap?
-      tap_audit_exception(:universal_binary_allowlist, formula.name)
+      formula.tap.audit_exception(:universal_binary_allowlist, formula.name)
     else
       true
     end
     return if mismatches.empty? && universal_binaries_expected
 
-    mismatches_expected = formula.tap.blank? || tap_audit_exception(:mismatched_binary_allowlist, formula.name)
+    mismatches_expected = formula.tap.blank? ||
+                          formula.tap.audit_exception(:mismatched_binary_allowlist, formula.name)
     return if compatible_universal_binaries.empty? && mismatches_expected
+
+    return if universal_binaries_expected && mismatches_expected
 
     s = ""
 
