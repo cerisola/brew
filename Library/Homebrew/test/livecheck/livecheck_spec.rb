@@ -47,9 +47,9 @@ describe Homebrew::Livecheck do
   let(:f_duplicate_urls) do
     formula("test_duplicate_urls") do
       desc "Test formula with a duplicate URL"
-      homepage "https://github.com/Homebrew/brew.git"
+      homepage "https://github.com/cerisola/brew.git"
       url "https://brew.sh/test-0.0.1.tgz"
-      head "https://github.com/Homebrew/brew.git"
+      head "https://github.com/cerisola/brew.git"
     end
   end
 
