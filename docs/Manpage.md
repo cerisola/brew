@@ -105,7 +105,7 @@ only do this for the given formulae and casks. Removes all downloads more than
 * `-n`, `--dry-run`:
   Show what would be removed, but do not actually remove anything.
 * `-s`:
-  Scrub the cache, including downloads for even the latest versions. Note downloads for any installed formulae or casks will still not be deleted. If you want to delete those too: `rm -rf "$(brew --cache)"`
+  Scrub the cache, including downloads for even the latest versions. Note that downloads for any installed formulae or casks will still not be deleted. If you want to delete those too: `rm -rf "$(brew --cache)"`
 * `--prune-prefix`:
   Only prune the symlinks and directories from the prefix and remove no other files.
 
@@ -320,8 +320,6 @@ is already installed but outdated.
   Print the verification and postinstall steps.
 * `--formula`:
   Treat all named arguments as formulae.
-* `--env`:
-  Disabled other than for internal Homebrew use.
 * `--ignore-dependencies`:
   An unsupported Homebrew development flag to skip installing any dependencies of any kind. If the dependencies are not already present, the formula will have issues. If you're not developing Homebrew, consider adjusting your PATH rather than using this flag.
 * `--only-dependencies`:
@@ -612,10 +610,6 @@ simplifies but also limits. This two-argument command makes no
 assumptions, so taps can be cloned from places other than GitHub and
 using protocols other than HTTPS, e.g. SSH, git, HTTP, FTP(S), rsync.
 
-* `--full`:
-  Convert a shallow clone to a full clone without untapping. Taps are only cloned as shallow clones if `--shallow` was originally passed.
-* `--shallow`:
-  Fetch tap as a shallow clone rather than a full clone. Useful for continuous integration.
 * `--force-auto-update`:
   Auto-update tap even if it is not hosted on GitHub. By default, only taps hosted on GitHub are auto-updated (for performance reasons).
 * `--custom-remote`:
@@ -1034,6 +1028,8 @@ present, "revision 1" will be added.
 
 * `-n`, `--dry-run`:
   Print what would be done rather than doing it.
+* `--remove-bottle-block`:
+  Remove the bottle block in addition to bumping the revision.
 * `--write-only`:
   Make the expected file modifications without taking any Git actions.
 * `--message`:
@@ -1239,8 +1235,6 @@ Find pull requests that can be automatically merged using `brew pr-publish`.
   Pull requests do not require approval to be merged.
 * `--publish`:
   Run `brew pr-publish` on matching pull requests.
-* `--autosquash`:
-  Instruct `brew pr-publish` to automatically reformat and reword commits in the pull request to our preferred format.
 * `--no-autosquash`:
   Instruct `brew pr-publish` to skip automatically reformatting and rewording commits in the pull request to the preferred format.
 * `--ignore-failures`:
@@ -1251,8 +1245,6 @@ Find pull requests that can be automatically merged using `brew pr-publish`.
 Publish bottles for a pull request with GitHub Actions.
 Requires write access to the repository.
 
-* `--autosquash`:
-  If supported on the target tap, automatically reformat and reword commits in the pull request to our preferred format.
 * `--no-autosquash`:
   Skip automatically reformatting and rewording commits in the pull request to the preferred format, even if supported on the target tap.
 * `--branch`:
@@ -1742,6 +1734,9 @@ Otherwise, operate on `~/Library/LaunchAgents` (started at login).
 [`sudo`] `brew services` [`list`]
 <br>List all managed services for the current user (or root).
 
+[`sudo`] `brew services info` (*`formula`*|`--all`)
+<br>List all managed services for the current user (or root).
+
 [`sudo`] `brew services run` (*`formula`*|`--all`)
 <br>Run the service *`formula`* without registering to launch at login (or boot).
 
@@ -1761,6 +1756,8 @@ Otherwise, operate on `~/Library/LaunchAgents` (started at login).
   Use the plist file from this location to start or run the service.
 * `--all`:
   Run *`subcommand`* on all services.
+* `--json`:
+  Output as JSON.
 
 ### `test-bot` [*`options`*] [*`formula`*]
 
@@ -2206,7 +2203,7 @@ Homebrew's Technical Steering Committee is Bo Anderson, FX Coudert, Michka Popof
 
 Homebrew's Linux maintainers are Daniel Nachun, Dawid Dziurla, Issy Long, Jonathan Chang, Michka Popoff and Shaun Jackman.
 
-Homebrew's other current maintainers are Alexander Bayandin, Bevan Kay, Branch Vincent, Caleb Xu, Carlo Cabrera, Connor Mann, Dustin Rodrigues, Eric Knibbe, George Adams, Maxim Belkin, Miccal Matthews, Michael Cho, Nanda H Krishna, Randall, Sam Ford, Steve Peters, Thierry Moisan, Tom Schoonjans, Vítor Galvão and rui.
+Homebrew's other current maintainers are Alexander Bayandin, Bevan Kay, Branch Vincent, Caleb Xu, Carlo Cabrera, Connor, Dustin Rodrigues, Eric Knibbe, George Adams, Maxim Belkin, Miccal Matthews, Michael Cho, Nanda H Krishna, Randall, Sam Ford, Steve Peters, Thierry Moisan, Tom Schoonjans, Vítor Galvão and rui.
 
 Former maintainers with significant contributions include Jan Viljanen, JCount, commitay, Dominyk Tiller, Tim Smith, Baptiste Fontaine, Xu Cheng, Martin Afanasjew, Brett Koonce, Charlie Sharpsteen, Jack Nagel, Adam Vandenberg, Andrew Janke, Alex Dunn, neutric, Tomasz Pajor, Uladzislau Shablinski, Alyssa Ross, ilovezfs, Chongyu Zhu and Homebrew's creator: Max Howell.
 

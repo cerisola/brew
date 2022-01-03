@@ -119,7 +119,7 @@ Show what would be removed, but do not actually remove anything\.
 .
 .TP
 \fB\-s\fR
-Scrub the cache, including downloads for even the latest versions\. Note downloads for any installed formulae or casks will still not be deleted\. If you want to delete those too: \fBrm \-rf "$(brew \-\-cache)"\fR
+Scrub the cache, including downloads for even the latest versions\. Note that downloads for any installed formulae or casks will still not be deleted\. If you want to delete those too: \fBrm \-rf "$(brew \-\-cache)"\fR
 .
 .TP
 \fB\-\-prune\-prefix\fR
@@ -415,10 +415,6 @@ Print the verification and postinstall steps\.
 .TP
 \fB\-\-formula\fR
 Treat all named arguments as formulae\.
-.
-.TP
-\fB\-\-env\fR
-Disabled other than for internal Homebrew use\.
 .
 .TP
 \fB\-\-ignore\-dependencies\fR
@@ -841,14 +837,6 @@ With \fIURL\fR unspecified, tap a formula repository from GitHub using HTTPS\. S
 .
 .P
 With \fIURL\fR specified, tap a formula repository from anywhere, using any transport protocol that \fBgit\fR(1) handles\. The one\-argument form of \fBtap\fR simplifies but also limits\. This two\-argument command makes no assumptions, so taps can be cloned from places other than GitHub and using protocols other than HTTPS, e\.g\. SSH, git, HTTP, FTP(S), rsync\.
-.
-.TP
-\fB\-\-full\fR
-Convert a shallow clone to a full clone without untapping\. Taps are only cloned as shallow clones if \fB\-\-shallow\fR was originally passed\.
-.
-.TP
-\fB\-\-shallow\fR
-Fetch tap as a shallow clone rather than a full clone\. Useful for continuous integration\.
 .
 .TP
 \fB\-\-force\-auto\-update\fR
@@ -1467,6 +1455,10 @@ Create a commit to increment the revision of \fIformula\fR\. If no revision is p
 Print what would be done rather than doing it\.
 .
 .TP
+\fB\-\-remove\-bottle\-block\fR
+Remove the bottle block in addition to bumping the revision\.
+.
+.TP
 \fB\-\-write\-only\fR
 Make the expected file modifications without taking any Git actions\.
 .
@@ -1756,10 +1748,6 @@ Pull requests do not require approval to be merged\.
 Run \fBbrew pr\-publish\fR on matching pull requests\.
 .
 .TP
-\fB\-\-autosquash\fR
-Instruct \fBbrew pr\-publish\fR to automatically reformat and reword commits in the pull request to our preferred format\.
-.
-.TP
 \fB\-\-no\-autosquash\fR
 Instruct \fBbrew pr\-publish\fR to skip automatically reformatting and rewording commits in the pull request to the preferred format\.
 .
@@ -1769,10 +1757,6 @@ Include pull requests that have failing status checks\.
 .
 .SS "\fBpr\-publish\fR [\fIoptions\fR] \fIpull_request\fR [\.\.\.]"
 Publish bottles for a pull request with GitHub Actions\. Requires write access to the repository\.
-.
-.TP
-\fB\-\-autosquash\fR
-If supported on the target tap, automatically reformat and reword commits in the pull request to our preferred format\.
 .
 .TP
 \fB\-\-no\-autosquash\fR
@@ -2453,6 +2437,10 @@ If \fBsudo\fR is passed, operate on \fB/Library/LaunchDaemons\fR (started at boo
     List all managed services for the current user (or root)\.
 .
 .P
+[\fBsudo\fR] \fBbrew services info\fR (\fIformula\fR|\fB\-\-all\fR)
+    List all managed services for the current user (or root)\.
+.
+.P
 [\fBsudo\fR] \fBbrew services run\fR (\fIformula\fR|\fB\-\-all\fR)
     Run the service \fIformula\fR without registering to launch at login (or boot)\.
 .
@@ -2479,6 +2467,10 @@ Use the plist file from this location to start or run the service\.
 .TP
 \fB\-\-all\fR
 Run \fIsubcommand\fR on all services\.
+.
+.TP
+\fB\-\-json\fR
+Output as JSON\.
 .
 .SS "\fBtest\-bot\fR [\fIoptions\fR] [\fIformula\fR]"
 Tests the full lifecycle of a Homebrew change to a tap (Git repository)\. For example, for a GitHub Actions pull request that changes a formula \fBbrew test\-bot\fR will ensure the system is cleaned and set up to test the formula, install the formula, run various tests and checks on it, bottle (package) the binaries and test formulae that depend on it to ensure they aren\'t broken by these changes\.
@@ -3243,7 +3235,7 @@ Homebrew\'s Technical Steering Committee is Bo Anderson, FX Coudert, Michka Popo
 Homebrew\'s Linux maintainers are Daniel Nachun, Dawid Dziurla, Issy Long, Jonathan Chang, Michka Popoff and Shaun Jackman\.
 .
 .P
-Homebrew\'s other current maintainers are Alexander Bayandin, Bevan Kay, Branch Vincent, Caleb Xu, Carlo Cabrera, Connor Mann, Dustin Rodrigues, Eric Knibbe, George Adams, Maxim Belkin, Miccal Matthews, Michael Cho, Nanda H Krishna, Randall, Sam Ford, Steve Peters, Thierry Moisan, Tom Schoonjans, Vitor Galvao and rui\.
+Homebrew\'s other current maintainers are Alexander Bayandin, Bevan Kay, Branch Vincent, Caleb Xu, Carlo Cabrera, Connor, Dustin Rodrigues, Eric Knibbe, George Adams, Maxim Belkin, Miccal Matthews, Michael Cho, Nanda H Krishna, Randall, Sam Ford, Steve Peters, Thierry Moisan, Tom Schoonjans, Vitor Galvao and rui\.
 .
 .P
 Former maintainers with significant contributions include Jan Viljanen, JCount, commitay, Dominyk Tiller, Tim Smith, Baptiste Fontaine, Xu Cheng, Martin Afanasjew, Brett Koonce, Charlie Sharpsteen, Jack Nagel, Adam Vandenberg, Andrew Janke, Alex Dunn, neutric, Tomasz Pajor, Uladzislau Shablinski, Alyssa Ross, ilovezfs, Chongyu Zhu and Homebrew\'s creator: Max Howell\.

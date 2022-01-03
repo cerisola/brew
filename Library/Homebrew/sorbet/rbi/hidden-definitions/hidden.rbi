@@ -1197,6 +1197,14 @@ module DidYouMean::Correctable
   def to_s(); end
 end
 
+class DidYouMean::Formatter
+  def message_for(corrections); end
+end
+
+class DidYouMean::Formatter
+  def self.message_for(corrections); end
+end
+
 module DidYouMean::Jaro
   def self.distance(str1, str2); end
 end
@@ -1241,12 +1249,16 @@ class DidYouMean::NullChecker
   def initialize(*arg); end
 end
 
-class DidYouMean::PlainFormatter
-  def message_for(corrections); end
+class DidYouMean::PatternKeyNameChecker
+  def corrections(); end
+
+  def initialize(no_matching_pattern_key_error); end
 end
 
-class DidYouMean::PlainFormatter
+class DidYouMean::PatternKeyNameChecker
 end
+
+DidYouMean::PlainFormatter = DidYouMean::Formatter
 
 class DidYouMean::RequirePathChecker
   def corrections(); end
@@ -1310,6 +1322,8 @@ module DidYouMean
   def self.formatter(); end
 
   def self.formatter=(formatter); end
+
+  def self.spell_checkers(); end
 end
 
 class Dir
@@ -3190,6 +3204,8 @@ module Kernel
   extend ::T::Private::Methods::SingletonMethodHooks
   def self.at_exit(); end
 
+  def self.autoload(arg, arg1); end
+
   def self.fork(); end
 
   def self.gem(dep, *reqs); end
@@ -3469,6 +3485,8 @@ class MockExpectationError
 end
 
 class Module
+  def autoload_without_tapioca(arg, arg1); end
+
   def context(*a, &b); end
 
   def describe(*a, &b); end
@@ -5110,9 +5128,12 @@ class RuboCop::AST::NodePattern::Parser
 end
 
 module RuboCop::AST::NodePattern::Sets
+  SET_BLANK_EMPTY = ::T.let(nil, ::T.untyped)
   SET_BUILD_RECOMMENDED_TEST_OPTIONAL = ::T.let(nil, ::T.untyped)
+  SET_CHANGE_COLUMN_EXECUTE_REMOVE_BELONGS_TO_REMOVE_REFERENCE = ::T.let(nil, ::T.untyped)
   SET_DEPENDS_ON_USES_FROM_MACOS = ::T.let(nil, ::T.untyped)
   SET_INCLUDE_WITH_WITHOUT = ::T.let(nil, ::T.untyped)
+  SET_ROOT_PUBLIC_PATH = ::T.let(nil, ::T.untyped)
   SET_SYSTEM_SHELL_OUTPUT_PIPE_OUTPUT = ::T.let(nil, ::T.untyped)
   SET_WITH_WITHOUT = ::T.let(nil, ::T.untyped)
 end
@@ -6848,7 +6869,36 @@ class Tapioca::Compilers::Dsl::Base
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
+module Tapioca::Compilers::Dsl::ParamHelper
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class Tapioca::Compilers::DslCompiler
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
 module Tapioca::Reflection
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Tapioca::Trackers::Autoload
+  extend ::T::Sig
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Tapioca::Trackers::Mixin
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Tapioca
   extend ::T::Sig
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
