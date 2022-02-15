@@ -57,6 +57,28 @@ module MachOShim
   end
   private :mach_data
 
+  # TODO: See if the `#write!` call can be delayed until
+  # we know we're not making any changes to the rpaths.
+  def delete_rpath(rpath, **options)
+    macho.delete_rpath(rpath, options)
+    macho.write!
+  end
+
+  def change_rpath(old, new, **options)
+    macho.change_rpath(old, new, options)
+    macho.write!
+  end
+
+  def change_dylib_id(id, **options)
+    macho.change_dylib_id(id, options)
+    macho.write!
+  end
+
+  def change_install_name(old, new, **options)
+    macho.change_install_name(old, new, options)
+    macho.write!
+  end
+
   def dynamically_linked_libraries(except: :none)
     lcs = macho.dylib_load_commands.reject { |lc| lc.type == except }
 

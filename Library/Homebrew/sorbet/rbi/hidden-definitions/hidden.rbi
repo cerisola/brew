@@ -18,12 +18,6 @@ class ActiveRecordColumnTypeHelper
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 
-module ActiveSupport
-  def parse_json_times(); end
-
-  def parse_json_times=(val); end
-end
-
 class ActiveSupport::Deprecation
   def self.deprecation_warning(*args, &block); end
 
@@ -34,28 +28,6 @@ end
 
 module ActiveSupport::ForkTracker::CoreExtPrivate
   include ::ActiveSupport::ForkTracker::CoreExt
-end
-
-module ActiveSupport
-  def self.escape_html_entities_in_json(*args, &block); end
-
-  def self.escape_html_entities_in_json=(arg); end
-
-  def self.json_encoder(*args, &block); end
-
-  def self.json_encoder=(arg); end
-
-  def self.parse_json_times(); end
-
-  def self.parse_json_times=(val); end
-
-  def self.time_precision(*args, &block); end
-
-  def self.time_precision=(arg); end
-
-  def self.use_standard_json_time_format(*args, &block); end
-
-  def self.use_standard_json_time_format=(arg); end
 end
 
 class Addrinfo
@@ -995,6 +967,8 @@ class Cask::DSL::Caveats
   def path_environment_variable(*args); end
 
   def reboot(*args); end
+
+  def requires_rosetta(*args); end
 
   def unsigned_accessibility(*args); end
 
@@ -2445,48 +2419,6 @@ module Gem
   def self.remove_unresolved_default_spec(spec); end
 end
 
-module GetText
-end
-
-class GetText::PoParser
-  def _(x); end
-
-  def _reduce_10(val, _values, result); end
-
-  def _reduce_12(val, _values, result); end
-
-  def _reduce_13(val, _values, result); end
-
-  def _reduce_14(val, _values, result); end
-
-  def _reduce_15(val, _values, result); end
-
-  def _reduce_5(val, _values, result); end
-
-  def _reduce_8(val, _values, result); end
-
-  def _reduce_9(val, _values, result); end
-
-  def _reduce_none(val, _values, result); end
-
-  def on_comment(comment); end
-
-  def on_message(msgid, msgstr); end
-
-  def parse(str, data, ignore_fuzzy=T.unsafe(nil)); end
-
-  def unescape(orig); end
-  Racc_arg = ::T.let(nil, ::T.untyped)
-  Racc_debug_parser = ::T.let(nil, ::T.untyped)
-  Racc_token_to_s_table = ::T.let(nil, ::T.untyped)
-end
-
-class GetText::PoParser
-end
-
-module GetText
-end
-
 module GitHub::API
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
@@ -2619,6 +2551,8 @@ module Homebrew::EnvConfig
   def self.display(); end
 
   def self.display_install_times?(); end
+
+  def self.docker_registry_basic_auth_token(); end
 
   def self.docker_registry_token(); end
 
@@ -2803,26 +2737,6 @@ module HostEnvironmentSimulatorHelper
 end
 
 module HostEnvironmentSimulatorHelper
-end
-
-module I18n
-  def self.cache_key_digest(); end
-
-  def self.cache_key_digest=(key_digest); end
-
-  def self.cache_namespace(); end
-
-  def self.cache_namespace=(namespace); end
-
-  def self.cache_store(); end
-
-  def self.cache_store=(store); end
-
-  def self.fallbacks(); end
-
-  def self.fallbacks=(fallbacks); end
-
-  def self.perform_caching?(); end
 end
 
 class IO
@@ -3748,6 +3662,7 @@ class Object
   HOMEBREW_DEFAULT_PREFIX = ::T.let(nil, ::T.untyped)
   HOMEBREW_DEFAULT_REPOSITORY = ::T.let(nil, ::T.untyped)
   HOMEBREW_DEFAULT_TEMP = ::T.let(nil, ::T.untyped)
+  HOMEBREW_GITHUB_PACKAGES_AUTH = ::T.let(nil, ::T.untyped)
   HOMEBREW_LIBRARY = ::T.let(nil, ::T.untyped)
   HOMEBREW_LIBRARY_PATH = ::T.let(nil, ::T.untyped)
   HOMEBREW_LINKED_KEGS = ::T.let(nil, ::T.untyped)
@@ -4152,9 +4067,6 @@ end
 class Pathname
   include ::ELFShim
   include ::MachOShim
-  def fnmatch?(*arg); end
-
-  def make_symlink(arg); end
 end
 
 class Pathname
@@ -4245,6 +4157,12 @@ class RBI::ASTVisitor
 end
 
 class RBI::File
+  extend ::T::Sig
+  extend ::T::Private::Methods::MethodHooks
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+class RBI::Formatter
   extend ::T::Sig
   extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
@@ -5128,9 +5046,8 @@ class RuboCop::AST::NodePattern::Parser
 end
 
 module RuboCop::AST::NodePattern::Sets
-  SET_BLANK_EMPTY = ::T.let(nil, ::T.untyped)
   SET_BUILD_RECOMMENDED_TEST_OPTIONAL = ::T.let(nil, ::T.untyped)
-  SET_CHANGE_COLUMN_EXECUTE_REMOVE_BELONGS_TO_REMOVE_REFERENCE = ::T.let(nil, ::T.untyped)
+  SET_CHANGE_COLUMN_EXECUTE = ::T.let(nil, ::T.untyped)
   SET_DEPENDS_ON_USES_FROM_MACOS = ::T.let(nil, ::T.untyped)
   SET_INCLUDE_WITH_WITHOUT = ::T.let(nil, ::T.untyped)
   SET_ROOT_PUBLIC_PATH = ::T.let(nil, ::T.untyped)
@@ -6838,6 +6755,10 @@ end
 
 class Struct
   def filter(*arg); end
+end
+
+class Symbol
+  def to_msgpack_ext(); end
 end
 
 class SystemCommand::Result

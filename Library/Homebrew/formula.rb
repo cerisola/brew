@@ -64,8 +64,7 @@ class Formula
   include Utils::Shebang
   include Utils::Shell
   include Context
-  include OnOS # TODO: 3.3.0: deprecate OnOS usage in instance methods.
-  extend Enumerable
+  include OnOS # TODO: 3.4.0: odeprecate OnOS usage in instance methods.
   extend Forwardable
   extend Cachable
   extend Predicable
@@ -1304,6 +1303,7 @@ class Formula
           CMakeCache.txt
           CMakeOutput.log
           CMakeError.log
+          meson-log.txt
         ].each do |logfile|
           Dir["**/#{logfile}"].each do |logpath|
             destdir = logs/File.dirname(logpath)
@@ -1682,16 +1682,18 @@ class Formula
     @full_names ||= core_names + tap_names
   end
 
+  # an array of all {Formula}
   # @private
-  def self.each(&_block)
-    files.each do |file|
-      yield Formulary.factory(file)
+  def self.all
+    files.map do |file|
+      Formulary.factory(file)
     rescue FormulaUnavailableError, FormulaUnreadableError => e
       # Don't let one broken formula break commands. But do complain.
       onoe "Failed to import: #{file}"
       $stderr.puts e
-      next
-    end
+
+      nil
+    end.compact
   end
 
   # An array of all racks currently installed.
