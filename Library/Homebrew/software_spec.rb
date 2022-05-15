@@ -473,6 +473,8 @@ class Bottle
 end
 
 class BottleSpecification
+  RELOCATABLE_CELLARS = [:any, :any_skip_relocation].freeze
+
   extend T::Sig
 
   attr_rw :rebuild
@@ -504,21 +506,29 @@ class BottleSpecification
     end
   end
 
-  sig { params(tag: Utils::Bottles::Tag).returns(T::Boolean) }
-  def compatible_locations?(tag: Utils::Bottles.tag)
+  sig { params(tag: Utils::Bottles::Tag).returns(T.any(Symbol, String)) }
+  def tag_to_cellar(tag = Utils::Bottles.tag)
     spec = collector.specification_for(tag)
-    cellar = if spec.present?
+    if spec.present?
       spec.cellar
     else
       tag.default_cellar
     end
+  end
 
-    return true if [:any, :any_skip_relocation].include?(cellar)
+  sig { params(tag: Utils::Bottles::Tag).returns(T::Boolean) }
+  def compatible_locations?(tag: Utils::Bottles.tag)
+    cellar = tag_to_cellar(tag)
+
+    return true if RELOCATABLE_CELLARS.include?(cellar)
 
     prefix = Pathname(cellar).parent.to_s
 
-    compatible_cellar = cellar == HOMEBREW_CELLAR.to_s
-    compatible_prefix = prefix == HOMEBREW_PREFIX.to_s
+    cellar_relocatable = cellar.size >= HOMEBREW_CELLAR.to_s.size && ENV["HOMEBREW_RELOCATE_BUILD_PREFIX"]
+    prefix_relocatable = prefix.size >= HOMEBREW_PREFIX.to_s.size && ENV["HOMEBREW_RELOCATE_BUILD_PREFIX"]
+
+    compatible_cellar = cellar == HOMEBREW_CELLAR.to_s || cellar_relocatable
+    compatible_prefix = prefix == HOMEBREW_PREFIX.to_s || prefix_relocatable
 
     compatible_cellar && compatible_prefix
   end

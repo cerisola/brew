@@ -183,4 +183,10 @@ class Keg
     # it's wrong. -O is a BSD-grep-only option.
     "-lrO"
   end
+
+  def egrep_args
+    grep_bin = "egrep"
+    grep_args = "--files-with-matches"
+    [grep_bin, grep_args]
+  end
 end

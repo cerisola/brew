@@ -124,7 +124,7 @@ module Homebrew
 
     if initial_revision != current_revision
       update_preinstall_header args: args
-      puts "Updated Homebrew from #{shorten_revision(initial_revision)} to #{shorten_revision(current_revision)}."
+
       updated = true
 
       old_tag = Settings.read "latesttag"
@@ -133,7 +133,13 @@ module Homebrew
         "git", "-C", HOMEBREW_REPOSITORY, "tag", "--list", "--sort=-version:refname", "*.*"
       ).lines.first.chomp
 
-      new_repository_version = new_tag if new_tag != old_tag
+      if old_tag.blank? || (new_tag == old_tag)
+        puts "Updated Homebrew from #{shorten_revision(initial_revision)} to #{shorten_revision(current_revision)}."
+      else
+        new_repository_version = new_tag
+        puts "Updated Homebrew from #{old_tag} (#{shorten_revision(initial_revision)}) " \
+             "to #{new_tag} (#{shorten_revision(current_revision)})."
+      end
     end
 
     Homebrew.failed = true if ENV["HOMEBREW_UPDATE_FAILED"]
@@ -196,6 +202,10 @@ module Homebrew
         CacheStoreDatabase.use(:descriptions) do |db|
           DescriptionCacheStore.new(db)
                                .update_from_report!(hub)
+        end
+        CacheStoreDatabase.use(:cask_descriptions) do |db|
+          CaskDescriptionCacheStore.new(db)
+                                   .update_from_report!(hub)
         end
 
         if !args.preinstall? && !args.quiet?
@@ -413,7 +423,7 @@ class Reporter
       renamed_formulae << [old_full_name, new_full_name]
     end
 
-    unless renamed_formulae.empty?
+    if renamed_formulae.present?
       @report[:A] -= renamed_formulae.map(&:last)
       @report[:D] -= renamed_formulae.map(&:first)
       @report[:R] = renamed_formulae.to_a
@@ -593,20 +603,21 @@ class ReporterHub
   private
 
   def dump_formula_report(key, title)
-    # TODO: 3.4.0: odisabled the old functionality and make this default
     only_installed = Homebrew::EnvConfig.update_report_only_installed?
 
     formulae = select_formula(key).sort.map do |name, new_name|
       # Format list items of renamed formulae
       case key
       when :R
-        name = pretty_installed(name) if installed?(name)
-        new_name = pretty_installed(new_name) if installed?(new_name)
-        "#{name} -> #{new_name}" unless only_installed
+        unless only_installed
+          name = pretty_installed(name) if installed?(name)
+          new_name = pretty_installed(new_name) if installed?(new_name)
+          "#{name} -> #{new_name}"
+        end
       when :A
-        name if !installed?(name) && !only_installed
+        name if !only_installed && !installed?(name)
       when :AC
-        name.split("/").last if !cask_installed?(name) && !only_installed
+        name.split("/").last if !only_installed && !cask_installed?(name)
       when :MC, :DC
         name = name.split("/").last
         if cask_installed?(name)

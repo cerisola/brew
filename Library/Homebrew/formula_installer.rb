@@ -41,9 +41,6 @@ class FormulaInstaller
   attr_predicate :force_bottle?, :ignore_deps?, :only_deps?, :interactive?, :git?, :force?, :overwrite?, :keep_tmp?
   attr_predicate :verbose?, :debug?, :quiet?
 
-  # TODO: Remove when removed from `test-bot`.
-  attr_writer :build_bottle
-
   def initialize(
     formula,
     link_keg: false,
@@ -463,7 +460,7 @@ class FormulaInstaller
       end
       s = formula_contents.gsub(/  bottle do.+?end\n\n?/m, "")
       brew_prefix = formula.prefix/".brew"
-      brew_prefix.mkdir
+      brew_prefix.mkpath
       Pathname(brew_prefix/"#{formula.name}.rb").atomic_write(s)
 
       keg = Keg.new(formula.prefix)
@@ -579,7 +576,8 @@ class FormulaInstaller
         if req.prune_from_option?(build) ||
            req.satisfied?(env: @env, cc: @cc, build_bottle: @build_bottle, bottle_arch: @bottle_arch) ||
            ((req.build? || req.test?) && !keep_build_test) ||
-           formula_deps_map[dependent.name]&.build?
+           formula_deps_map[dependent.name]&.build? ||
+           (only_deps? && f == dependent)
           Requirement.prune
         else
           unsatisfied_reqs[dependent] << req
@@ -1230,6 +1228,16 @@ class FormulaInstaller
     keg = Keg.new(formula.prefix)
     skip_linkage = formula.bottle_specification.skip_relocation?
     keg.replace_placeholders_with_locations tab.changed_files, skip_linkage: skip_linkage
+
+    cellar = formula.bottle_specification.tag_to_cellar(Utils::Bottles.tag)
+    return if [:any, :any_skip_relocation].include?(cellar)
+
+    prefix = Pathname(cellar).parent.to_s
+    return if cellar == HOMEBREW_CELLAR.to_s && prefix == HOMEBREW_PREFIX.to_s
+
+    return unless ENV["HOMEBREW_RELOCATE_BUILD_PREFIX"]
+
+    keg.relocate_build_prefix(keg, prefix, HOMEBREW_PREFIX)
   end
 
   sig { params(output: T.nilable(String)).void }

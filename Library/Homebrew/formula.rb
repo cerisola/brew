@@ -64,7 +64,7 @@ class Formula
   include Utils::Shebang
   include Utils::Shell
   include Context
-  include OnOS # TODO: 3.4.0: odeprecate OnOS usage in instance methods.
+  include OnOS
   extend Forwardable
   extend Cachable
   extend Predicable
@@ -1683,8 +1683,11 @@ class Formula
   end
 
   # an array of all {Formula}
+  # this should only be used when users specify `--all` to a command
   # @private
   def self.all
+    # TODO: 3.6.0: consider checking ARGV for --all
+
     files.map do |file|
       Formulary.factory(file)
     rescue FormulaUnavailableError, FormulaUnreadableError => e
@@ -1756,7 +1759,7 @@ class Formula
     @aliases ||= (core_aliases + tap_aliases.map { |name| name.split("/").last }).uniq.sort
   end
 
-  # an array of all aliases, , which the tap formulae have the fully-qualified name
+  # an array of all aliases as fully-qualified names
   # @private
   def self.alias_full_names
     @alias_full_names ||= core_aliases + tap_aliases

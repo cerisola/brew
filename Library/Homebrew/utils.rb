@@ -160,7 +160,11 @@ module Kernel
     exit 1
   end
 
-  def odeprecated(method, replacement = nil, disable: false, disable_on: nil, caller: send(:caller))
+  def odeprecated(method, replacement = nil,
+                  disable:                false,
+                  disable_on:             nil,
+                  disable_for_developers: true,
+                  caller:                 send(:caller))
     replacement_message = if replacement
       "Use #{replacement} instead."
     else
@@ -219,7 +223,8 @@ module Kernel
     message << tap_message if tap_message
     message.freeze
 
-    if Homebrew::EnvConfig.developer? || disable || Homebrew.raise_deprecation_exceptions?
+    disable = true if disable_for_developers && Homebrew::EnvConfig.developer?
+    if disable || Homebrew.raise_deprecation_exceptions?
       exception = MethodDeprecatedError.new(message)
       exception.set_backtrace(backtrace)
       raise exception
@@ -372,7 +377,9 @@ module Kernel
 
     ENV["DISPLAY"] = Homebrew::EnvConfig.display
 
-    safe_system(browser, *args)
+    with_env(DBUS_SESSION_BUS_ADDRESS: ENV["HOMEBREW_DBUS_SESSION_BUS_ADDRESS"]) do
+      safe_system(browser, *args)
+    end
   end
 
   # GZips the given paths, and returns the gzipped paths.

@@ -361,7 +361,7 @@ When `caveats` is a string, it is evaluated at compile time. The following metho
 | `token`            | the Cask token
 | `version`          | the Cask version
 | `homepage`         | the Cask homepage
-| `caskroom_path`    | the containing directory for all staged Casks, typically `/usr/local/Caskroom` (only available with block form)
+| `caskroom_path`    | the containing directory for this Cask, typically `/usr/local/Caskroom/<token>` (only available with block form)
 | `staged_path`      | the staged location for this Cask, including version number: `/usr/local/Caskroom/<token>/<version>` (only available with block form)
 
 Example:
@@ -470,6 +470,7 @@ The available values for macOS releases are:
 | `:mojave`          | `10.14`
 | `:catalina`        | `10.15`
 | `:big_sur`         | `11.0`
+| `:monterey`        | `12.0`
 
 Only major releases are covered (version numbers containing a single dot). The symbol form is used for readability. The following are all valid ways to enumerate the exact macOS release requirements for a Cask:
 
@@ -501,6 +502,7 @@ The available symbols for hardware are:
 | ---------- | -------------- |
 | `:x86_64`  | 64-bit Intel   |
 | `:intel`   | 64-bit Intel   |
+| `:arm64`   | Apple Silicon  |
 
 The following are all valid expressions:
 
@@ -508,9 +510,8 @@ The following are all valid expressions:
 depends_on arch: :intel
 depends_on arch: :x86_64            # same meaning as above
 depends_on arch: [:x86_64]          # same meaning as above
+depends_on arch: :arm64
 ```
-
-Since as of now all the macOS versions we support only run on 64-bit Intel, `depends_on arch:` is never necessary.
 
 #### All depends_on Keys
 
@@ -749,7 +750,7 @@ strategy :header_match do |headers|
   v = headers["content-disposition"][/MyApp-(\d+(?:\.\d+)*)\.zip/i, 1]
   id = headers["location"][%r{/(\d+)/download$}i, 1]
   next if v.blank? || id.blank?
-  
+
   "#{v},#{id}"
 end
 ```
@@ -760,7 +761,7 @@ Similarly, the `:page_match` strategy can also be used for more complex versions
 strategy :page_match do |page|
   match = page.match(%r{href=.*?/(\d+)/MyApp-(\d+(?:\.\d+)*)\.zip}i)
   next if match.blank?
-  
+
   "#{match[2]},#{match[1]}"
 end
 ```
@@ -1371,7 +1372,7 @@ Details of software names and brands will inevitably be lost in the conversion t
 
 * If the result conflicts with the name of an existing Cask, make yours unique by prepending the name of the vendor or developer, followed by a hyphen. Example: [unison.rb](https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/unison.rb) and [panic-unison.rb](https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/panic-unison.rb).
 
-* Inevitably, there are a small number of exceptions not covered by the rules. Don’t hesitate to [use the forum](https://github.com/Homebrew/discussions/discussions) if you have a problem.
+* Inevitably, there are a small number of exceptions not covered by the rules. Don’t hesitate to [use the forum](https://github.com/orgs/Homebrew/discussions) if you have a problem.
 
 ### Converting to ASCII
 

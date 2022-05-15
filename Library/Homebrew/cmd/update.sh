@@ -5,6 +5,7 @@
 #:        --merge                      Use `git merge` to apply updates (rather than `git rebase`).
 #:        --preinstall                 Run on auto-updates (e.g. before `brew install`). Skips some slower steps.
 #:    -f, --force                      Always do a slower, full update check (even if unnecessary).
+#:    -q, --quiet                      Make some output more quiet
 #:    -v, --verbose                    Print the directories checked and `git` operations performed.
 #:    -d, --debug                      Display a trace of all shell commands as they are executed.
 #:    -h, --help                       Show this message.
@@ -555,6 +556,12 @@ EOS
     [[ -d "${DIR}/.git" ]] || continue
     cd "${DIR}" || continue
 
+    if ! git config --local --get remote.origin.url &>/dev/null
+    then
+      opoo "No remote 'origin' in ${DIR}, skipping update!"
+      continue
+    fi
+
     if [[ -n "${HOMEBREW_VERBOSE}" ]]
     then
       echo "Checking if we need to fetch ${DIR}..."
@@ -706,6 +713,11 @@ EOS
 
     [[ -d "${DIR}/.git" ]] || continue
     cd "${DIR}" || continue
+    if ! git config --local --get remote.origin.url &>/dev/null
+    then
+      # No need to display a (duplicate) warning here
+      continue
+    fi
 
     TAP_VAR="$(repo_var "${DIR}")"
     UPSTREAM_BRANCH_VAR="UPSTREAM_BRANCH${TAP_VAR}"

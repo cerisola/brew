@@ -32,10 +32,6 @@ module Homebrew
       switch "--keep-old",
              description: "If the formula specifies a rebuild version, " \
                           "attempt to preserve its value in the generated DSL."
-      switch "--autosquash",
-             description: "Automatically reformat and reword commits in the pull request to our "\
-                          "preferred format.",
-             replacement: "`--no-autosquash` to opt out"
       switch "--no-autosquash",
              description: "Skip automatically reformatting and rewording commits in the pull request to our "\
                           "preferred format."
@@ -112,51 +108,65 @@ module Homebrew
     end
   end
 
-  def determine_bump_subject(old_contents, new_contents, formula_path, reason: nil)
-    formula_path = Pathname(formula_path)
-    formula_name = formula_path.basename.to_s.chomp(".rb")
+  def get_package(tap, subject_name, subject_path, content)
+    if subject_path.dirname == tap.cask_dir
+      cask = begin
+        Cask::CaskLoader.load(content.dup)
+      rescue Cask::CaskUnavailableError
+        nil
+      end
+      return cask
+    end
 
-    new_formula = begin
-      Formulary.from_contents(formula_name, formula_path, new_contents, :stable)
+    begin
+      Formulary.from_contents(subject_name, subject_path, content, :stable)
     rescue FormulaUnavailableError
       nil
     end
+  end
 
-    return "#{formula_name}: delete #{reason}".strip if new_formula.blank?
+  def determine_bump_subject(old_contents, new_contents, subject_path, reason: nil)
+    subject_path = Pathname(subject_path)
+    tap          = Tap.from_path(subject_path)
+    subject_name = subject_path.basename.to_s.chomp(".rb")
+    is_cask      = subject_path.dirname == tap.cask_dir
+    name         = is_cask ? "cask" : "formula"
 
-    old_formula = begin
-      Formulary.from_contents(formula_name, formula_path, old_contents, :stable)
-    rescue FormulaUnavailableError
-      nil
-    end
+    new_package = get_package(tap, subject_name, subject_path, new_contents)
 
-    return "#{formula_name} #{new_formula.stable.version} (new formula)" if old_formula.blank?
+    return "#{subject_name}: delete #{reason}".strip if new_package.blank?
 
-    if old_formula.stable.version != new_formula.stable.version
-      "#{formula_name} #{new_formula.stable.version}"
-    elsif old_formula.revision != new_formula.revision
-      "#{formula_name}: revision #{reason}".strip
+    old_package = get_package(tap, subject_name, subject_path, old_contents)
+
+    if old_package.blank?
+      "#{subject_name} #{new_package.version} (new #{name})"
+    elsif old_package.version != new_package.version
+      "#{subject_name} #{new_package.version}"
+    elsif !is_cask && old_package.revision != new_package.revision
+      "#{subject_name}: revision #{reason}".strip
+    elsif is_cask && old_package.sha256 != new_package.sha256
+      "#{subject_name}: checksum update #{reason}".strip
     else
-      "#{formula_name}: #{reason || "rebuild"}".strip
+      "#{subject_name}: #{reason || "rebuild"}".strip
     end
   end
 
   # Cherry picks a single commit that modifies a single file.
   # Potentially rewords this commit using {determine_bump_subject}.
-  def reword_formula_commit(commit, file, reason: "", verbose: false, resolve: false, path: ".")
-    formula_file = Pathname.new(path) / file
-    formula_name = formula_file.basename.to_s.chomp(".rb")
+  def reword_package_commit(commit, file, reason: "", verbose: false, resolve: false, path: ".")
+    package_file = Pathname.new(path) / file
+    package_name = package_file.basename.to_s.chomp(".rb")
 
-    odebug "Cherry-picking #{formula_file}: #{commit}"
+    odebug "Cherry-picking #{package_file}: #{commit}"
     Utils::Git.cherry_pick!(path, commit, verbose: verbose, resolve: resolve)
 
-    old_formula = Utils::Git.file_at_commit(path, file, "HEAD^")
-    new_formula = Utils::Git.file_at_commit(path, file, "HEAD")
+    old_package = Utils::Git.file_at_commit(path, file, "HEAD^")
+    new_package = Utils::Git.file_at_commit(path, file, "HEAD")
 
-    bump_subject = determine_bump_subject(old_formula, new_formula, formula_file, reason: reason).strip
+    bump_subject = determine_bump_subject(old_package, new_package, package_file, reason: reason).strip
     subject, body, trailers = separate_commit_message(path.git_commit_message)
 
-    if subject != bump_subject && !subject.start_with?("#{formula_name}:")
+    if subject != bump_subject && !subject.start_with?("#{package_name}:")
       safe_system("git", "-C", path, "commit", "--amend", "-q",
                   "-m", bump_subject, "-m", subject, "-m", body, "-m", trailers)
       ohai bump_subject
@@ -168,7 +178,7 @@ module Homebrew
   # Cherry picks multiple commits that each modify a single file.
   # Words the commit according to {determine_bump_subject} with the body
   # corresponding to all the original commit messages combined.
-  def squash_formula_commits(commits, file, reason: "", verbose: false, resolve: false, path: ".")
+  def squash_package_commits(commits, file, reason: "", verbose: false, resolve: false, path: ".")
     odebug "Squashing #{file}: #{commits.join " "}"
 
     # Format commit messages into something similar to `git fmt-merge-message`.
@@ -201,10 +211,10 @@ module Homebrew
     Utils::Git.cherry_pick!(path, "--no-commit", *commits, verbose: verbose, resolve: resolve)
 
     # Determine the bump subject by comparing the original state of the tree to its current state.
-    formula_file = Pathname.new(path) / file
-    old_formula = Utils::Git.file_at_commit(path, file, "#{commits.first}^")
-    new_formula = File.read(formula_file)
-    bump_subject = determine_bump_subject(old_formula, new_formula, formula_file, reason: reason)
+    package_file = Pathname.new(path) / file
+    old_package = Utils::Git.file_at_commit(path, file, "#{commits.first}^")
+    new_package = package_file.read
+    bump_subject = determine_bump_subject(old_package, new_package, package_file, reason: reason)
 
     # Commit with the new subject, body, and trailers.
     safe_system("git", "-C", path, "commit", "--quiet",
@@ -213,25 +223,28 @@ module Homebrew
     ohai bump_subject
   end
 
-  def autosquash!(original_commit, path: ".", reason: "", verbose: false, resolve: false)
-    path = Pathname(path).extend(GitRepositoryExtension)
-    original_head = path.git_head
+  def autosquash!(original_commit, tap:, reason: "", verbose: false, resolve: false)
+    original_head = tap.path.git_head
 
-    commits = Utils.safe_popen_read("git", "-C", path, "rev-list",
+    commits = Utils.safe_popen_read("git", "-C", tap.path, "rev-list",
                                     "--reverse", "#{original_commit}..HEAD").lines.map(&:strip)
 
-    # Generate a bidirectional mapping of commits <=> formula files.
+    # Generate a bidirectional mapping of commits <=> formula/cask files.
     files_to_commits = {}
     commits_to_files = commits.to_h do |commit|
-      files = Utils.safe_popen_read("git", "-C", path, "diff-tree", "--diff-filter=AMD",
+      files = Utils.safe_popen_read("git", "-C", tap.path, "diff-tree", "--diff-filter=AMD",
                                     "-r", "--name-only", "#{commit}^", commit).lines.map(&:strip)
       files.each do |file|
         files_to_commits[file] ||= []
         files_to_commits[file] << commit
-        next if %r{^Formula/.*\.rb$}.match?(file)
+        tap_file = tap.path/file
+        if (tap_file.dirname == tap.formula_dir || tap_file.dirname == tap.cask_dir) &&
+           File.extname(file) == ".rb"
+          next
+        end
 
         odie <<~EOS
-          Autosquash can't squash commits that modify non-formula files.
+          Autosquash can only squash commits that modify formula or cask files.
             File:   #{file}
             Commit: #{commit}
         EOS
@@ -240,7 +253,7 @@ module Homebrew
     end
 
     # Reset to state before cherry-picking.
-    safe_system "git", "-C", path, "reset", "--hard", original_commit
+    safe_system "git", "-C", tap.path, "reset", "--hard", original_commit
 
     # Iterate over every commit in the pull request series, but if we have to squash
     # multiple commits into one, ensure that we skip over commits we've already squashed.
@@ -251,13 +264,13 @@ module Homebrew
       files = commits_to_files[commit]
       if files.length == 1 && files_to_commits[files.first].length == 1
         # If there's a 1:1 mapping of commits to files, just cherry pick and (maybe) reword.
-        reword_formula_commit(commit, files.first, path: path, reason: reason, verbose: verbose, resolve: resolve)
+        reword_package_commit(commit, files.first, path: tap.path, reason: reason, verbose: verbose, resolve: resolve)
         processed_commits << commit
       elsif files.length == 1 && files_to_commits[files.first].length > 1
         # If multiple commits modify a single file, squash them down into a single commit.
         file = files.first
         commits = files_to_commits[file]
-        squash_formula_commits(commits, file, path: path, reason: reason, verbose: verbose, resolve: resolve)
+        squash_package_commits(commits, file, path: tap.path, reason: reason, verbose: verbose, resolve: resolve)
         processed_commits += commits
       else
         # We can't split commits (yet) so just raise an error.
@@ -270,8 +283,8 @@ module Homebrew
     end
   rescue
     opoo "Autosquash encountered an error; resetting to original cherry-picked state at #{original_head}"
-    system "git", "-C", path, "reset", "--hard", original_head
-    system "git", "-C", path, "cherry-pick", "--abort"
+    system "git", "-C", tap.path, "reset", "--hard", original_head
+    system "git", "-C", tap.path, "cherry-pick", "--abort"
     raise
   end
 
@@ -298,27 +311,45 @@ module Homebrew
 
     return false if labels.include?("CI-syntax-only") || labels.include?("CI-no-bottles")
 
-    changed_formulae(tap, original_commit).any? do |f|
-      !f.bottle_unneeded? && !f.bottle_disabled?
+    changed_packages(tap, original_commit).any? do |f|
+      !f.instance_of?(Cask::Cask) && !f.bottle_unneeded? && !f.bottle_disabled?
     end
   end
 
-  def changed_formulae(tap, original_commit)
-    if Homebrew::EnvConfig.disable_load_formula?
-      opoo "Can't check if updated bottles are necessary as HOMEBREW_DISABLE_LOAD_FORMULA is set!"
-      return
-    end
-
-    Utils.popen_read("git", "-C", tap.path, "diff-tree",
-                     "-r", "--name-only", "--diff-filter=AM",
-                     original_commit, "HEAD", "--", tap.formula_dir)
-         .lines
-         .map do |line|
+  def changed_packages(tap, original_commit)
+    formulae = Utils.popen_read("git", "-C", tap.path, "diff-tree",
+                                "-r", "--name-only", "--diff-filter=AM",
+                                original_commit, "HEAD", "--", tap.formula_dir)
+                    .lines
+                    .map do |line|
       next unless line.end_with? ".rb\n"
 
       name = "#{tap.name}/#{File.basename(line.chomp, ".rb")}"
-      Formula[name]
+      if Homebrew::EnvConfig.disable_load_formula?
+        opoo "Can't check if updated bottles are necessary as HOMEBREW_DISABLE_LOAD_FORMULA is set!"
+        break
+      end
+      begin
+        Formulary.resolve(name)
+      rescue FormulaUnavailableError
+        nil
+      end
     end.compact
+    casks = Utils.popen_read("git", "-C", tap.path, "diff-tree",
+                             "-r", "--name-only", "--diff-filter=AM",
+                             original_commit, "HEAD", "--", tap.cask_dir)
+                 .lines
+                 .map do |line|
+      next unless line.end_with? ".rb\n"
+
+      name = "#{tap.name}/#{File.basename(line.chomp, ".rb")}"
+      begin
+        Cask::CaskLoader.load(name)
+      rescue Cask::CaskUnavailableError
+        nil
+      end
+    end.compact
+    formulae + casks
   end
 
   def download_artifact(url, dir, pr)
@@ -339,6 +370,9 @@ module Homebrew
 
   def pr_pull
     args = pr_pull_args.parse
+
+    # Needed when extracting the CI artifact.
+    ensure_executable!("unzip", reason: "extracting CI artifacts")
 
     workflows = args.workflows.presence || ["tests.yml"]
     artifact = args.artifact || "bottles"
@@ -371,7 +405,7 @@ module Homebrew
           unless args.no_commit?
             cherry_pick_pr!(user, repo, pr, path: tap.path, args: args)
             if !args.no_autosquash? && !args.dry_run?
-              autosquash!(original_commit, path: tap.path,
+              autosquash!(original_commit, tap: tap,
                           verbose: args.verbose?, resolve: args.resolve?, reason: args.message)
             end
             signoff!(tap.path, pr: pr, dry_run: args.dry_run?) unless args.clean?
