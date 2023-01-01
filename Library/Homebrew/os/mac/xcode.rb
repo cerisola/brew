@@ -21,8 +21,9 @@ module OS
       # This may be a beta version for a beta macOS.
       sig { params(macos: MacOS::Version).returns(String) }
       def latest_version(macos: MacOS.version)
-        latest_stable = "13.3"
+        latest_stable = "13.4"
         case macos
+        when "13" then "14.1"
         when "12" then latest_stable
         when "11" then "13.2.1"
         when "10.15" then "12.4"
@@ -30,8 +31,6 @@ module OS
         when "10.13" then "10.1"
         when "10.12" then "9.2"
         when "10.11" then "8.2.1"
-        when "10.10" then "7.2.1"
-        when "10.9"  then "6.2"
         else
           raise "macOS '#{MacOS.version}' is invalid" unless OS::Mac.version.prerelease?
 
@@ -47,6 +46,7 @@ module OS
       sig { returns(String) }
       def minimum_version
         case MacOS.version
+        when "13" then "14.1"
         when "12" then "13.1"
         when "11" then "12.2"
         when "10.15" then "11.0"
@@ -72,6 +72,11 @@ module OS
       sig { returns(T::Boolean) }
       def needs_clt_installed?
         return false if latest_sdk_version?
+
+        # With fake El Capitan for Portable Ruby, we want the full 10.11 SDK so that we can link
+        # against the correct set of libraries in the SDK sysroot rather than the system's copies.
+        # We therefore do not use the CLT under this setup, which installs to /usr/include.
+        return false if ENV["HOMEBREW_FAKE_EL_CAPITAN"]
 
         without_clt?
       end
@@ -240,7 +245,8 @@ module OS
         when "12.0.0" then "12.4"
         when "12.0.5" then "12.5.1"
         when "13.0.0" then "13.2.1"
-        else               "13.3"
+        when "13.1.6" then "13.4.1"
+        else               "14.1"
         end
       end
 
@@ -319,8 +325,7 @@ module OS
         end
 
         <<~EOS
-          Update them from Software Update in #{software_update_location} or run:
-            softwareupdate --all --install --force
+          Update them from Software Update in #{software_update_location}.
 
           If that doesn't show you any updates, run:
             sudo rm -rf /Library/Developer/CommandLineTools
@@ -337,15 +342,14 @@ module OS
       sig { returns(String) }
       def latest_clang_version
         case MacOS.version
-        when "12"    then "1316.0.21.2"
+        when "13"    then "1400.0.29.202"
+        when "12"    then "1316.0.21.2.5"
         when "11"    then "1300.0.29.30"
         when "10.15" then "1200.0.32.29"
         when "10.14" then "1100.0.33.17"
         when "10.13" then "1000.10.44.2"
         when "10.12" then "900.0.39.2"
-        when "10.11" then "800.0.42.1"
-        when "10.10" then "700.1.81"
-        else              "600.0.57"
+        else              "800.0.42.1"
         end
       end
 
@@ -355,6 +359,7 @@ module OS
       sig { returns(String) }
       def minimum_version
         case MacOS.version
+        when "13" then "14.0.0"
         when "12" then "13.0.0"
         when "11" then "12.5.0"
         when "10.15" then "11.0.0"
@@ -383,7 +388,7 @@ module OS
       sig { returns(T.nilable(String)) }
       def detect_clang_version
         version_output = Utils.popen_read("#{PKG_PATH}/usr/bin/clang", "--version")
-        version_output[/clang-(\d+\.\d+\.\d+(\.\d+)?)/, 1]
+        version_output[/clang-(\d+(\.\d+)+)/, 1]
       end
 
       sig { returns(T.nilable(String)) }

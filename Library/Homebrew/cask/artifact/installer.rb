@@ -39,7 +39,7 @@ module Cask
             executable_path,
             **args,
             env: { "PATH" => PATH.new(
-              HOMEBREW_PREFIX/"bin", HOMEBREW_PREFIX/"sbin", ENV["PATH"]
+              HOMEBREW_PREFIX/"bin", HOMEBREW_PREFIX/"sbin", ENV.fetch("PATH")
             ) },
           )
         end
@@ -72,7 +72,7 @@ module Cask
       attr_reader :path, :args
 
       def initialize(cask, **args)
-        super(cask)
+        super(cask, **args)
 
         if args.key?(:manual)
           @path = Pathname(args[:manual])

@@ -3,6 +3,7 @@
 
 require "active_support/core_ext/array/access"
 require "rubocops/shared/helper_functions"
+require "shellwords"
 
 module RuboCop
   module Cop
@@ -113,7 +114,7 @@ module RuboCop
       class ExecShellMetacharacters < Base
         include HelperFunctions
 
-        MSG = "Don't use shell metacharacters in `exec`. "\
+        MSG = "Don't use shell metacharacters in `exec`. " \
               "Implement the logic in Ruby instead, using methods like `$stdout.reopen`."
 
         RESTRICT_ON_SEND = [:exec].freeze

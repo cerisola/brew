@@ -80,11 +80,16 @@ class LinkageChecker
   alias generic_display_test_output display_test_output
   private :generic_display_test_output
 
-  sig { params(strict: T::Boolean).returns(T::Boolean) }
-  def broken_library_linkage?(strict: false)
-    issues = [@broken_deps, @unwanted_system_dylibs, @version_conflict_deps]
-    issues += [@undeclared_deps, @files_missing_rpaths] if strict
-    [issues, unexpected_broken_dylibs, unexpected_present_dylibs].flatten.any?(&:present?)
+  sig { params(test: T::Boolean, strict: T::Boolean).returns(T::Boolean) }
+  def broken_library_linkage?(test: false, strict: false)
+    raise ArgumentError, "Strict linkage checking requires test mode to be enabled." if strict && !test
+
+    issues = [@broken_deps, unexpected_broken_dylibs]
+    if test
+      issues += [@unwanted_system_dylibs, @version_conflict_deps, unexpected_present_dylibs]
+      issues += [@undeclared_deps, @files_missing_rpaths] if strict
+    end
+    issues.any?(&:present?)
   end
   alias generic_broken_library_linkage? broken_library_linkage?
   private :generic_broken_library_linkage?
@@ -198,7 +203,7 @@ class LinkageChecker
             # In macOS Big Sur and later, system libraries do not exist on-disk and instead exist in a cache.
             # If dlopen finds the dylib, then the linkage is not broken.
             @system_dylibs << dylib
-          else
+          elsif !system_framework?(dylib)
             @broken_dylibs << dylib
           end
         else
@@ -306,11 +311,16 @@ class LinkageChecker
   def harmless_broken_link?(dylib)
     # libgcc_s_* is referenced by programs that use the Java Service Wrapper,
     # and is harmless on x86(_64) machines
-    return true if [
+    # dyld will fall back to Apple libc++ if LLVM's is not available.
+    [
       "/usr/lib/libgcc_s_ppc64.1.dylib",
       "/opt/local/lib/libgcc/libgcc_s.1.dylib",
+      # TODO: Report linkage with `/usr/lib/libc++.1.dylib` when this link is broken.
+      "#{HOMEBREW_PREFIX}/opt/llvm/lib/libc++.1.dylib",
     ].include?(dylib)
+  end
 
+  def system_framework?(dylib)
     dylib.start_with?("/System/Library/Frameworks/")
   end
 

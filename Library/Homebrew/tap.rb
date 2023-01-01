@@ -142,8 +142,6 @@ class Tap
   # The remote repository name of this {Tap}.
   # e.g. `user/homebrew-repo`
   def remote_repo
-    raise TapUnavailableError, name unless installed?
-
     return unless remote
 
     @remote_repo ||= remote.delete_prefix("https://github.com/")
@@ -247,14 +245,15 @@ class Tap
   #   logic that skips non-GitHub repositories during auto-updates.
   # @param quiet [Boolean] If set, suppress all output.
   # @param custom_remote [Boolean] If set, change the tap's remote if already installed.
-  def install(quiet: false, clone_target: nil, force_auto_update: nil, custom_remote: false)
+  # @param verify [Boolean] If set, verify all the formula, casks and aliases in the tap are valid.
+  def install(quiet: false, clone_target: nil, force_auto_update: nil, custom_remote: false, verify: false)
     require "descriptions"
     require "readall"
 
     if official? && DEPRECATED_OFFICIAL_TAPS.include?(repo)
       odie "#{name} was deprecated. This tap is now empty and all its contents were either deleted or migrated."
     elsif user == "caskroom" || name == "phinze/cask"
-      new_repo = repo == "cask" ? "cask" : "cask-#{repo}"
+      new_repo = (repo == "cask") ? "cask" : "cask-#{repo}"
       odie "#{name} was moved. Tap homebrew/#{new_repo} instead."
     end
 
@@ -308,9 +307,8 @@ class Tap
 
     begin
       safe_system "git", *args
-      # TODO: 3.6.0: consider if we want to actually read all contents of tap or odeprecate.
 
-      if !Readall.valid_tap?(self, aliases: true) && !Homebrew::EnvConfig.developer?
+      if verify && !Readall.valid_tap?(self, aliases: true) && !Homebrew::EnvConfig.developer?
         raise "Cannot tap #{name}: invalid syntax in tap!"
       end
     rescue Interrupt, RuntimeError
@@ -490,6 +488,13 @@ class Tap
       formula_dir.children.select(&method(:ruby_file?))
     else
       []
+    end
+  end
+
+  # An array of all versioned {Formula} files of this {Tap}.
+  def versioned_formula_files
+    @versioned_formula_files ||= formula_files.select do |file|
+      file.basename(".rb").to_s =~ /@[\d.]+$/
     end
   end
 
@@ -792,11 +797,20 @@ class CoreTap < Tap
     return if instance.installed?
     return if Homebrew::EnvConfig.install_from_api?
 
+    # Tests override homebrew-core locations and we don't want to auto-tap in them.
+    return if ENV["HOMEBREW_TESTS"]
+
     safe_system HOMEBREW_BREW_FILE, "tap", instance.name
   end
 
+  def remote
+    super if installed? || !Homebrew::EnvConfig.install_from_api?
+
+    Homebrew::EnvConfig.core_git_remote
+  end
+
   # CoreTap never allows shallow clones (on request from GitHub).
-  def install(quiet: false, clone_target: nil, force_auto_update: nil, custom_remote: false)
+  def install(quiet: false, clone_target: nil, force_auto_update: nil, custom_remote: false, verify: false)
     remote = Homebrew::EnvConfig.core_git_remote # set by HOMEBREW_CORE_GIT_REMOTE
     requested_remote = clone_target || remote
 

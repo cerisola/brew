@@ -37,7 +37,7 @@ module UnpackStrategy
         quiet_flags = verbose ? [] : ["-qq"]
         result = system_command! "unzip",
                                  args:         [*quiet_flags, "-o", path, "-d", unpack_dir],
-                                 env:          { "PATH" => PATH.new(unzip&.opt_bin, ENV["PATH"]) },
+                                 env:          { "PATH" => PATH.new(unzip&.opt_bin, ENV.fetch("PATH")) },
                                  verbose:      verbose,
                                  print_stderr: false
 
@@ -49,4 +49,4 @@ module UnpackStrategy
   end
 end
 
-require "extend/os/mac/unpack_strategy/zip" if OS.mac?
+require "extend/os/unpack_strategy/zip"

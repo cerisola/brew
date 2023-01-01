@@ -136,6 +136,10 @@ module Homebrew
         # Homebrew/brew is currently using.
         return if ENV["GITHUB_ACTIONS"]
 
+        # With fake El Capitan for Portable Ruby, we are intentionally not using Xcode 8.
+        # This is because we are not using the CLT and Xcode 8 has the 10.12 SDK.
+        return if ENV["HOMEBREW_FAKE_EL_CAPITAN"]
+
         message = <<~EOS
           Your Xcode (#{MacOS::Xcode.version}) is outdated.
           Please update to Xcode #{MacOS::Xcode.latest_version} (or delete it).
@@ -202,6 +206,7 @@ module Homebrew
 
       def check_ruby_version
         return if RUBY_VERSION == HOMEBREW_REQUIRED_RUBY_VERSION
+        return if RUBY_VERSION == "2.6.10" # TODO: require 2.6.10
         return if Homebrew::EnvConfig.developer? && OS::Mac.version.prerelease?
 
         <<~EOS
@@ -357,19 +362,6 @@ module Homebrew
             tl;dr: delete these files:
           EOS
         end
-      end
-
-      def check_for_bitdefender
-        if !Pathname("/Library/Bitdefender/AVP/EndpointSecurityforMac.app").exist? &&
-           !Pathname("/Library/Bitdefender/AVP/BDLDaemon").exist?
-          return
-        end
-
-        <<~EOS
-          You have installed Bitdefender. The "Traffic Scan" option interferes with
-          Homebrew's ability to download packages. See:
-            #{Formatter.url("https://github.com/cerisola/brew/issues/5558")}
-        EOS
       end
 
       def check_for_multiple_volumes

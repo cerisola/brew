@@ -366,14 +366,6 @@ class Keg
   def self.file_linked_libraries(_file, _string)
     []
   end
-
-  def self.relocation_formulae
-    []
-  end
-
-  def self.bottle_dependencies
-    relocation_formulae
-  end
 end
 
 require "extend/os/keg_relocate"

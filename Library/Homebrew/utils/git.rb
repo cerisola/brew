@@ -124,7 +124,7 @@ module Utils
       gnupg_bin = HOMEBREW_PREFIX/"opt/gnupg/bin"
       return unless gnupg_bin.directory?
 
-      ENV["PATH"] = PATH.new(ENV["PATH"])
+      ENV["PATH"] = PATH.new(ENV.fetch("PATH"))
                         .prepend(gnupg_bin)
     end
 
@@ -140,6 +140,12 @@ module Utils
         system git, "-C", repo, "cherry-pick", "--abort" unless resolve
         raise ErrorDuringExecution.new(cmd, status: $CHILD_STATUS, output: [[:stdout, output]])
       end
+    end
+
+    def supports_partial_clone_sparse_checkout?
+      # There is some support for partial clones prior to 2.20, but we avoid using it
+      # due to performance issues
+      Version.create(version) >= Version.create("2.20.0")
     end
   end
 end

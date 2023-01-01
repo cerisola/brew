@@ -16,7 +16,7 @@ module RuboCop
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
           check_dependency_nodes_order(body_node)
           check_uses_from_macos_nodes_order(body_node)
-          [:head, :stable].each do |block_name|
+          ([:head, :stable] + on_system_methods).each do |block_name|
             block = find_block(body_node, block_name)
             next unless block
 
@@ -103,7 +103,7 @@ module RuboCop
 
             offending_node(node_1)
 
-            problem "dependency \"#{dependency_name(node_1)}\" (line #{l1}) should be put before dependency "\
+            problem "dependency \"#{dependency_name(node_1)}\" (line #{l1}) should be put before dependency " \
                     "\"#{dependency_name(node_2)}\" (line #{l2})" do |corrector|
               indentation = " " * (start_column(node_2) - line_start_column(node_2))
               line_breaks = "\n"

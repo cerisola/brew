@@ -9,6 +9,8 @@ module Homebrew
   #
   # @api private
   module Search
+    module_function
+
     def query_regexp(query)
       if (m = query.match(%r{^/(.*)/$}))
         Regexp.new(m[1])
@@ -19,13 +21,25 @@ module Homebrew
       raise "#{query} is not a valid regex."
     end
 
-    def search_descriptions(string_or_regex, args)
-      return if args.cask?
+    def search_descriptions(string_or_regex, args, search_type: :desc)
+      both = !args.formula? && !args.cask?
+      eval_all = args.eval_all? || Homebrew::EnvConfig.eval_all?
 
-      ohai "Formulae"
-      CacheStoreDatabase.use(:descriptions) do |db|
-        cache_store = DescriptionCacheStore.new(db)
-        Descriptions.search(string_or_regex, :desc, cache_store).print
+      if args.formula? || both
+        ohai "Formulae"
+        CacheStoreDatabase.use(:descriptions) do |db|
+          cache_store = DescriptionCacheStore.new(db)
+          Descriptions.search(string_or_regex, search_type, cache_store, eval_all).print
+        end
+      end
+      return if !args.cask? && !both
+
+      puts if both
+
+      ohai "Casks"
+      CacheStoreDatabase.use(:cask_descriptions) do |db|
+        cache_store = CaskDescriptionCacheStore.new(db)
+        Descriptions.search(string_or_regex, search_type, cache_store, eval_all).print
       end
     end
 
@@ -110,10 +124,53 @@ module Homebrew
       end.compact
     end
 
-    def search_casks(_string_or_regex)
-      []
+    def search_casks(string_or_regex)
+      if string_or_regex.is_a?(String) && string_or_regex.match?(HOMEBREW_TAP_CASK_REGEX)
+        return begin
+          [Cask::CaskLoader.load(string_or_regex).token]
+        rescue Cask::CaskUnavailableError
+          []
+        end
+      end
+
+      cask_tokens = Tap.flat_map(&:cask_tokens).map do |c|
+        c.sub(%r{^homebrew/cask.*/}, "")
+      end
+
+      results = cask_tokens.extend(Searchable)
+                           .search(string_or_regex)
+
+      results += DidYouMean::SpellChecker.new(dictionary: cask_tokens)
+                                         .correct(string_or_regex)
+
+      results.sort.map do |name|
+        cask = Cask::CaskLoader.load(name)
+        if cask.installed?
+          pretty_installed(cask.full_name)
+        else
+          cask.full_name
+        end
+      end.uniq
+    end
+
+    def search_names(query, string_or_regex, args)
+      both = !args.formula? && !args.cask?
+
+      remote_results = search_taps(query, silent: true)
+
+      all_formulae = if args.formula? || both
+        search_formulae(string_or_regex) + remote_results[:formulae]
+      else
+        []
+      end
+
+      all_casks = if args.cask? || both
+        search_casks(string_or_regex) + remote_results[:casks]
+      else
+        []
+      end
+
+      [all_formulae, all_casks]
     end
   end
 end
-
-require "extend/os/search"

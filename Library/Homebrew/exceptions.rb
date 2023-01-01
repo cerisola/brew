@@ -95,6 +95,8 @@ class FormulaOrCaskUnavailableError < RuntimeError
 
   sig { returns(String) }
   def did_you_mean
+    require "formula"
+
     similar_formula_names = Formula.fuzzy_search(name)
     return "" if similar_formula_names.blank?
 
@@ -229,13 +231,6 @@ class TapFormulaUnavailableError < FormulaUnavailableError
     s = super
     s += "\nPlease tap it and then try again: brew tap #{tap}" unless tap.installed?
     s
-  end
-end
-
-# Raised when a formula in a the core tap is unavailable.
-class CoreTapFormulaUnavailableError < TapFormulaUnavailableError
-  def initialize(name)
-    super CoreTap.instance, name
   end
 end
 
@@ -471,22 +466,34 @@ end
 
 # Raised when an error occurs during a formula build.
 class BuildError < RuntimeError
+  extend T::Sig
+
   attr_reader :cmd, :args, :env
   attr_accessor :formula, :options
 
+  sig {
+    params(
+      formula: T.nilable(Formula),
+      cmd:     T.any(String, Pathname),
+      args:    T::Array[T.any(String, Pathname, Integer)],
+      env:     T::Hash[String, T.untyped],
+    ).void
+  }
   def initialize(formula, cmd, args, env)
     @formula = formula
     @cmd = cmd
     @args = args
     @env = env
-    pretty_args = Array(args).map { |arg| arg.to_s.gsub " ", "\\ " }.join(" ")
+    pretty_args = Array(args).map { |arg| arg.to_s.gsub(/[\\ ]/, "\\\\\\0") }.join(" ")
     super "Failed executing: #{cmd} #{pretty_args}".strip
   end
 
+  sig { returns(T::Array[T.untyped]) }
   def issues
     @issues ||= fetch_issues
   end
 
+  sig { returns(T::Array[T.untyped]) }
   def fetch_issues
     GitHub.issues_for_formula(formula.name, tap: formula.tap, state: "open")
   rescue GitHub::API::RateLimitExceededError => e
@@ -494,6 +501,7 @@ class BuildError < RuntimeError
     []
   end
 
+  sig { params(verbose: T::Boolean).void }
   def dump(verbose: false)
     puts
 

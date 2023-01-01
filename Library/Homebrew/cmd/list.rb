@@ -25,17 +25,17 @@ module Homebrew
       switch "--cask", "--casks",
              description: "List only casks, or treat all named arguments as casks."
       switch "--full-name",
-             description: "Print formulae with fully-qualified names. Unless `--full-name`, `--versions` "\
-                          "or `--pinned` are passed, other options (i.e. `-1`, `-l`, `-r` and `-t`) are "\
+             description: "Print formulae with fully-qualified names. Unless `--full-name`, `--versions` " \
+                          "or `--pinned` are passed, other options (i.e. `-1`, `-l`, `-r` and `-t`) are " \
                           "passed to `ls`(1) which produces the actual output."
       switch "--versions",
-             description: "Show the version number for installed formulae, or only the specified "\
+             description: "Show the version number for installed formulae, or only the specified " \
                           "formulae if <formula> are provided."
       switch "--multiple",
              depends_on:  "--versions",
              description: "Only show formulae with multiple versions installed."
       switch "--pinned",
-             description: "List only pinned formulae, or only the specified (pinned) "\
+             description: "List only pinned formulae, or only the specified (pinned) " \
                           "formulae if <formula> are provided. See also `pin`, `unpin`."
       # passed through to ls
       switch "-1",
@@ -69,14 +69,6 @@ module Homebrew
 
   def list
     args = list_args.parse
-
-    # Unbrewed uses the PREFIX, which will exist
-    # Things below use the CELLAR, which doesn't until the first formula is installed.
-    unless HOMEBREW_CELLAR.exist?
-      raise NoSuchKegError, args.named.first if args.named.present? && !args.cask?
-
-      return
-    end
 
     if args.full_name?
       unless args.cask?
@@ -112,12 +104,10 @@ module Homebrew
       if !args.cask? && HOMEBREW_CELLAR.exist? && HOMEBREW_CELLAR.children.any?
         ohai "Formulae" if $stdout.tty? && !args.formula?
         safe_system "ls", *ls_args, HOMEBREW_CELLAR
+        puts if $stdout.tty? && !args.formula?
       end
       if !args.formula? && Cask::Caskroom.any_casks_installed?
-        if $stdout.tty? && !args.cask?
-          puts
-          ohai "Casks"
-        end
+        ohai "Casks" if $stdout.tty? && !args.cask?
         safe_system "ls", *ls_args, Cask::Caskroom.path
       end
     else

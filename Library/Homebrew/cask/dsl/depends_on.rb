@@ -11,6 +11,7 @@ module Cask
     #
     # @api private
     class DependsOn < SimpleDelegator
+      extend T::Sig
       VALID_KEYS = Set.new([
         :formula,
         :cask,
@@ -49,13 +50,14 @@ module Cask
         @cask.concat(args)
       end
 
+      sig { params(args: T.any(String, Symbol)).returns(T.nilable(MacOSRequirement)) }
       def macos=(*args)
         raise "Only a single 'depends_on macos' is allowed." if defined?(@macos)
 
         begin
           @macos = if args.count > 1
             MacOSRequirement.new([args], comparator: "==")
-          elsif MacOS::Version::SYMBOLS.key?(args.first)
+          elsif MacOSVersions::SYMBOLS.key?(args.first)
             MacOSRequirement.new([args.first], comparator: "==")
           elsif /^\s*(?<comparator><|>|[=<>]=)\s*:(?<version>\S+)\s*$/ =~ args.first
             MacOSRequirement.new([version.to_sym], comparator: comparator)

@@ -291,7 +291,7 @@ module FormulaCellarChecks
 
     dot_brew_formula = formula.prefix/".brew/#{formula.name}.rb"
     return unless dot_brew_formula.exist?
-    # TODO: add methods to `utils/ast` to allow checking for method use
+
     return unless dot_brew_formula.read.include? "ENV.runtime_cpu_detection"
 
     # macOS `objdump` is a bit slow, so we prioritise llvm's `llvm-objdump` (~5.7x faster)
@@ -299,7 +299,7 @@ module FormulaCellarChecks
     objdump   = Formula["llvm"].opt_bin/"llvm-objdump" if Formula["llvm"].any_version_installed?
     objdump ||= Formula["binutils"].opt_bin/"objdump" if Formula["binutils"].any_version_installed?
     objdump ||= which("objdump")
-    objdump ||= which("objdump", ENV["HOMEBREW_PATH"])
+    objdump ||= which("objdump", ORIGINAL_PATHS)
 
     unless objdump
       return <<~EOS
@@ -319,7 +319,8 @@ module FormulaCellarChecks
   def check_binary_arches(formula)
     return unless formula.prefix.directory?
     # There is no `binary_executable_or_library_files` method for the generic OS
-    return if !OS.mac? && !OS.linux?
+    # TODO: Refactor and move to extend/os
+    return if !OS.mac? && !OS.linux? # rubocop:disable Homebrew/MoveToExtendOS
 
     keg = Keg.new(formula.prefix)
     mismatches = {}

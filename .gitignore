@@ -31,6 +31,7 @@
 **/vendor/bundle/ruby/*/cache
 **/vendor/bundle/ruby/*/extensions
 **/vendor/bundle/ruby/*/gems/*/*
+**/vendor/bundle/ruby/*/plugins
 **/vendor/bundle/ruby/*/specifications
 
 # Ignore YARD files
@@ -38,6 +39,8 @@
 
 # Unignore vendored gems
 !**/vendor/bundle/ruby/*/gems/*/lib
+!**/vendor/bundle/ruby/*/gems/addressable-*/data
+!**/vendor/bundle/ruby/*/gems/public_suffix-*/data
 !**/vendor/bundle/ruby/*/gems/rubocop-performance-*/config
 !**/vendor/bundle/ruby/*/gems/rubocop-rails-*/config
 !**/vendor/bundle/ruby/*/gems/rubocop-rspec-*/config
@@ -148,8 +151,7 @@
 **/vendor/bundle/ruby/*/gems/simplecov-*/
 **/vendor/bundle/ruby/*/gems/simplecov-html-*/
 **/vendor/bundle/ruby/*/gems/sorbet-*/
-**/vendor/bundle/ruby/*/gems/sorbet-runtime-*/
-!**/vendor/bundle/ruby/*/gems/sorbet-runtime-stub-*/
+!**/vendor/bundle/ruby/*/gems/sorbet-runtime-*/
 **/vendor/bundle/ruby/*/gems/spoom-*/
 **/vendor/bundle/ruby/*/gems/stackprof-*/
 **/vendor/bundle/ruby/*/gems/strscan-*/
@@ -170,11 +172,15 @@
 # Unignore our `brew` script.
 !/bin/brew
 
-# Unignore our documentation/completions.
+# Unignore our configuration/completions/documentation.
+!/.devcontainer
 !/.github
 !/completions
 !/docs
 !/manpages
+
+# Unignore our packaging files
+!/package
 
 # Ignore generated documentation site
 /docs/_site

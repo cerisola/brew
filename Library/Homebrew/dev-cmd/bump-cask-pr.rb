@@ -24,10 +24,9 @@ module Homebrew
              description: "Print what would be done rather than doing it."
       switch "--write-only",
              description: "Make the expected file modifications without taking any Git actions."
-      switch "--write", hidden: true
       switch "--commit",
              depends_on:  "--write-only",
-             description: "When passed with `--write-only`, generate a new commit after writing changes "\
+             description: "When passed with `--write-only`, generate a new commit after writing changes " \
                           "to the cask file."
       switch "--no-audit",
              description: "Don't run `brew audit` before opening the PR."
@@ -42,7 +41,7 @@ module Homebrew
       flag   "--version=",
              description: "Specify the new <version> for the cask."
       flag   "--message=",
-             description: "Append <message> to the default pull request message."
+             description: "Prepend <message> to the default pull request message."
       flag   "--url=",
              description: "Specify the <URL> for the new download."
       flag   "--sha256=",
@@ -62,15 +61,13 @@ module Homebrew
   def bump_cask_pr
     args = bump_cask_pr_args.parse
 
-    odisabled "`brew bump-cask-pr --write`", "`brew bump-cask-pr --write-only`" if args.write?
-
     # This will be run by `brew style` later so run it first to not start
     # spamming during normal output.
     Homebrew.install_bundler_gems!
 
     # As this command is simplifying user-run commands then let's just use a
     # user path, too.
-    ENV["PATH"] = ENV["HOMEBREW_PATH"]
+    ENV["PATH"] = PATH.new(ORIGINAL_PATHS).to_s
 
     # Use the user's browser, too.
     ENV["BROWSER"] = Homebrew::EnvConfig.browser
@@ -81,14 +78,14 @@ module Homebrew
     odie "This cask's tap is not a Git repository!" unless cask.tap.git?
 
     new_version = args.version
-    new_version = :latest if ["latest", ":latest"].include?(new_version)
+    new_version = :latest if ["latest", ":latest"].include? new_version
     new_version = Cask::DSL::Version.new(new_version) if new_version.present?
     new_base_url = args.url
     new_hash = args.sha256
     new_hash = :no_check if ["no_check", ":no_check"].include? new_hash
 
     if new_version.nil? && new_base_url.nil? && new_hash.nil?
-      raise UsageError, "No --version=/--url=/--sha256= argument specified!"
+      raise UsageError, "No `--version=`, `--url=` or `--sha256=` argument specified!"
     end
 
     old_version = cask.version
@@ -107,6 +104,52 @@ module Homebrew
         /version\s+#{old_version_regex}/m,
         "version #{new_version.latest? ? ":latest" : "\"#{new_version}\""}",
       ]
+      if new_version.latest? || new_hash == :no_check
+        opoo "Ignoring specified `--sha256=` argument." if new_hash.is_a? String
+        replacement_pairs << [/"#{old_hash}"/, ":no_check"] if old_hash != :no_check
+      elsif old_hash != :no_check
+        if new_hash.nil? || cask.languages.present?
+          if new_hash.present? && cask.languages.present?
+            opoo "Multiple hash replacements required; ignoring specified `--sha256=` argument."
+          end
+          tmp_contents = Utils::Inreplace.inreplace_pairs(cask.sourcefile_path,
+                                                          replacement_pairs.uniq.compact,
+                                                          read_only_run: true,
+                                                          silent:        true)
+
+          tmp_cask = Cask::CaskLoader.load(tmp_contents)
+          tmp_config = tmp_cask.config
+
+          [:arm, :intel].each do |arch|
+            Homebrew::SimulateSystem.arch = arch
+
+            languages = cask.languages
+            languages = [nil] if languages.empty?
+            languages.each do |language|
+              new_hash_config = if language.blank?
+                tmp_config
+              else
+                tmp_config.merge(Cask::Config.new(explicit: { languages: [language] }))
+              end
+
+              new_hash_cask = Cask::CaskLoader.load(tmp_contents)
+              new_hash_cask.config = new_hash_config
+              old_hash = new_hash_cask.sha256.to_s
+
+              cask_download = Cask::Download.new(new_hash_cask, quarantine: true)
+              download = cask_download.fetch(verify_download_integrity: false)
+              Utils::Tar.validate_file(download)
+
+              replacement_pairs << [new_hash_cask.sha256.to_s, download.sha256]
+            end
+
+            Homebrew::SimulateSystem.clear
+          end
+        elsif new_hash.present?
+          opoo "Cask contains multiple hashes; only updating hash for current arch." if cask.on_system_blocks_exist?
+          replacement_pairs << [old_hash.to_s, new_hash]
+        end
+      end
     end
 
     if new_base_url.present?
@@ -118,45 +161,6 @@ module Homebrew
       replacement_pairs << [
         /#{Regexp.escape(old_base_url)}/,
         new_base_url,
-      ]
-    end
-
-    if new_version.present?
-      if new_version.latest?
-        opoo "Ignoring specified `--sha256=` argument." if new_hash.present?
-        new_hash = :no_check
-      elsif new_hash.nil? || cask.languages.present?
-        tmp_contents = Utils::Inreplace.inreplace_pairs(cask.sourcefile_path,
-                                                        replacement_pairs.uniq.compact,
-                                                        read_only_run: true,
-                                                        silent:        true)
-
-        tmp_cask = Cask::CaskLoader.load(tmp_contents)
-        tmp_config = tmp_cask.config
-
-        if old_hash != :no_check
-          new_hash = fetch_cask(tmp_contents)[1] if new_hash.nil?
-
-          if tmp_contents.include?("Hardware::CPU.intel?")
-            other_intel = !Hardware::CPU.intel?
-            other_contents = tmp_contents.gsub("Hardware::CPU.intel?", other_intel.to_s)
-            replacement_pairs << fetch_cask(other_contents)
-          end
-        end
-
-        cask.languages.each do |language|
-          lang_config = tmp_config.merge(Cask::Config.new(explicit: { languages: [language] }))
-          replacement_pairs << fetch_cask(tmp_contents, config: lang_config)
-        end
-      end
-    end
-
-    if new_hash.present? && cask.language.blank? # avoid repeated replacement for multilanguage cask
-      hash_regex = old_hash == :no_check ? ":no_check" : "[\"']#{Regexp.escape(old_hash.to_s)}[\"']"
-
-      replacement_pairs << [
-        /sha256\s+#{hash_regex}/m,
-        "sha256 #{new_hash == :no_check ? ":no_check" : "\"#{new_hash}\""}",
       ]
     end
 
@@ -189,19 +193,6 @@ module Homebrew
     GitHub.create_bump_pr(pr_info, args: args)
   end
 
-  def fetch_cask(contents, config: nil)
-    cask = Cask::CaskLoader.load(contents)
-    cask.config = config if config.present?
-    old_hash = cask.sha256.to_s
-
-    cask_download = Cask::Download.new(cask, quarantine: true)
-    download = cask_download.fetch(verify_download_integrity: false)
-    Utils::Tar.validate_file(download)
-    new_hash = download.sha256
-
-    [old_hash, new_hash]
-  end
-
   def check_open_pull_requests(cask, args:)
     tap_remote_repo = cask.tap.remote_repo || cask.tap.full_name
     GitHub.check_for_duplicate_pull_requests(cask.token, tap_remote_repo,
@@ -225,10 +216,10 @@ module Homebrew
     if args.no_audit?
       ohai "Skipping `brew audit`"
     elsif args.online?
-      system HOMEBREW_BREW_FILE, "audit", "--cask", "--online", cask.sourcefile_path
+      system HOMEBREW_BREW_FILE, "audit", "--cask", "--online", cask.full_name
       failed_audit = !$CHILD_STATUS.success?
     else
-      system HOMEBREW_BREW_FILE, "audit", "--cask", cask.sourcefile_path
+      system HOMEBREW_BREW_FILE, "audit", "--cask", cask.full_name
       failed_audit = !$CHILD_STATUS.success?
     end
     return unless failed_audit

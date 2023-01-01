@@ -15,7 +15,7 @@ class URL < Delegator
                 :verified, :using,
                 :tag, :branch, :revisions, :revision,
                 :trust_cert, :cookies, :referer, :header, :user_agent,
-                :data
+                :data, :only_path
 
     extend Forwardable
     def_delegators :uri, :path, :scheme, :to_s
@@ -36,6 +36,7 @@ class URL < Delegator
         header:     T.nilable(String),
         user_agent: T.nilable(T.any(Symbol, String)),
         data:       T.nilable(T::Hash[String, String]),
+        only_path:  T.nilable(String),
       ).void
     }
     def initialize(
@@ -51,7 +52,8 @@ class URL < Delegator
       referer: nil,
       header: nil,
       user_agent: nil,
-      data: nil
+      data: nil,
+      only_path: nil
     )
 
       @uri = URI(uri)
@@ -69,6 +71,7 @@ class URL < Delegator
       specs[:header]     = @header     = header
       specs[:user_agent] = @user_agent = user_agent || :default
       specs[:data]       = @data       = data
+      specs[:only_path]  = @only_path  = only_path
 
       @specs = specs.compact
     end
@@ -78,6 +81,7 @@ class URL < Delegator
   class BlockDSL
     extend T::Sig
 
+    # To access URL associated with page contents.
     module PageWithURL
       extend T::Sig
 
@@ -156,6 +160,7 @@ class URL < Delegator
       header:          T.nilable(String),
       user_agent:      T.nilable(T.any(Symbol, String)),
       data:            T.nilable(T::Hash[String, String]),
+      only_path:       T.nilable(String),
       caller_location: Thread::Backtrace::Location,
       dsl:             T.nilable(Cask::DSL),
       block:           T.nilable(T.proc.params(arg0: T.all(String, BlockDSL::PageWithURL)).returns(T.untyped)),
@@ -175,35 +180,37 @@ class URL < Delegator
     header: nil,
     user_agent: nil,
     data: nil,
+    only_path: nil,
     caller_location: T.must(caller_locations).fetch(0),
     dsl: nil,
     &block
   )
     super(
-    if block
-      LazyObject.new do
-        *args = BlockDSL.new(uri, dsl: dsl, &block).call
-        options = args.last.is_a?(Hash) ? args.pop : {}
-        uri = T.let(args.first, T.any(URI::Generic, String))
-        DSL.new(uri, **options)
+      if block
+        LazyObject.new do
+          *args = BlockDSL.new(uri, dsl: dsl, &block).call
+          options = args.last.is_a?(Hash) ? args.pop : {}
+          uri = T.let(args.first, T.any(URI::Generic, String))
+          DSL.new(uri, **options)
+        end
+      else
+        DSL.new(
+          T.must(uri),
+          verified:   verified,
+          using:      using,
+          tag:        tag,
+          branch:     branch,
+          revisions:  revisions,
+          revision:   revision,
+          trust_cert: trust_cert,
+          cookies:    cookies,
+          referer:    referer,
+          header:     header,
+          user_agent: user_agent,
+          data:       data,
+          only_path:  only_path,
+        )
       end
-    else
-      DSL.new(
-        T.must(uri),
-        verified:   verified,
-        using:      using,
-        tag:        tag,
-        branch:     branch,
-        revisions:  revisions,
-        revision:   revision,
-        trust_cert: trust_cert,
-        cookies:    cookies,
-        referer:    referer,
-        header:     header,
-        user_agent: user_agent,
-        data:       data,
-      )
-    end
     )
 
     @from_block = !block.nil?
@@ -223,9 +230,9 @@ class URL < Delegator
     return @raw_interpolated_url if defined?(@raw_interpolated_url)
 
     @raw_interpolated_url =
-      Pathname(@caller_location.absolute_path)
+      Pathname(@caller_location.path)
       .each_line.drop(@caller_location.lineno - 1)
-      .first&.yield_self { |line| line[/url\s+"([^"]+)"/, 1] }
+      .first&.then { |line| line[/url\s+"([^"]+)"/, 1] }
   end
   private :raw_interpolated_url
 

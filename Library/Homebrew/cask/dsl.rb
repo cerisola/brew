@@ -6,6 +6,7 @@ require "lazy_object"
 require "livecheck"
 
 require "cask/artifact"
+require "cask/artifact_set"
 
 require "cask/caskroom"
 require "cask/exceptions"
@@ -24,6 +25,8 @@ require "cask/dsl/version"
 
 require "cask/url"
 require "cask/utils"
+
+require "extend/on_system"
 
 module Cask
   # Class representing the domain-specific language used for casks.
@@ -84,12 +87,18 @@ module Cask
       :discontinued?,
       :livecheck,
       :livecheckable?,
+      :on_system_blocks_exist?,
       *ORDINARY_ARTIFACT_CLASSES.map(&:dsl_key),
       *ACTIVATABLE_ARTIFACT_CLASSES.map(&:dsl_key),
       *ARTIFACT_BLOCK_CLASSES.flat_map { |klass| [klass.dsl_key, klass.uninstall_dsl_key] },
     ]).freeze
 
+    extend Predicable
+    include OnSystem::MacOSOnly
+
     attr_reader :cask, :token
+
+    attr_predicate :on_system_blocks_exist?
 
     def initialize(cask)
       @cask = cask
@@ -112,10 +121,17 @@ module Cask
     def set_unique_stanza(stanza, should_return)
       return instance_variable_get("@#{stanza}") if should_return
 
-      if instance_variable_defined?("@#{stanza}")
-        raise CaskInvalidError.new(cask, "'#{stanza}' stanza may only appear once.")
+      unless @cask.allow_reassignment
+        if instance_variable_defined?("@#{stanza}") && !@called_in_on_system_block
+          raise CaskInvalidError.new(cask, "'#{stanza}' stanza may only appear once.")
+        end
+
+        if instance_variable_defined?("@#{stanza}_set_in_block") && @called_in_on_system_block
+          raise CaskInvalidError.new(cask, "'#{stanza}' stanza may only be overridden once.")
+        end
       end
 
+      instance_variable_set("@#{stanza}_set_in_block", true) if @called_in_on_system_block
       instance_variable_set("@#{stanza}", yield)
     rescue CaskInvalidError
       raise
@@ -137,7 +153,7 @@ module Cask
 
         return unless default
 
-        unless @language_blocks.default.nil?
+        if !@cask.allow_reassignment && @language_blocks.default.present?
           raise CaskInvalidError.new(cask, "Only one default language may be defined.")
         end
 
@@ -193,14 +209,14 @@ module Cask
     end
 
     # @api public
-    def appcast(*args)
-      set_unique_stanza(:appcast, args.empty?) { DSL::Appcast.new(*args) }
+    def appcast(*args, **kwargs)
+      set_unique_stanza(:appcast, args.empty? && kwargs.empty?) { DSL::Appcast.new(*args, **kwargs) }
     end
 
     # @api public
-    def container(*args)
-      set_unique_stanza(:container, args.empty?) do
-        DSL::Container.new(*args)
+    def container(**kwargs)
+      set_unique_stanza(:container, kwargs.empty?) do
+        DSL::Container.new(**kwargs)
       end
     end
 
@@ -216,8 +232,13 @@ module Cask
     end
 
     # @api public
-    def sha256(arg = nil)
-      set_unique_stanza(:sha256, arg.nil?) do
+    def sha256(arg = nil, arm: nil, intel: nil)
+      should_return = arg.nil? && arm.nil? && intel.nil?
+
+      set_unique_stanza(:sha256, should_return) do
+        @on_system_blocks_exist = true if arm.present? || intel.present?
+
+        arg ||= on_arch_conditional(arm: arm, intel: intel)
         case arg
         when :no_check
           arg
@@ -229,14 +250,25 @@ module Cask
       end
     end
 
+    # @api public
+    def arch(arm: nil, intel: nil)
+      should_return = arm.nil? && intel.nil?
+
+      set_unique_stanza(:arch, should_return) do
+        @on_system_blocks_exist = true
+
+        on_arch_conditional(arm: arm, intel: intel)
+      end
+    end
+
     # `depends_on` uses a load method so that multiple stanzas can be merged.
     # @api public
-    def depends_on(*args)
+    def depends_on(**kwargs)
       @depends_on ||= DSL::DependsOn.new
-      return @depends_on if args.empty?
+      return @depends_on if kwargs.empty?
 
       begin
-        @depends_on.load(*args)
+        @depends_on.load(**kwargs)
       rescue RuntimeError => e
         raise CaskInvalidError.new(cask, e)
       end
@@ -244,13 +276,13 @@ module Cask
     end
 
     # @api public
-    def conflicts_with(*args)
+    def conflicts_with(**kwargs)
       # TODO: remove this constraint, and instead merge multiple conflicts_with stanzas
-      set_unique_stanza(:conflicts_with, args.empty?) { DSL::ConflictsWith.new(*args) }
+      set_unique_stanza(:conflicts_with, kwargs.empty?) { DSL::ConflictsWith.new(**kwargs) }
     end
 
     def artifacts
-      @artifacts ||= SortedSet.new
+      @artifacts ||= ArtifactSet.new
     end
 
     def caskroom_path
@@ -281,7 +313,7 @@ module Cask
     end
 
     def discontinued?
-      @caveats&.discontinued?
+      @caveats&.discontinued? == true
     end
 
     # @api public
@@ -294,7 +326,9 @@ module Cask
       @livecheck ||= Livecheck.new(self)
       return @livecheck unless block
 
-      raise CaskInvalidError.new(cask, "'livecheck' stanza may only appear once.") if @livecheckable
+      if !@cask.allow_reassignment && @livecheckable
+        raise CaskInvalidError.new(cask, "'livecheck' stanza may only appear once.")
+      end
 
       @livecheckable = true
       @livecheck.instance_eval(&block)
@@ -305,13 +339,13 @@ module Cask
     end
 
     ORDINARY_ARTIFACT_CLASSES.each do |klass|
-      define_method(klass.dsl_key) do |*args|
+      define_method(klass.dsl_key) do |*args, **kwargs|
         if [*artifacts.map(&:class), klass].include?(Artifact::StageOnly) &&
            (artifacts.map(&:class) & ACTIVATABLE_ARTIFACT_CLASSES).any?
           raise CaskInvalidError.new(cask, "'stage_only' must be the only activatable artifact.")
         end
 
-        artifacts.add(klass.from_args(cask, *args))
+        artifacts.add(klass.from_args(cask, *args, **kwargs))
       rescue CaskInvalidError
         raise
       rescue => e

@@ -149,11 +149,19 @@ describe Formula do
       end
     end
 
-    it "returns true by default" do
-      FileUtils.touch f.path
-      FileUtils.touch f2.path
+    before do
+      # don't try to load/fetch gcc/glibc
+      allow(DevelopmentTools).to receive(:needs_libc_formula?).and_return(false)
+      allow(DevelopmentTools).to receive(:needs_compiler_formula?).and_return(false)
+
       allow(Formulary).to receive(:load_formula_from_path).with(f2.name, f2.path).and_return(f2)
       allow(Formulary).to receive(:factory).with(f2.name).and_return(f2)
+      allow(f.tap).to receive(:versioned_formula_files).and_return([f2.path])
+    end
+
+    it "returns array with versioned formulae" do
+      FileUtils.touch f.path
+      FileUtils.touch f2.path
       expect(f.versioned_formulae).to eq [f2]
     end
 
@@ -237,7 +245,7 @@ describe Formula do
   specify "#prefix" do
     f = Testball.new
     expect(f.prefix).to eq(HOMEBREW_CELLAR/f.name/"0.1")
-    expect(f.prefix).to be_kind_of(Pathname)
+    expect(f.prefix).to be_a(Pathname)
   end
 
   example "revised prefix" do
@@ -446,40 +454,13 @@ describe Formula do
     end
   end
 
-  describe "::installed_formulae_with_no_dependents" do
-    let(:formula_is_dep) do
-      formula "foo" do
-        url "foo-1.1"
+  describe "::inreplace" do
+    specify "raises build error on failure" do
+      f = formula do
+        url "https://brew.sh/test-1.0.tbz"
       end
-    end
 
-    let(:formula_with_deps) do
-      formula "bar" do
-        url "bar-1.0"
-      end
-    end
-
-    let(:formulae) do
-      [
-        formula_with_deps,
-        formula_is_dep,
-      ]
-    end
-
-    before do
-      allow(formula_with_deps).to receive(:runtime_formula_dependencies).and_return([formula_is_dep])
-    end
-
-    specify "without formulae parameter" do
-      allow(described_class).to receive(:installed).and_return(formulae)
-
-      expect(described_class.installed_formulae_with_no_dependents)
-          .to eq([formula_with_deps])
-    end
-
-    specify "with formulae parameter" do
-      expect(described_class.installed_formulae_with_no_dependents(formulae))
-          .to eq([formula_with_deps])
+      expect { f.inreplace([]) }.to raise_error(BuildError)
     end
   end
 
@@ -563,8 +544,8 @@ describe Formula do
       url "foo-1.0"
     end
 
-    expect(f.class.stable).to be_kind_of(SoftwareSpec)
-    expect(f.class.head).to be_kind_of(SoftwareSpec)
+    expect(f.class.stable).to be_a(SoftwareSpec)
+    expect(f.class.head).to be_a(SoftwareSpec)
   end
 
   specify "instance specs have different references" do
@@ -725,15 +706,15 @@ describe Formula do
     specify "service complicated" do
       f = formula do
         url "https://brew.sh/test-1.0.tbz"
-      end
 
-      f.class.service do
-        run [opt_bin/"beanstalkd"]
-        run_type :immediate
-        error_log_path var/"log/beanstalkd.error.log"
-        log_path var/"log/beanstalkd.log"
-        working_dir var
-        keep_alive true
+        service do
+          run [opt_bin/"beanstalkd"]
+          run_type :immediate
+          error_log_path var/"log/beanstalkd.error.log"
+          log_path var/"log/beanstalkd.log"
+          working_dir var
+          keep_alive true
+        end
       end
       expect(f.service).not_to be_nil
     end
@@ -756,13 +737,17 @@ describe Formula do
 
       expect(f.plist_name).to eq("homebrew.mxcl.formula_name")
       expect(f.service_name).to eq("homebrew.formula_name")
-      expect(f.plist_path).to eq(HOMEBREW_PREFIX/"opt/formula_name/homebrew.mxcl.formula_name.plist")
+      expect(f.launchd_service_path).to eq(HOMEBREW_PREFIX/"opt/formula_name/homebrew.mxcl.formula_name.plist")
       expect(f.systemd_service_path).to eq(HOMEBREW_PREFIX/"opt/formula_name/homebrew.formula_name.service")
       expect(f.systemd_timer_path).to eq(HOMEBREW_PREFIX/"opt/formula_name/homebrew.formula_name.timer")
     end
   end
 
   specify "dependencies" do
+    # don't try to load/fetch gcc/glibc
+    allow(DevelopmentTools).to receive(:needs_libc_formula?).and_return(false)
+    allow(DevelopmentTools).to receive(:needs_compiler_formula?).and_return(false)
+
     f1 = formula "f1" do
       url "f1-1.0"
     end
@@ -804,6 +789,10 @@ describe Formula do
   describe "#runtime_dependencies" do
     specify "runtime dependencies with optional deps from tap" do
       tap_loader = double
+
+      # don't try to load/fetch gcc/glibc
+      allow(DevelopmentTools).to receive(:needs_libc_formula?).and_return(false)
+      allow(DevelopmentTools).to receive(:needs_compiler_formula?).and_return(false)
 
       allow(tap_loader).to receive(:get_formula).and_raise(RuntimeError, "tried resolving tap formula")
       allow(Formulary).to receive(:loader_for).with("foo/bar/f1", from: nil).and_return(tap_loader)
@@ -854,6 +843,10 @@ describe Formula do
   end
 
   specify "requirements" do
+    # don't try to load/fetch gcc/glibc
+    allow(DevelopmentTools).to receive(:needs_libc_formula?).and_return(false)
+    allow(DevelopmentTools).to receive(:needs_compiler_formula?).and_return(false)
+
     f1 = formula "f1" do
       url "f1-1"
 
@@ -903,6 +896,99 @@ describe Formula do
     expect(h["tap"]).to eq("homebrew/core")
     expect(h["versions"]["stable"]).to eq("1.0")
     expect(h["versions"]["bottle"]).to be_truthy
+  end
+
+  describe "#to_hash_with_variations", :needs_macos do
+    let(:formula_path) { CoreTap.new.formula_dir/"foo-variations.rb" }
+    let(:formula_content) do
+      <<~RUBY
+        class FooVariations < Formula
+          url "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1.tbz"
+          sha256 TESTBALL_SHA256
+
+          on_intel do
+            depends_on "intel-formula"
+          end
+
+          on_big_sur do
+            depends_on "big-sur-formula"
+          end
+
+          on_catalina :or_older do
+            depends_on "catalina-or-older-formula"
+          end
+
+          on_linux do
+            depends_on "linux-formula"
+          end
+        end
+      RUBY
+    end
+    let(:expected_variations) {
+      <<~JSON
+        {
+          "arm64_big_sur": {
+            "dependencies": [
+              "big-sur-formula"
+            ]
+          },
+          "monterey": {
+            "dependencies": [
+              "intel-formula"
+            ]
+          },
+          "big_sur": {
+            "dependencies": [
+              "intel-formula",
+              "big-sur-formula"
+            ]
+          },
+          "catalina": {
+            "dependencies": [
+              "intel-formula",
+              "catalina-or-older-formula"
+            ]
+          },
+          "mojave": {
+            "dependencies": [
+              "intel-formula",
+              "catalina-or-older-formula"
+            ]
+          },
+          "x86_64_linux": {
+            "dependencies": [
+              "intel-formula",
+              "linux-formula"
+            ]
+          }
+        }
+      JSON
+    }
+
+    before do
+      # Use a more limited symbols list to shorten the variations hash
+      symbols = {
+        monterey: "12",
+        big_sur:  "11",
+        catalina: "10.15",
+        mojave:   "10.14",
+      }
+      stub_const("MacOSVersions::SYMBOLS", symbols)
+
+      # For consistency, always run on Monterey and ARM
+      allow(MacOS).to receive(:version).and_return(MacOS::Version.new("12"))
+      allow(Hardware::CPU).to receive(:type).and_return(:arm)
+
+      formula_path.dirname.mkpath
+      formula_path.write formula_content
+    end
+
+    it "returns the correct variations hash" do
+      h = Formulary.factory("foo-variations").to_hash_with_variations
+
+      expect(h).to be_a(Hash)
+      expect(JSON.pretty_generate(h["variations"])).to eq expected_variations.strip
+    end
   end
 
   specify "#to_recursive_bottle_hash" do
@@ -1410,7 +1496,7 @@ describe Formula do
         testball_repo.cd do
           FileUtils.touch "LICENSE"
 
-          system("git", "init")
+          system("git", "-c", "init.defaultBranch=master", "init")
           system("git", "add", "--all")
           system("git", "commit", "-m", "Initial commit")
         end
@@ -1538,10 +1624,10 @@ describe Formula do
   describe "#on_macos", :needs_macos do
     let(:f) do
       Class.new(Testball) do
-        @test = 0
         attr_reader :test
 
         def install
+          @test = 0
           on_macos do
             @test = 1
           end
@@ -1561,10 +1647,10 @@ describe Formula do
   describe "#on_linux", :needs_linux do
     let(:f) do
       Class.new(Testball) do
-        @test = 0
         attr_reader :test
 
         def install
+          @test = 0
           on_macos do
             @test = 1
           end
@@ -1578,6 +1664,250 @@ describe Formula do
     it "only calls code within on_linux" do
       f.brew { f.install }
       expect(f.test).to eq(2)
+    end
+  end
+
+  describe "#on_system" do
+    after do
+      Homebrew::SimulateSystem.clear
+    end
+
+    let(:f) do
+      Class.new(Testball) do
+        attr_reader :foo
+        attr_reader :bar
+
+        def install
+          @foo = 0
+          @bar = 0
+          on_system :linux, macos: :monterey do
+            @foo = 1
+          end
+          on_system :linux, macos: :big_sur_or_older do
+            @bar = 1
+          end
+        end
+      end.new
+    end
+
+    it "doesn't call code on Ventura", :needs_macos do
+      Homebrew::SimulateSystem.os = :ventura
+      f.brew { f.install }
+      expect(f.foo).to eq(0)
+      expect(f.bar).to eq(0)
+    end
+
+    it "calls code on Linux", :needs_linux do
+      Homebrew::SimulateSystem.os = :linux
+      f.brew { f.install }
+      expect(f.foo).to eq(1)
+      expect(f.bar).to eq(1)
+    end
+
+    it "calls code within `on_system :linux, macos: :monterey` on Monterey", :needs_macos do
+      Homebrew::SimulateSystem.os = :monterey
+      f.brew { f.install }
+      expect(f.foo).to eq(1)
+      expect(f.bar).to eq(0)
+    end
+
+    it "calls code within `on_system :linux, macos: :big_sur_or_older` on Big Sur", :needs_macos do
+      Homebrew::SimulateSystem.os = :big_sur
+      f.brew { f.install }
+      expect(f.foo).to eq(0)
+      expect(f.bar).to eq(1)
+    end
+
+    it "calls code within `on_system :linux, macos: :big_sur_or_older` on Catalina", :needs_macos do
+      Homebrew::SimulateSystem.os = :catalina
+      f.brew { f.install }
+      expect(f.foo).to eq(0)
+      expect(f.bar).to eq(1)
+    end
+  end
+
+  describe "on_{os_version} blocks", :needs_macos do
+    before do
+      Homebrew::SimulateSystem.os = :monterey
+    end
+
+    after do
+      Homebrew::SimulateSystem.clear
+    end
+
+    let(:f) do
+      Class.new(Testball) do
+        attr_reader :test
+
+        def install
+          @test = 0
+          on_monterey :or_newer do
+            @test = 1
+          end
+          on_big_sur do
+            @test = 2
+          end
+          on_catalina :or_older do
+            @test = 3
+          end
+        end
+      end.new
+    end
+
+    it "only calls code within `on_monterey`" do
+      Homebrew::SimulateSystem.os = :monterey
+      f.brew { f.install }
+      expect(f.test).to eq(1)
+    end
+
+    it "only calls code within `on_monterey :or_newer`" do
+      Homebrew::SimulateSystem.os = :ventura
+      f.brew { f.install }
+      expect(f.test).to eq(1)
+    end
+
+    it "only calls code within `on_big_sur`" do
+      Homebrew::SimulateSystem.os = :big_sur
+      f.brew { f.install }
+      expect(f.test).to eq(2)
+    end
+
+    it "only calls code within `on_catalina`" do
+      Homebrew::SimulateSystem.os = :catalina
+      f.brew { f.install }
+      expect(f.test).to eq(3)
+    end
+
+    it "only calls code within `on_catalina :or_older`" do
+      Homebrew::SimulateSystem.os = :mojave
+      f.brew { f.install }
+      expect(f.test).to eq(3)
+    end
+  end
+
+  describe "#on_arm" do
+    before do
+      allow(Hardware::CPU).to receive(:type).and_return(:arm)
+    end
+
+    let(:f) do
+      Class.new(Testball) do
+        attr_reader :test
+
+        def install
+          @test = 0
+          on_arm do
+            @test = 1
+          end
+          on_intel do
+            @test = 2
+          end
+        end
+      end.new
+    end
+
+    it "only calls code within on_arm" do
+      f.brew { f.install }
+      expect(f.test).to eq(1)
+    end
+  end
+
+  describe "#on_intel" do
+    before do
+      allow(Hardware::CPU).to receive(:type).and_return(:intel)
+    end
+
+    let(:f) do
+      Class.new(Testball) do
+        attr_reader :test
+
+        def install
+          @test = 0
+          on_arm do
+            @test = 1
+          end
+          on_intel do
+            @test = 2
+          end
+        end
+      end.new
+    end
+
+    it "only calls code within on_intel" do
+      f.brew { f.install }
+      expect(f.test).to eq(2)
+    end
+  end
+
+  describe "#ignore_missing_libraries" do
+    after do
+      Homebrew::SimulateSystem.clear
+    end
+
+    it "adds library to allowed_missing_libraries on Linux", :needs_linux do
+      Homebrew::SimulateSystem.clear
+      f = formula do
+        url "foo-1.0"
+
+        ignore_missing_libraries "bar.so"
+      end
+      expect(f.class.allowed_missing_libraries.to_a).to eq(["bar.so"])
+    end
+
+    it "adds library to allowed_missing_libraries on macOS when simulating Linux", :needs_macos do
+      Homebrew::SimulateSystem.os = :linux
+      f = formula do
+        url "foo-1.0"
+
+        ignore_missing_libraries "bar.so"
+      end
+      expect(f.class.allowed_missing_libraries.to_a).to eq(["bar.so"])
+    end
+
+    it "raises an error on macOS", :needs_macos do
+      Homebrew::SimulateSystem.clear
+      expect {
+        formula do
+          url "foo-1.0"
+
+          ignore_missing_libraries "bar.so"
+        end
+      }.to raise_error("ignore_missing_libraries is available on Linux only")
+    end
+
+    it "raises an error on Linux when simulating macOS", :needs_linux do
+      Homebrew::SimulateSystem.os = :macos
+      expect {
+        formula do
+          url "foo-1.0"
+
+          ignore_missing_libraries "bar.so"
+        end
+      }.to raise_error("ignore_missing_libraries is available on Linux only")
+    end
+  end
+
+  describe "#generate_completions_from_executable" do
+    let(:f) do
+      Class.new(Testball) do
+        def install
+          bin.mkpath
+          (bin/"foo").write <<-EOF
+            echo completion
+          EOF
+
+          FileUtils.chmod "+x", bin/"foo"
+
+          generate_completions_from_executable(bin/"foo", "test")
+        end
+      end.new
+    end
+
+    it "generates completion scripts" do
+      f.brew { f.install }
+      expect(f.bash_completion/"testball").to be_a_file
+      expect(f.zsh_completion/"_testball").to be_a_file
+      expect(f.fish_completion/"testball.fish").to be_a_file
     end
   end
 end

@@ -39,21 +39,28 @@ module Cask
         target
       end
 
-      attr_reader :source, :target
-
       sig {
-        params(cask: Cask, source: T.nilable(T.any(String, Pathname)), target: T.nilable(T.any(String, Pathname)))
+        params(cask: Cask, source: T.nilable(T.any(String, Pathname)), target_hash: T.any(String, Pathname))
           .void
       }
-      def initialize(cask, source, target: nil)
-        super(cask)
+      def initialize(cask, source, **target_hash)
+        super(cask, source, **target_hash)
 
+        target = target_hash[:target]
         @source_string = source.to_s
         @target_string = target.to_s
-        source = cask.staged_path.join(source)
-        @source = source
-        target ||= source.basename
-        @target = resolve_target(target)
+      end
+
+      def source
+        @source ||= begin
+          base_path = cask.staged_path
+          base_path = base_path.join(cask.url.only_path) if cask.url&.only_path.present?
+          base_path.join(@source_string)
+        end
+      end
+
+      def target
+        @target ||= resolve_target(@target_string.presence || source.basename)
       end
 
       def to_a
@@ -96,7 +103,7 @@ module Cask
       end
 
       def printable_target
-        target.to_s.sub(/^#{ENV['HOME']}(#{File::SEPARATOR}|$)/, "~/")
+        target.to_s.sub(/^#{Dir.home}(#{File::SEPARATOR}|$)/, "~/")
       end
     end
   end

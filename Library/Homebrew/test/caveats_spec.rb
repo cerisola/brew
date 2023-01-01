@@ -130,6 +130,11 @@ describe Caveats do
     end
 
     context "when f.service is not nil" do
+      before do
+        allow_any_instance_of(Object).to receive(:which).with("launchctl").and_return(true)
+        allow_any_instance_of(Object).to receive(:which).with("systemctl").and_return(true)
+      end
+
       it "prints warning when no service deamon is found" do
         f = formula do
           url "foo-1.0"
@@ -167,11 +172,11 @@ describe Caveats do
         end
         cmd = "#{HOMEBREW_CELLAR}/formula_name/1.0/bin/cmd"
         allow(Homebrew).to receive(:_system).and_return(true)
-        allow(Homebrew).to receive(:_system).with("ps aux | grep #{cmd}").and_return(false)
+        expect(Homebrew).to receive(:_system).with("ps aux | grep #{cmd}").and_return(false)
         expect(described_class.new(f).caveats).to include("login")
       end
 
-      it "gives information about restarting services after upgrade" do
+      it "gives information about plist_options restarting services after upgrade" do
         f = formula do
           url "foo-1.0"
           service do
@@ -182,9 +187,66 @@ describe Caveats do
         cmd = "#{HOMEBREW_CELLAR}/formula_name/1.0/bin/cmd"
         f_obj = described_class.new(f)
         allow(Homebrew).to receive(:_system).and_return(true)
-        allow(Homebrew).to receive(:_system).with("ps aux | grep #{cmd}").and_return(true)
-        expect(f_obj.caveats).to include("restart #{f.full_name}")
-        expect(f_obj.caveats).to include("sudo")
+        expect(Homebrew).to receive(:_system).with("ps aux | grep #{cmd}").and_return(true)
+        expect(f_obj.caveats).to include("  sudo brew services restart #{f.full_name}")
+      end
+
+      it "gives information about require_root restarting services after upgrade" do
+        f = formula do
+          url "foo-1.0"
+          service do
+            run [bin/"cmd"]
+            require_root true
+          end
+        end
+        cmd = "#{HOMEBREW_CELLAR}/formula_name/1.0/bin/cmd"
+        f_obj = described_class.new(f)
+        allow(Homebrew).to receive(:_system).and_return(true)
+        expect(Homebrew).to receive(:_system).with("ps aux | grep #{cmd}").and_return(true)
+        expect(f_obj.caveats).to include("  sudo brew services restart #{f.full_name}")
+      end
+
+      it "gives information about user restarting services after upgrade" do
+        f = formula do
+          url "foo-1.0"
+          service do
+            run [bin/"cmd"]
+          end
+        end
+        cmd = "#{HOMEBREW_CELLAR}/formula_name/1.0/bin/cmd"
+        f_obj = described_class.new(f)
+        allow(Homebrew).to receive(:_system).and_return(true)
+        expect(Homebrew).to receive(:_system).with("ps aux | grep #{cmd}").and_return(true)
+        expect(f_obj.caveats).to include("  brew services restart #{f.full_name}")
+      end
+
+      it "gives information about require_root starting services after upgrade" do
+        f = formula do
+          url "foo-1.0"
+          service do
+            run [bin/"cmd"]
+            require_root true
+          end
+        end
+        cmd = "#{HOMEBREW_CELLAR}/formula_name/1.0/bin/cmd"
+        f_obj = described_class.new(f)
+        allow(Homebrew).to receive(:_system).and_return(true)
+        allow(Homebrew).to receive(:_system).with("ps aux | grep #{cmd}").and_return(false)
+        expect(f_obj.caveats).to include("  sudo brew services start #{f.full_name}")
+      end
+
+      it "gives information about user starting services after upgrade" do
+        f = formula do
+          url "foo-1.0"
+          service do
+            run [bin/"cmd"]
+          end
+        end
+        cmd = "#{HOMEBREW_CELLAR}/formula_name/1.0/bin/cmd"
+        f_obj = described_class.new(f)
+        allow(Homebrew).to receive(:_system).and_return(true)
+        allow(Homebrew).to receive(:_system).with("ps aux | grep #{cmd}").and_return(false)
+        expect(f_obj.caveats).to include("  brew services start #{f.full_name}")
       end
 
       it "gives information about service manual command" do
@@ -198,7 +260,7 @@ describe Caveats do
         cmd = "#{HOMEBREW_CELLAR}/formula_name/1.0/bin/cmd"
         caveats = described_class.new(f).caveats
 
-        expect(caveats).to include("background service")
+        expect(caveats).to include("if you don't want/need a background service")
         expect(caveats).to include("VAR=\"foo\" #{cmd} start")
       end
     end
@@ -259,6 +321,10 @@ describe Caveats do
       let(:path) { f.prefix.resolved_path }
 
       before do
+        # don't try to load/fetch gcc/glibc
+        allow(DevelopmentTools).to receive(:needs_libc_formula?).and_return(false)
+        allow(DevelopmentTools).to receive(:needs_compiler_formula?).and_return(false)
+
         allow_any_instance_of(Pathname).to receive(:children).and_return([Pathname.new("child")])
         allow_any_instance_of(Object).to receive(:which).with(any_args).and_return(Pathname.new("shell"))
         allow(Utils::Shell).to receive(:preferred).and_return(nil)

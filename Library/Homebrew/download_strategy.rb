@@ -12,6 +12,7 @@ require "mechanize/version"
 require "mechanize/http/content_disposition_parser"
 
 require "utils/curl"
+require "utils/github"
 
 require "github_packages"
 
@@ -459,7 +460,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
     return @resolved_info_cache[url] if @resolved_info_cache.include?(url)
 
     if (domain = Homebrew::EnvConfig.artifact_domain)
-      url = url.sub(%r{^(https?://#{GitHubPackages::URL_DOMAIN}/)?}o, "#{domain.chomp("/")}/")
+      url = url.sub(%r{^https?://#{GitHubPackages::URL_DOMAIN}/}o, "#{domain.chomp("/")}/")
     end
 
     output, _, _status = curl_output(
@@ -470,7 +471,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
 
     lines = output.to_s.lines.map(&:chomp)
 
-    final_url = curl_response_last_location(parsed_output[:responses], absolutize: true, base_url: url)
+    final_url = curl_response_follow_redirections(parsed_output[:responses], url)
     final_url ||= url
 
     content_disposition_parser = Mechanize::HTTP::ContentDispositionParser.new
@@ -580,6 +581,13 @@ class HomebrewCurlDownloadStrategy < CurlDownloadStrategy
 
     curl_download resolved_url, to: to, try_partial: @try_partial, timeout: timeout, use_homebrew_curl: true
   end
+
+  def curl_output(*args, **options)
+    raise HomebrewCurlDownloadStrategyError, url unless Formula["curl"].any_version_installed?
+
+    options[:use_homebrew_curl] = true
+    super(*args, **options)
+  end
 end
 
 # Strategy for downloading a file from an GitHub Packages URL.
@@ -594,7 +602,7 @@ class CurlGitHubPackagesDownloadStrategy < CurlDownloadStrategy
     # GitHub Packages authorization header.
     # HOMEBREW_GITHUB_PACKAGES_AUTH set in brew.sh
     meta[:headers] << "Authorization: #{HOMEBREW_GITHUB_PACKAGES_AUTH}"
-    super(url, name, version, meta)
+    super(url, name, version, **meta)
   end
 
   private
@@ -804,6 +812,10 @@ end
 # @api public
 class GitDownloadStrategy < VCSDownloadStrategy
   def initialize(url, name, version, **meta)
+    # Needs to be before the call to `super`, as the VCSDownloadStrategy's
+    # constructor calls `cache_tag` and sets the cache path.
+    @only_path = meta[:only_path]
+
     super
     @ref_type ||= :branch
     @ref ||= "master"
@@ -829,7 +841,11 @@ class GitDownloadStrategy < VCSDownloadStrategy
 
   sig { returns(String) }
   def cache_tag
-    "git"
+    if partial_clone_sparse_checkout?
+      "git-sparse"
+    else
+      "git"
+    end
   end
 
   sig { returns(Integer) }
@@ -873,6 +889,12 @@ class GitDownloadStrategy < VCSDownloadStrategy
     (cached_location/".gitmodules").exist?
   end
 
+  def partial_clone_sparse_checkout?
+    return false if @only_path.blank?
+
+    Utils::Git.supports_partial_clone_sparse_checkout?
+  end
+
   sig { returns(T::Array[String]) }
   def clone_args
     args = %w[clone]
@@ -881,6 +903,8 @@ class GitDownloadStrategy < VCSDownloadStrategy
     when :branch, :tag
       args << "--branch" << @ref
     end
+
+    args << "--no-checkout" << "--filter=blob:none" if partial_clone_sparse_checkout?
 
     args << "-c" << "advice.detachedHead=false" # silences detached head warning
     args << @url << cached_location
@@ -915,6 +939,13 @@ class GitDownloadStrategy < VCSDownloadStrategy
     command! "git",
              args:  ["config", "advice.detachedHead", "false"],
              chdir: cached_location
+
+    return unless partial_clone_sparse_checkout?
+
+    command! "git",
+             args:  ["config", "origin.partialclonefilter", "blob:none"],
+             chdir: cached_location
+    configure_sparse_checkout
   end
 
   sig { params(timeout: T.nilable(Time)).void }
@@ -943,6 +974,9 @@ class GitDownloadStrategy < VCSDownloadStrategy
              args:    ["config", "homebrew.cacheversion", cache_version],
              chdir:   cached_location,
              timeout: timeout&.remaining
+
+    configure_sparse_checkout if partial_clone_sparse_checkout?
+
     checkout(timeout: timeout)
     update_submodules(timeout: timeout) if submodules?
   end
@@ -1013,6 +1047,14 @@ class GitDownloadStrategy < VCSDownloadStrategy
       dot_git.atomic_write("gitdir: #{relative_git_dir}\n")
     end
   end
+
+  def configure_sparse_checkout
+    command! "git",
+             args:  ["config", "core.sparseCheckout", "true"],
+             chdir: cached_location
+
+    (git_dir/"info"/"sparse-checkout").atomic_write("#{@only_path}\n")
+  end
 end
 
 # Strategy for downloading a Git repository from GitHub.
@@ -1028,43 +1070,13 @@ class GitHubGitDownloadStrategy < GitDownloadStrategy
     @repo = repo
   end
 
-  def github_last_commit
-    # TODO: move to Utils::GitHub
-    return if Homebrew::EnvConfig.no_github_api?
-
-    output, _, status = curl_output(
-      "--silent", "--head", "--location",
-      "-H", "Accept: application/vnd.github.v3.sha",
-      "https://api.github.com/repos/#{@user}/#{@repo}/commits/#{@ref}"
-    )
-
-    return unless status.success?
-
-    commit = output[/^ETag: "(\h+)"/, 1]
-    version.update_commit(commit) if commit
-    commit
-  end
-
-  def multiple_short_commits_exist?(commit)
-    # TODO: move to Utils::GitHub
-    return if Homebrew::EnvConfig.no_github_api?
-
-    output, _, status = curl_output(
-      "--silent", "--head", "--location",
-      "-H", "Accept: application/vnd.github.v3.sha",
-      "https://api.github.com/repos/#{@user}/#{@repo}/commits/#{commit}"
-    )
-
-    !(status.success? && output && output[/^Status: (200)/, 1] == "200")
-  end
-
   def commit_outdated?(commit)
-    @last_commit ||= github_last_commit
+    @last_commit ||= GitHub.last_commit(@user, @repo, @ref)
     if @last_commit
       return true unless commit
       return true unless @last_commit.start_with?(commit)
 
-      if multiple_short_commits_exist?(commit)
+      if GitHub.multiple_short_commits_exist?(@user, @repo, commit)
         true
       else
         version.update_commit(commit)
@@ -1139,7 +1151,7 @@ class CVSDownloadStrategy < VCSDownloadStrategy
   private
 
   def env
-    { "PATH" => PATH.new("/usr/bin", Formula["cvs"].opt_bin, ENV["PATH"]) }
+    { "PATH" => PATH.new("/usr/bin", Formula["cvs"].opt_bin, ENV.fetch("PATH")) }
   end
 
   sig { returns(String) }
@@ -1214,7 +1226,7 @@ class MercurialDownloadStrategy < VCSDownloadStrategy
   private
 
   def env
-    { "PATH" => PATH.new(Formula["mercurial"].opt_bin, ENV["PATH"]) }
+    { "PATH" => PATH.new(Formula["mercurial"].opt_bin, ENV.fetch("PATH")) }
   end
 
   sig { returns(String) }
@@ -1280,7 +1292,7 @@ class BazaarDownloadStrategy < VCSDownloadStrategy
 
   def env
     {
-      "PATH"     => PATH.new(Formula["bazaar"].opt_bin, ENV["PATH"]),
+      "PATH"     => PATH.new(Formula["breezy"].opt_bin, ENV.fetch("PATH")),
       "BZR_HOME" => HOMEBREW_TEMP,
     }
   end
@@ -1345,7 +1357,7 @@ class FossilDownloadStrategy < VCSDownloadStrategy
   private
 
   def env
-    { "PATH" => PATH.new(Formula["fossil"].opt_bin, ENV["PATH"]) }
+    { "PATH" => PATH.new(Formula["fossil"].opt_bin, ENV.fetch("PATH")) }
   end
 
   sig { returns(String) }

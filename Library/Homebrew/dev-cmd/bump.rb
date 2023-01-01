@@ -61,9 +61,7 @@ module Homebrew
 
     unless Utils::Curl.curl_supports_tls13?
       begin
-        unless Pathname.new(ENV["HOMEBREW_BREWED_CURL_PATH"]).exist?
-          ensure_formula_installed!("curl", reason: "Repology queries")
-        end
+        ensure_formula_installed!("curl", reason: "Repology queries") unless HOMEBREW_BREWED_CURL_PATH.exist?
       rescue FormulaUnavailableError
         opoo "A newer `curl` is required for Repology queries."
       end
@@ -74,17 +72,18 @@ module Homebrew
 
       ambiguous_casks = []
       if !args.formula? && !args.cask?
-        ambiguous_casks = formulae_and_casks.group_by { |item| Livecheck.formula_or_cask_name(item, full_name: true) }
-                                            .values
-                                            .select { |items| items.length > 1 }
-                                            .flatten
-                                            .select { |item| item.is_a?(Cask::Cask) }
+        ambiguous_casks = formulae_and_casks \
+                          .group_by { |item| Livecheck.package_or_resource_name(item, full_name: true) }
+                          .values
+                          .select { |items| items.length > 1 }
+                          .flatten
+                          .select { |item| item.is_a?(Cask::Cask) }
       end
 
       ambiguous_names = []
       unless args.full_name?
         ambiguous_names =
-          (formulae_and_casks - ambiguous_casks).group_by { |item| Livecheck.formula_or_cask_name(item) }
+          (formulae_and_casks - ambiguous_casks).group_by { |item| Livecheck.package_or_resource_name(item) }
                                                 .values
                                                 .select { |items| items.length > 1 }
                                                 .flatten
@@ -94,7 +93,7 @@ module Homebrew
         puts if i.positive?
 
         use_full_name = args.full_name? || ambiguous_names.include?(formula_or_cask)
-        name = Livecheck.formula_or_cask_name(formula_or_cask, full_name: use_full_name)
+        name = Livecheck.package_or_resource_name(formula_or_cask, full_name: use_full_name)
         repository = if formula_or_cask.is_a?(Formula)
           if formula_or_cask.head_only?
             ohai name
@@ -159,7 +158,7 @@ module Homebrew
           rescue
             next
           end
-          name = Livecheck.formula_or_cask_name(formula_or_cask)
+          name = Livecheck.package_or_resource_name(formula_or_cask)
           ambiguous_cask = begin
             formula_or_cask.is_a?(Cask::Cask) && !args.cask? && Formula[name]
           rescue FormulaUnavailableError
@@ -180,7 +179,7 @@ module Homebrew
   end
 
   def livecheck_result(formula_or_cask)
-    name = Livecheck.formula_or_cask_name(formula_or_cask)
+    name = Livecheck.package_or_resource_name(formula_or_cask)
 
     referenced_formula_or_cask, =
       Livecheck.resolve_livecheck_reference(formula_or_cask, full_name: false, debug: false)
@@ -208,9 +207,8 @@ module Homebrew
     return "unable to get versions" if version_info.blank?
 
     latest = version_info[:latest]
-    strategy = version_info[:meta][:strategy]
 
-    [Version.new(latest), strategy]
+    Version.new(latest)
   rescue => e
     "error: #{e}"
   end
@@ -236,7 +234,7 @@ module Homebrew
       version_name = "cask version   "
     end
 
-    livecheck_latest, livecheck_strategy = livecheck_result(formula_or_cask)
+    livecheck_latest = livecheck_result(formula_or_cask)
 
     repology_latest = if repositories.present?
       Repology.latest_version(repositories)
@@ -246,7 +244,7 @@ module Homebrew
 
     new_version = if livecheck_latest.is_a?(Version) && livecheck_latest > current_version
       livecheck_latest
-    elsif repology_latest.is_a?(Version) && repology_latest > current_version && livecheck_strategy != "GithubLatest"
+    elsif repology_latest.is_a?(Version) && repology_latest > current_version && !formula_or_cask.livecheckable?
       repology_latest
     end.presence
 
@@ -272,11 +270,11 @@ module Homebrew
 
     return unless args.open_pr?
 
-    if repology_latest > current_version &&
+    if repology_latest.is_a?(Version) &&
+       repology_latest > current_version &&
        repology_latest > livecheck_latest &&
-       livecheck_strategy == "GithubLatest"
-      puts "#{title_name} was not bumped to the Repology version because that " \
-           "version is not the latest release on GitHub."
+       formula_or_cask.livecheckable?
+      puts "#{title_name} was not bumped to the Repology version because it's livecheckable."
     end
 
     return unless new_version

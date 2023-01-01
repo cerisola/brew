@@ -99,7 +99,7 @@ describe Tab do
     tab = described_class.new(homebrew_version: "1.2.3")
     expect(tab.parsed_homebrew_version).to eq("1.2.3")
     expect(tab.parsed_homebrew_version).to be < "1.2.3-1-g12789abdf"
-    expect(tab.parsed_homebrew_version).to be_kind_of(Version)
+    expect(tab.parsed_homebrew_version).to be_a(Version)
 
     tab.homebrew_version = "1.2.4-567-g12789abdf"
     expect(tab.parsed_homebrew_version).to be > "1.2.4"
@@ -247,6 +247,10 @@ describe Tab do
     it "creates a Tab" do
       # < 1.1.7 runtime dependencies were wrong so are ignored
       stub_const("HOMEBREW_VERSION", "1.1.7")
+
+      # don't try to load gcc/glibc
+      allow(DevelopmentTools).to receive(:needs_libc_formula?).and_return(false)
+      allow(DevelopmentTools).to receive(:needs_compiler_formula?).and_return(false)
 
       f = formula do
         url "foo-1.0"

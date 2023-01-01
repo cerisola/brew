@@ -20,13 +20,13 @@ module Homebrew
              description: "Silence all non-critical errors."
       switch "--update",
              description: "Update RBI files."
-      switch "--all",
-             depends_on:  "--update",
-             description: "Regenerate all RBI files rather than just updated gems."
+      switch "--update-all",
+             description: "Update all RBI files rather than just updated gems."
       switch "--suggest-typed",
              depends_on:  "--update",
              description: "Try upgrading `typed` sigils."
       switch "--fail-if-not-changed",
+             hidden:      true,
              description: "Return a failing status code if all gems are up to date " \
                           "and gem definitions do not need a tapioca update."
       flag   "--dir=",
@@ -50,53 +50,30 @@ module Homebrew
     Homebrew.install_bundler_gems!(groups: ["sorbet"])
 
     HOMEBREW_LIBRARY_PATH.cd do
-      if args.update?
+      if args.update? || args.update_all?
+        odeprecated "brew typecheck --update --fail-if-not-changed" if args.fail_if_not_changed?
+
         excluded_gems = [
           "did_you_mean", # RBI file is already provided by Sorbet
           "webrobots", # RBI file is bugged
+          "sorbet-static-and-runtime", # Unnecessary RBI - remove this entry with Tapioca 0.8
         ]
-        tapioca_args = ["--exclude", *excluded_gems]
-        tapioca_args << "--all" if args.all?
+        typed_overrides = [
+          "msgpack:false", # Investigate removing this with Tapioca 0.8
+        ]
+        tapioca_args = ["--exclude", *excluded_gems, "--typed-overrides", *typed_overrides]
+        tapioca_args << "--all" if args.update_all?
 
         ohai "Updating Tapioca RBI files..."
-        system "bundle", "exec", "tapioca", "gem", *tapioca_args
-        system "bundle", "exec", "parlour"
-        system "bundle", "exec", "srb", "rbi", "hidden-definitions"
-        system "bundle", "exec", "srb", "rbi", "todo"
+        safe_system "bundle", "exec", "tapioca", "gem", *tapioca_args
+        safe_system "bundle", "exec", "parlour"
+        safe_system "bundle", "exec", "srb", "rbi", "hidden-definitions"
+        safe_system "bundle", "exec", "tapioca", "todo"
 
         if args.suggest_typed?
-          result = system_command(
-            "bundle",
-            args:         ["exec", "--", "srb", "tc", "--suggest-typed", "--typed=strict",
-                           "--isolate-error-code=7022"],
-            print_stderr: false,
-          )
-
-          allowed_changes = {
-            "false" => ["true", "strict"],
-            "true"  => ["strict"],
-          }
-
-          # Workaround for `srb tc rbi suggest-typed`, which currently fails get to a converging state.
-          result.stderr.scan(/^(.*\.rb):\d+:\s+You could add `#\s*typed:\s*(.*?)`/).each do |path, new_level|
-            path = Pathname(path)
-
-            next unless path.file?
-
-            contents = path.read
-
-            next unless (match = contents.match(/\A\s*#\s*typed:\s*([^\s]+)/))
-
-            existing_level = match[1]
-
-            next unless allowed_changes.fetch(existing_level, []).include?(new_level)
-
-            puts "#{path}: #{existing_level} -> #{new_level}"
-            path.atomic_write contents.sub(/\A(\s*#\s*typed:\s*)(?:[^\s]+)/, "\\1#{new_level}")
-          end
+          ohai "Bumping Sorbet `typed` sigils..."
+          safe_system "bundle", "exec", "spoom", "bump"
         end
-
-        Homebrew.failed = system("git", "diff", "--stat", "--exit-code") if args.fail_if_not_changed?
 
         return
       end

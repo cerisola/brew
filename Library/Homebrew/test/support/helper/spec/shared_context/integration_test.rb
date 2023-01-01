@@ -43,12 +43,14 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
   end
 
   around do |example|
+    ENV["HOMEBREW_INTEGRATION_TEST"] = "1"
     (HOMEBREW_PREFIX/"bin").mkpath
     FileUtils.touch HOMEBREW_PREFIX/"bin/brew"
 
     example.run
   ensure
     FileUtils.rm_rf HOMEBREW_PREFIX/"bin"
+    ENV.delete("HOMEBREW_INTEGRATION_TEST")
   end
 
   # Generate unique ID to be able to
@@ -73,7 +75,7 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
       env["PATH"],
       (HOMEBREW_LIBRARY_PATH/"test/support/helper/cmd").realpath.to_s,
       (HOMEBREW_PREFIX/"bin").realpath.to_s,
-      ENV["PATH"],
+      ENV.fetch("PATH"),
     ].compact.join(File::PATH_SEPARATOR)
 
     env.merge!(
@@ -82,7 +84,6 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
       "HOMEBREW_BREW_FILE"        => HOMEBREW_PREFIX/"bin/brew",
       "HOMEBREW_INTEGRATION_TEST" => command_id_from_args(args),
       "HOMEBREW_TEST_TMPDIR"      => TEST_TMPDIR,
-      "HOMEBREW_DEVELOPER"        => ENV["HOMEBREW_DEVELOPER"],
       "HOMEBREW_DEV_CMD_RUN"      => "true",
       "GEM_HOME"                  => nil,
     )
@@ -117,7 +118,7 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
       ruby_args << (HOMEBREW_LIBRARY_PATH/"brew.rb").resolved_path.to_s
     end
 
-    Bundler.with_clean_env do
+    Bundler.with_unbundled_env do
       stdout, stderr, status = Open3.capture3(env, *@ruby_args, *args)
       $stdout.print stdout
       $stderr.print stderr
@@ -126,8 +127,8 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
   end
 
   def brew_sh(*args)
-    Bundler.with_clean_env do
-      stdout, stderr, status = Open3.capture3("#{ENV["HOMEBREW_PREFIX"]}/bin/brew", *args)
+    Bundler.with_unbundled_env do
+      stdout, stderr, status = Open3.capture3("#{ENV.fetch("HOMEBREW_PREFIX")}/bin/brew", *args)
       $stdout.print stdout
       $stderr.print stderr
       status
@@ -216,7 +217,7 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
 
       full_name = Tap.fetch(name).full_name
       # Check to see if the original Homebrew process has taps we can use.
-      system_tap_path = Pathname("#{ENV["HOMEBREW_LIBRARY"]}/Taps/#{full_name}")
+      system_tap_path = Pathname("#{ENV.fetch("HOMEBREW_LIBRARY")}/Taps/#{full_name}")
       if system_tap_path.exist?
         system "git", "clone", "--shared", system_tap_path, tap.path
         system "git", "-C", tap.path, "checkout", "master"

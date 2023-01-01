@@ -152,22 +152,14 @@ module Cask
 
       # @api public
       sig { returns(T.self_type) }
-      def before_colon
-        odeprecated "Cask::DSL::Version#before_colon", "Cask::DSL::Version#csv"
-        version { split(":", 2).first }
-      end
-
-      # @api public
-      sig { returns(T.self_type) }
-      def after_colon
-        odeprecated "Cask::DSL::Version#after_colon", "Cask::DSL::Version#csv"
-        version { split(":", 2).second }
-      end
-
-      # @api public
-      sig { returns(T.self_type) }
       def no_dividers
         version { gsub(DIVIDER_REGEX, "") }
+      end
+
+      # @api public
+      sig { params(separator: T.nilable(String)).returns(T.self_type) }
+      def chomp(separator = nil)
+        version { to_s.chomp(T.unsafe(separator)) }
       end
 
       private

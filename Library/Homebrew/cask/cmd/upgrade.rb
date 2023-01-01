@@ -35,8 +35,9 @@ module Cask
           switch "--dry-run",
                  description: "Show what would be upgraded, but do not actually upgrade anything."
 
-          OPTIONS.each do |option|
-            send(*option)
+          OPTIONS.map(&:dup).each do |option|
+            kwargs = option.pop
+            send(*option, **kwargs)
           end
         end
       end
@@ -102,7 +103,15 @@ module Cask
           casks.select do |cask|
             raise CaskNotInstalledError, cask if !cask.installed? && !force
 
-            cask.outdated?(greedy: true)
+            if cask.outdated?(greedy: true)
+              true
+            elsif cask.version.latest?
+              opoo "Not upgrading #{cask.token}, the downloaded artifact has not changed"
+              false
+            else
+              opoo "Not upgrading #{cask.token}, the latest version is already installed"
+              false
+            end
           end
         end
 

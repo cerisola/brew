@@ -1,7 +1,9 @@
 # typed: true
 # frozen_string_literal: true
 
+require "macos_versions"
 require "rubocops/extend/formula"
+require "rubocops/shared/on_system_conditionals_helper"
 
 module RuboCop
   module Cop
@@ -89,6 +91,8 @@ module RuboCop
       # @api private
       class AssertStatements < FormulaCop
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           find_every_method_call_by_name(body_node, :assert).each do |method|
             if method_called_ever?(method, :include?) && !method_called_ever?(method, :!)
               problem "Use `assert_match` instead of `assert ...include?`"
@@ -114,6 +118,8 @@ module RuboCop
       # @api private
       class OptionDeclarations < FormulaCop
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           problem "Use new-style option definitions" if find_method_def(body_node, :options)
 
           if formula_tap == "homebrew-core"
@@ -199,6 +205,8 @@ module RuboCop
         extend AutoCorrector
 
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           # Enforce use of OpenMPI for MPI dependency in core
           return unless formula_tap == "homebrew-core"
 
@@ -217,6 +225,8 @@ module RuboCop
       # @api private
       class PyoxidizerCheck < FormulaCop
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           # Disallow use of PyOxidizer as a dependency in core
           return unless formula_tap == "homebrew-core"
 
@@ -244,6 +254,8 @@ module RuboCop
         extend AutoCorrector
 
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           test = find_block(body_node, :test)
 
           [:popen_read, :popen_write].each do |unsafe_command|
@@ -273,6 +285,8 @@ module RuboCop
         extend AutoCorrector
 
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           popen_commands = [
             :popen,
             :popen_read,
@@ -303,6 +317,8 @@ module RuboCop
         extend AutoCorrector
 
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           license_node = find_node_method_by_name(body_node, :license)
           return unless license_node
 
@@ -320,6 +336,8 @@ module RuboCop
       # @api private
       class Licenses < FormulaCop
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           license_node = find_node_method_by_name(body_node, :license)
           return unless license_node
           return if license_node.source.include?("\n")
@@ -343,6 +361,8 @@ module RuboCop
         extend AutoCorrector
 
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           python_formula_node = find_every_method_call_by_name(body_node, :depends_on).find do |dep|
             string_content(parameters(dep).first).start_with? "python@"
           end
@@ -364,7 +384,7 @@ module RuboCop
             end
 
             offending_node(str)
-            problem "References to `#{content}` should "\
+            problem "References to `#{content}` should " \
                     "match the specified python dependency (`#{fix}`)" do |corrector|
               corrector.replace(str.source_range, "\"#{fix}\"")
             end
@@ -375,82 +395,185 @@ module RuboCop
       # This cop makes sure that OS conditionals are consistent.
       #
       # @api private
-      class OSConditionals < FormulaCop
+      class OnSystemConditionals < FormulaCop
+        include OnSystemConditionalsHelper
+        extend AutoCorrector
+
+        NO_ON_SYSTEM_METHOD_NAMES = [:install, :post_install].freeze
+        NO_ON_SYSTEM_BLOCK_NAMES = [:service, :test].freeze
+
+        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          NO_ON_SYSTEM_METHOD_NAMES.each do |formula_method_name|
+            method_node = find_method_def(body_node, formula_method_name)
+            audit_on_system_blocks(method_node, formula_method_name) if method_node
+          end
+          NO_ON_SYSTEM_BLOCK_NAMES.each do |formula_block_name|
+            block_node = find_block(body_node, formula_block_name)
+            audit_on_system_blocks(block_node, formula_block_name) if block_node
+          end
+
+          # Don't restrict OS.mac? or OS.linux? usage in taps; they don't care
+          # as much as we do about e.g. formulae.brew.sh generation, often use
+          # platform-specific URLs and we don't want to add DSLs to support
+          # that case.
+          return if formula_tap != "homebrew-core"
+
+          audit_arch_conditionals(body_node,
+                                  allowed_methods: NO_ON_SYSTEM_METHOD_NAMES,
+                                  allowed_blocks:  NO_ON_SYSTEM_BLOCK_NAMES)
+
+          audit_base_os_conditionals(body_node,
+                                     allowed_methods: NO_ON_SYSTEM_METHOD_NAMES,
+                                     allowed_blocks:  NO_ON_SYSTEM_BLOCK_NAMES)
+
+          audit_macos_version_conditionals(body_node,
+                                           allowed_methods:     NO_ON_SYSTEM_METHOD_NAMES,
+                                           allowed_blocks:      NO_ON_SYSTEM_BLOCK_NAMES,
+                                           recommend_on_system: true)
+        end
+      end
+
+      # This cop makes sure that the `generate_completions_from_executable` DSL is used.
+      #
+      # @api private
+      class GenerateCompletionsDSL < FormulaCop
         extend AutoCorrector
 
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
-          no_on_os_method_names = [:install, :post_install].freeze
-          no_on_os_block_names = [:service, :test].freeze
-          [[:on_macos, :mac?], [:on_linux, :linux?]].each do |on_method_name, if_method_name|
-            if_method_and_class = "if OS.#{if_method_name}"
-            no_on_os_method_names.each do |formula_method_name|
-              method_node = find_method_def(body_node, formula_method_name)
-              next unless method_node
-              next unless method_called_ever?(method_node, on_method_name)
+          install = find_method_def(body_node, :install)
+          return if install.blank?
 
-              problem "Don't use '#{on_method_name}' in 'def #{formula_method_name}', " \
-                      "use '#{if_method_and_class}' instead." do |corrector|
-                block_node = offending_node.parent
-                next if block_node.type != :block
+          correctable_shell_completion_node(install) do |node, shell, base_name, executable, subcmd, shell_parameter| # rubocop:disable Metrics/ParameterLists
+            # generate_completions_from_executable only applicable if shell is passed
+            next unless shell_parameter.match?(/(bash|zsh|fish)/)
 
-                # TODO: could fix corrector to handle this but punting for now.
-                next if block_node.single_line?
-
-                source_range = offending_node.source_range.join(offending_node.parent.loc.begin)
-                corrector.replace(source_range, if_method_and_class)
-              end
+            base_name = base_name.delete_prefix("_").delete_suffix(".fish")
+            shell = shell.to_s.delete_suffix("_completion").to_sym
+            shell_parameter_stripped = shell_parameter
+                                       .delete_suffix("bash")
+                                       .delete_suffix("zsh")
+                                       .delete_suffix("fish")
+            shell_parameter_format = if shell_parameter_stripped.empty?
+              nil
+            elsif shell_parameter_stripped == "--"
+              :flag
+            elsif shell_parameter_stripped == "--shell="
+              :arg
+            else
+              shell_parameter_stripped
             end
 
-            no_on_os_block_names.each do |formula_block_name|
-              block_node = find_block(body_node, formula_block_name)
-              next unless block_node
-              next unless block_method_called_in_block?(block_node, on_method_name)
-
-              problem "Don't use '#{on_method_name}' in '#{formula_block_name} do', " \
-                      "use '#{if_method_and_class}' instead." do |corrector|
-                # TODO: could fix corrector to handle this but punting for now.
-                next if offending_node.single_line?
-
-                source_range = offending_node.send_node.source_range.join(offending_node.body.source_range.begin)
-                corrector.replace(source_range, "#{if_method_and_class}\n")
-              end
+            replacement_args = %w[]
+            replacement_args << executable.source
+            replacement_args << subcmd.source
+            replacement_args << "base_name: \"#{base_name}\"" unless base_name == @formula_name
+            replacement_args << "shells: [:#{shell}]"
+            unless shell_parameter_format.nil?
+              replacement_args << "shell_parameter_format: #{shell_parameter_format.inspect}"
             end
 
-            # Don't restrict OS.mac? or OS.linux? usage in taps; they don't care
-            # as much as we do about e.g. formulae.brew.sh generation, often use
-            # platform-specific URLs and we don't want to add DSLs to support
-            # that case.
-            next if formula_tap != "homebrew-core"
+            offending_node(node)
+            replacement = "generate_completions_from_executable(#{replacement_args.join(", ")})"
 
-            find_instance_method_call(body_node, "OS", if_method_name) do |method|
-              valid = T.let(false, T::Boolean)
-              method.each_ancestor do |ancestor|
-                valid_method_names = case ancestor.type
-                when :def
-                  no_on_os_method_names
-                when :block
-                  no_on_os_block_names
-                else
-                  next
-                end
-                next unless valid_method_names.include?(ancestor.method_name)
-
-                valid = true
-                break
-              end
-              next if valid
-
-              offending_node(method)
-              problem "Don't use '#{if_method_and_class}', use '#{on_method_name} do' instead." do |corrector|
-                if_node = method.parent
-                next if if_node.type != :if
-
-                # TODO: could fix corrector to handle this but punting for now.
-                next if if_node.unless?
-
-                corrector.replace(if_node.source_range, "#{on_method_name} do\n#{if_node.body.source}\nend")
-              end
+            problem "Use `#{replacement}` instead of `#{@offensive_node.source}`." do |corrector|
+              corrector.replace(@offensive_node.source_range, replacement)
             end
+          end
+
+          shell_completion_node(install) do |node|
+            next if node.source.include?("<<~") # skip heredoc completion scripts
+            next if node.source.match?(/{.*=>.*}/) # skip commands needing custom ENV variables
+
+            offending_node(node)
+            problem "Use `generate_completions_from_executable` DSL instead of `#{@offensive_node.source}`."
+          end
+        end
+
+        # match ({bash,zsh,fish}_completion/"_?foo{.fish}?").write Utils.safe_popen_read(foo, subcmd, shell_parameter)
+        def_node_search :correctable_shell_completion_node, <<~EOS
+          $(send
+          (begin
+            (send
+              (send nil? ${:bash_completion :zsh_completion :fish_completion}) :/
+              (str $_))) :write
+          (send
+            (const nil? :Utils) :safe_popen_read
+            $(send
+              (send nil? :bin) :/
+              (str _))
+            $(str _)
+            (str $_)))
+        EOS
+
+        # matches ({bash,zsh,fish}_completion/"_?foo{.fish}?").write output
+        def_node_search :shell_completion_node, <<~EOS
+          $(send
+            (begin
+              (send
+                (send nil? {:bash_completion :zsh_completion :fish_completion}) :/
+                (str _))) :write _)
+        EOS
+      end
+
+      # This cop makes sure that the `generate_completions_from_executable` DSL is used with only
+      # a single, combined call for all shells.
+      #
+      # @api private
+      class SingleGenerateCompletionsDSLCall < FormulaCop
+        extend AutoCorrector
+
+        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          install = find_method_def(body_node, :install)
+          return if install.blank?
+
+          methods = find_every_method_call_by_name(install, :generate_completions_from_executable)
+          return if methods.length <= 1
+
+          offenses = []
+          shells = []
+          methods.each do |method|
+            next unless method.source.include?("shells:")
+
+            shells << method.source.match(/shells: \[(:bash|:zsh|:fish)\]/).captures.first
+            offenses << method
+          end
+
+          return if offenses.blank?
+
+          T.must(offenses[0...-1]).each_with_index do |node, i|
+            # commands have to be the same to be combined
+            # send_type? matches `bin/"foo"`, str_type? matches remaining command parts,
+            # the rest are kwargs we need to filter out
+            method_commands = node.arguments.filter { |arg| arg.send_type? || arg.str_type? }
+            next_method_commands = offenses[i + 1].arguments.filter { |arg| arg.send_type? || arg.str_type? }
+            unless method_commands == next_method_commands
+              shells.delete_at(i)
+              next
+            end
+
+            offending_node(node)
+            problem "Use a single `generate_completions_from_executable` " \
+                    "call combining all specified shells." do |corrector|
+              # adjust range by -4 and +1 to also include & remove leading spaces and trailing \n
+              corrector.replace(@offensive_node.source_range.adjust(begin_pos: -4, end_pos: 1), "")
+            end
+          end
+
+          return if shells.length <= 1 # no shells to combine left
+
+          offending_node(offenses.last)
+          replacement = if (%w[:bash :zsh :fish] - shells).empty?
+            @offensive_node.source.sub(/shells: \[(:bash|:zsh|:fish)\]/, "")
+                           .sub(", )", ")") # clean up dangling trailing comma
+                           .sub("(, ", "(") # clean up dangling leading comma
+                           .sub(", , ", ", ") # clean up dangling enclosed comma
+          else
+            @offensive_node.source.sub(/shells: \[(:bash|:zsh|:fish)\]/,
+                                       "shells: [#{shells.join(", ")}]")
+          end
+
+          problem "Use `#{replacement}` instead of `#{@offensive_node.source}`." do |corrector|
+            corrector.replace(@offensive_node.source_range, replacement)
           end
         end
       end
@@ -460,6 +583,8 @@ module RuboCop
       # @api private
       class Miscellaneous < FormulaCop
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           # FileUtils is included in Formula
           # encfs modifies a file with this name, so check for some leading characters
           find_instance_method_call(body_node, "FileUtils", nil) do |method_node|
@@ -518,13 +643,13 @@ module RuboCop
 
           formula_path_strings(body_node, :prefix) do |p|
             if (match = regex_match_group(p, %r{^(/share/(info|man))$}))
-              problem "\"\#\{prefix}#{match[1]}\" should be \"\#{#{match[2]}}\""
+              problem ['"#', "{prefix}", match[1], '" should be "#{', match[2], '}"'].join
             end
             if (match = regex_match_group(p, %r{^((/share/man/)(man[1-8]))}))
-              problem "\"\#\{prefix}#{match[1]}\" should be \"\#{#{match[3]}}\""
+              problem ['"#', "{prefix}", match[1], '" should be "#{', match[3], '}"'].join
             end
             if (match = regex_match_group(p, %r{^(/(bin|include|libexec|lib|sbin|share|Frameworks))}i))
-              problem "\"\#\{prefix}#{match[1]}\" should be \"\#{#{match[2].downcase}}\""
+              problem ['"#', "{prefix}", match[1], '" should be "#{', match[2].downcase, '}"'].join
             end
           end
 

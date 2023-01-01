@@ -10,6 +10,8 @@ describe DescriptionCacheStore do
   let(:formula_name) { "test_name" }
   let(:description) { "test_description" }
 
+  before { allow(Homebrew::EnvConfig).to receive(:eval_all?).and_return(true) }
+
   describe "#update!" do
     it "sets the formula description" do
       expect(database).to receive(:set).with(formula_name, description)
@@ -25,7 +27,7 @@ describe DescriptionCacheStore do
   end
 
   describe "#update_from_report!" do
-    let(:report) { double(select_formula: [], empty?: false) }
+    let(:report) { double(select_formula_or_cask: [], empty?: false) }
 
     it "reads from the report" do
       expect(database).to receive(:empty?).at_least(:once).and_return(false)
@@ -60,7 +62,7 @@ describe DescriptionCacheStore do
     let(:database) { double("database") }
 
     describe "#update_from_report!" do
-      let(:report) { double(select_formula: [], empty?: false) }
+      let(:report) { double(select_formula_or_cask: [], empty?: false) }
 
       it "reads from the report" do
         expect(database).to receive(:empty?).at_least(:once).and_return(false)

@@ -13,13 +13,12 @@ module OS
 
     module_function
 
-    # rubocop:disable Naming/ConstantName
-    # rubocop:disable Style/MutableConstant
     ::MacOS = OS::Mac
-    # rubocop:enable Naming/ConstantName
-    # rubocop:enable Style/MutableConstant
 
     raise "Loaded OS::Mac on generic OS!" if ENV["HOMEBREW_TEST_GENERIC_OS"]
+
+    VERSION = ENV.fetch("HOMEBREW_MACOS_VERSION").chomp.freeze
+    private_constant :VERSION
 
     # This can be compared to numerics, strings, or symbols
     # using the standard Ruby Comparable methods.
@@ -32,7 +31,11 @@ module OS
     # using the standard Ruby Comparable methods.
     sig { returns(Version) }
     def full_version
-      @full_version ||= Version.new((ENV["HOMEBREW_MACOS_VERSION"]).chomp)
+      @full_version ||= if ENV["HOMEBREW_FAKE_EL_CAPITAN"] # for Portable Ruby building
+        Version.new("10.11.6")
+      else
+        Version.new(VERSION)
+      end
     end
 
     sig { params(version: Version).void }
@@ -45,7 +48,7 @@ module OS
     def latest_sdk_version
       # TODO: bump version when new Xcode macOS SDK is released
       # NOTE: We only track the major version of the SDK.
-      ::Version.new("12")
+      ::Version.new("13")
     end
     private :latest_sdk_version
 

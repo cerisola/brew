@@ -5,6 +5,7 @@ then
   echo "${0##*/}: The build tool has reset ENV; --env=std required." >&2
   exit 1
 fi
+unset RUBYLIB
 exec "${HOMEBREW_RUBY_PATH}" --enable-frozen-string-literal --disable=gems,did_you_mean,rubyopt -x "$0" "$@"
 #!/usr/bin/env ruby -W0
 
@@ -232,7 +233,7 @@ class Cmd
       if mac?
         sdk ||= enum.next
         # We set the sysroot for macOS SDKs
-        args << "-isysroot#{sdk}" unless sdk.downcase.include? "osx"
+        args << "-isysroot#{sdk}" if !sdk.downcase.include?("osx") && !sdk.empty?
       else
         args << arg
         args << enum.next unless sdk
@@ -292,6 +293,7 @@ class Cmd
     args.concat(optflags) unless runtime_cpu_detection?
     args.concat(archflags)
     args << "-std=#{@arg0}" if /c[89]9/.match?(@arg0)
+    args << "-g" if debug_symbols?
     args
   end
 
@@ -304,7 +306,11 @@ class Cmd
   end
 
   def cppflags
-    path_flags("-isystem", isystem_paths) + path_flags("-I", include_paths)
+    args = []
+    args += path_flags("-isystem", isystem_paths) + path_flags("-I", include_paths)
+    # Add -nostdinc when building against glibc@2.13 to avoid mixing system and brewed glibc headers.
+    args << "-nostdinc" if @deps.include?("glibc@2.13")
+    args
   end
 
   def ldflags_mac(args)
@@ -322,10 +328,17 @@ class Cmd
   def ldflags_linux(args)
     unless mode == :ld
       wl = "-Wl,"
-      args << "-B#{@opt}/glibc/lib"
+      if @deps.include?("glibc@2.13")
+        args << "-B#{@opt}/glibc@2.13/lib"
+      else
+        args << "-B#{@opt}/glibc/lib"
+      end
     end
     args += rpath_flags("#{wl}-rpath=", rpath_paths)
     args += ["#{wl}--dynamic-linker=#{dynamic_linker_path}"] if dynamic_linker_path
+    # Use -rpath-link to make sure linker uses glibc@2.13 rather than the system glibc for indirect
+    # dependencies because -L will only handle direct dependencies.
+    args << "#{wl}-rpath-link=#{@opt}/glibc@2.13/lib" if @deps.include?("glibc@2.13")
     args
   end
 
@@ -397,6 +410,10 @@ class Cmd
 
   def no_weak_imports?
     config.include?("w")
+  end
+
+  def debug_symbols?
+    config.include?("D")
   end
 
   def canonical_path(path)

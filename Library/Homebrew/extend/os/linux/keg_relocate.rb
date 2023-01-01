@@ -8,9 +8,6 @@ class Keg
     # Patching the dynamic linker of glibc breaks it.
     return if name.match? Version.formula_optionally_versioned_regex(:glibc)
 
-    # Patching patchelf fails with "Text file busy" or SIGBUS.
-    return if name == "patchelf"
-
     old_prefix, new_prefix = relocation.replacement_pair_for(:prefix)
 
     elf_files.each do |file|
@@ -32,6 +29,12 @@ class Keg
 
       lib_path = "#{new_prefix}/lib"
       rpath << lib_path unless rpath.include? lib_path
+
+      # Add GCC's lib directory (as of GCC 12+) to RPATH when there is existing versioned linkage.
+      # This prevents broken linkage when pouring bottles built with an old GCC formula.
+      unless name.match?(Version.formula_optionally_versioned_regex(:gcc))
+        rpath.map! { |rp| rp.sub(%r{lib/gcc/\d+$}, "lib/gcc/current") }
+      end
 
       rpath.join(":")
     end
@@ -79,25 +82,5 @@ class Keg
       elf_files << pn
     end
     elf_files
-  end
-
-  def self.bottle_dependencies
-    @bottle_dependencies ||= begin
-      formulae = relocation_formulae
-      if Homebrew::EnvConfig.install_from_api?
-        gcc_hash = Homebrew::API::Formula.fetch(CompilerSelector.preferred_gcc)
-        preferred_gcc_version = Version.new gcc_hash["versions"]["stable"]
-      else
-        gcc = Formulary.factory(CompilerSelector.preferred_gcc)
-        preferred_gcc_version = gcc.version
-      end
-      if !Homebrew::EnvConfig.simulate_macos_on_linux? &&
-         DevelopmentTools.non_apple_gcc_version("gcc") < preferred_gcc_version.major
-        gcc = Formulary.factory(CompilerSelector.preferred_gcc) if Homebrew::EnvConfig.install_from_api?
-        formulae += gcc.recursive_dependencies.map(&:name)
-        formulae << gcc.name
-      end
-      formulae
-    end
   end
 end

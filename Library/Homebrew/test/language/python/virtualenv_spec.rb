@@ -11,7 +11,8 @@ describe Language::Python::Virtualenv::Virtualenv, :needs_python do
 
   let(:resource) { double("resource", stage: true) }
   let(:formula_bin) { dir/"formula_bin" }
-  let(:formula) { double("formula", resource: resource, bin: formula_bin) }
+  let(:formula_man) { dir/"formula_man" }
+  let(:formula) { double("formula", resource: resource, bin: formula_bin, man: formula_man) }
 
   describe "#create" do
     it "creates a venv" do
@@ -23,16 +24,16 @@ describe Language::Python::Virtualenv::Virtualenv, :needs_python do
   describe "#pip_install" do
     it "accepts a string" do
       expect(formula).to receive(:system)
-        .with(dir/"bin/pip", "install", "-v", "--no-deps",
-              "--no-binary", ":all:", "--ignore-installed", "foo")
+        .with(dir/"bin/pip", "install", "-v", "--no-deps", "--no-binary", ":all:",
+              "--use-feature=no-binary-enable-wheel-cache", "--ignore-installed", "foo")
         .and_return(true)
       virtualenv.pip_install "foo"
     end
 
     it "accepts a multi-line strings" do
       expect(formula).to receive(:system)
-        .with(dir/"bin/pip", "install", "-v", "--no-deps",
-              "--no-binary", ":all:", "--ignore-installed", "foo", "bar")
+        .with(dir/"bin/pip", "install", "-v", "--no-deps", "--no-binary", ":all:",
+              "--use-feature=no-binary-enable-wheel-cache", "--ignore-installed", "foo", "bar")
         .and_return(true)
 
       virtualenv.pip_install <<~EOS
@@ -43,13 +44,13 @@ describe Language::Python::Virtualenv::Virtualenv, :needs_python do
 
     it "accepts an array" do
       expect(formula).to receive(:system)
-        .with(dir/"bin/pip", "install", "-v", "--no-deps",
-              "--no-binary", ":all:", "--ignore-installed", "foo")
+        .with(dir/"bin/pip", "install", "-v", "--no-deps", "--no-binary", ":all:",
+              "--use-feature=no-binary-enable-wheel-cache", "--ignore-installed", "foo")
         .and_return(true)
 
       expect(formula).to receive(:system)
-        .with(dir/"bin/pip", "install", "-v", "--no-deps",
-              "--no-binary", ":all:", "--ignore-installed", "bar")
+        .with(dir/"bin/pip", "install", "-v", "--no-deps", "--no-binary", ":all:",
+              "--use-feature=no-binary-enable-wheel-cache", "--ignore-installed", "bar")
         .and_return(true)
 
       virtualenv.pip_install ["foo", "bar"]
@@ -60,8 +61,8 @@ describe Language::Python::Virtualenv::Virtualenv, :needs_python do
 
       expect(res).to receive(:stage).and_yield
       expect(formula).to receive(:system)
-        .with(dir/"bin/pip", "install", "-v", "--no-deps",
-              "--no-binary", ":all:", "--ignore-installed", Pathname.pwd)
+        .with(dir/"bin/pip", "install", "-v", "--no-deps", "--no-binary", ":all:",
+              "--use-feature=no-binary-enable-wheel-cache", "--ignore-installed", Pathname.pwd)
         .and_return(true)
 
       virtualenv.pip_install res
@@ -70,7 +71,9 @@ describe Language::Python::Virtualenv::Virtualenv, :needs_python do
 
   describe "#pip_install_and_link" do
     let(:src_bin) { dir/"bin" }
+    let(:src_man) { dir/"share/man" }
     let(:dest_bin) { formula.bin }
+    let(:dest_man) { formula.man }
 
     it "can link scripts" do
       src_bin.mkpath
@@ -93,6 +96,40 @@ describe Language::Python::Virtualenv::Virtualenv, :needs_python do
       expect(dest_bin/"kilroy").to be_a_symlink
       expect((src_bin/"kilroy").realpath).to eq((dest_bin/"kilroy").realpath)
       expect(dest_bin/"irrelevant").not_to exist
+    end
+
+    it "can link manpages" do
+      (src_man/"man1").mkpath
+      (src_man/"man3").mkpath
+
+      expect(src_man/"man1/kilroy.1").not_to exist
+      expect(dest_man/"man1").not_to exist
+      expect(dest_man/"man3").not_to exist
+      expect(dest_man/"man5").not_to exist
+
+      FileUtils.touch src_man/"man1/irrelevant.1"
+      FileUtils.touch src_man/"man3/irrelevant.3"
+      man_before = Dir.glob(src_man/"**/*")
+      (src_man/"man5").mkpath
+      FileUtils.touch src_man/"man1/kilroy.1"
+      FileUtils.touch src_man/"man5/kilroy.5"
+      man_after = Dir.glob(src_man/"**/*")
+
+      expect(virtualenv).to receive(:pip_install).with("foo")
+      expect(Dir).to receive(:[]).with(src_bin/"*").and_return([])
+      expect(Dir).to receive(:[]).with(src_man/"man*/*").and_return(man_before)
+      expect(Dir).to receive(:[]).with(src_bin/"*").and_return([])
+      expect(Dir).to receive(:[]).with(src_man/"man*/*").and_return(man_after)
+
+      virtualenv.pip_install_and_link("foo", link_manpages: true)
+
+      expect(src_man/"man1/kilroy.1").to exist
+      expect(dest_man/"man1/kilroy.1").to exist
+      expect(dest_man/"man5/kilroy.5").to exist
+      expect(dest_man/"man1/kilroy.1").to be_a_symlink
+      expect((src_man/"man1/kilroy.1").realpath).to eq((dest_man/"man1/kilroy.1").realpath)
+      expect(dest_man/"man1/irrelevant.1").not_to exist
+      expect(dest_man/"man3").not_to exist
     end
   end
 end

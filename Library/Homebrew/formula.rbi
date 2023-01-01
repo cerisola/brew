@@ -3,9 +3,6 @@
 # This file provides definitions for Forwardable#delegate, which is currently not supported by Sorbet.
 
 class Formula
-  def bottle_unneeded?; end
-  def bottle_disabled?; end
-  def bottle_disable_reason; end
   def bottle_defined?; end
   def bottle_tag?(tag = nil); end
   def bottled?(tag = nil); end
@@ -51,4 +48,8 @@ class Formula
 
   def env; end
   def conflicts; end
+
+  def self.on_system_blocks_exist?; end
+  # This method is included by `OnSystem`
+  def self.on_macos(&block); end
 end

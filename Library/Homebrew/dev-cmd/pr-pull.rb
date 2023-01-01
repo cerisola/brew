@@ -33,15 +33,15 @@ module Homebrew
              description: "If the formula specifies a rebuild version, " \
                           "attempt to preserve its value in the generated DSL."
       switch "--no-autosquash",
-             description: "Skip automatically reformatting and rewording commits in the pull request to our "\
+             description: "Skip automatically reformatting and rewording commits in the pull request to our " \
                           "preferred format."
       switch "--branch-okay",
              description: "Do not warn if pulling to a branch besides the repository default (useful for testing)."
       switch "--resolve",
-             description: "When a patch fails to apply, leave in progress and allow user to resolve, "\
+             description: "When a patch fails to apply, leave in progress and allow user to resolve, " \
                           "instead of aborting."
       switch "--warn-on-upload-failure",
-             description: "Warn instead of raising an error if the bottle upload fails. "\
+             description: "Warn instead of raising an error if the bottle upload fails. " \
                           "Useful for repairing bottle uploads that previously failed."
       flag   "--committer=",
              description: "Specify a committer name and email in `git`'s standard author format."
@@ -54,10 +54,10 @@ module Homebrew
       flag   "--root-url=",
              description: "Use the specified <URL> as the root of the bottle's URL instead of Homebrew's default."
       flag   "--root-url-using=",
-             description: "Use the specified download strategy class for downloading the bottle's URL instead of "\
+             description: "Use the specified download strategy class for downloading the bottle's URL instead of " \
                           "Homebrew's default."
       comma_array "--workflows=",
-                  description: "Retrieve artifacts from the specified workflow (default: `tests.yml`). "\
+                  description: "Retrieve artifacts from the specified workflow (default: `tests.yml`). " \
                                "Can be a comma-separated list to include multiple workflows."
       comma_array "--ignore-missing-artifacts=",
                   description: "Comma-separated list of workflows which can be ignored if they have not been run."
@@ -312,7 +312,7 @@ module Homebrew
     return false if labels.include?("CI-syntax-only") || labels.include?("CI-no-bottles")
 
     changed_packages(tap, original_commit).any? do |f|
-      !f.instance_of?(Cask::Cask) && !f.bottle_unneeded? && !f.bottle_disabled?
+      !f.instance_of?(Cask::Cask)
     end
   end
 
@@ -368,6 +368,53 @@ module Homebrew
     end
   end
 
+  def pr_check_conflicts(repo, pr)
+    long_build_pr_files = GitHub.issues(
+      repo: repo, state: "open", labels: "no long build conflict",
+    ).each_with_object({}) do |long_build_pr, hash|
+      next unless long_build_pr.key?("pull_request")
+
+      number = long_build_pr["number"]
+      next if number == pr.to_i
+
+      GitHub.get_pull_request_changed_files(repo, number).each do |file|
+        key = file["filename"]
+        hash[key] ||= []
+        hash[key] << number
+      end
+    end
+
+    return if long_build_pr_files.blank?
+
+    this_pr_files = GitHub.get_pull_request_changed_files(repo, pr)
+
+    conflicts = this_pr_files.each_with_object({}) do |file, hash|
+      filename = file["filename"]
+      next unless long_build_pr_files.key?(filename)
+
+      long_build_pr_files[filename].each do |pr_number|
+        key = "#{repo}/pull/#{pr_number}"
+        hash[key] ||= []
+        hash[key] << filename
+      end
+    end
+
+    return if conflicts.blank?
+
+    # Raise an error, display the conflicting PR. For example:
+    # Error: You are trying to merge a pull request that conflicts with a long running build in:
+    # {
+    #   "homebrew-core/pull/98809": [
+    #    "Formula/icu4c.rb",
+    #    "Formula/node@10.rb"
+    #   ]
+    # }
+    odie <<~EOS
+      You are trying to merge a pull request that conflicts with a long running build in:
+      #{JSON.pretty_generate(conflicts)}
+    EOS
+  end
+
   def pr_pull
     args = pr_pull_args.parse
 
@@ -396,6 +443,8 @@ module Homebrew
       if !tap.path.git_default_origin_branch? || args.branch_okay? || args.clean?
         opoo "Current branch is #{tap.path.git_branch}: do you need to pull inside #{tap.path.git_origin_branch}?"
       end
+
+      pr_check_conflicts("#{user}/#{repo}", pr)
 
       ohai "Fetching #{tap} pull request ##{pr}"
       Dir.mktmpdir pr do |dir|

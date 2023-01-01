@@ -50,6 +50,8 @@ module RuboCop
       #
       # @param dependency_name dependency's name
       def depends_on?(dependency_name, *types)
+        return if @body.nil?
+
         types = [:any] if types.empty?
         dependency_nodes = find_every_method_call_by_name(@body, :depends_on)
         idx = dependency_nodes.index do |n|
@@ -106,6 +108,8 @@ module RuboCop
 
       # Return all the caveats' string nodes in an array.
       def caveats_strings
+        return [] if @body.nil?
+
         find_strings(find_method_def(@body, :caveats))
       end
 
@@ -197,6 +201,12 @@ module RuboCop
         return true if @file_path.nil? # file_path is nil when source is directly passed to the cop, e.g. in specs
 
         @file_path !~ Regexp.union(paths_to_exclude)
+      end
+
+      def on_system_methods
+        @on_system_methods ||= [:intel, :arm, :macos, :linux, :system, *MacOSVersions::SYMBOLS.keys].map do |m|
+          :"on_#{m}"
+        end
       end
     end
   end

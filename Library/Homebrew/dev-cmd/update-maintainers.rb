@@ -1,9 +1,9 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "cli/parser"
 require "utils/github"
-require "dev-cmd/generate-man-completions"
+require "manpages"
 
 module Homebrew
   extend T::Sig
@@ -57,9 +57,9 @@ module Homebrew
       "-C", HOMEBREW_REPOSITORY, "diff", "--exit-code", "README.md"
     ]
     if diff.status.success?
-      puts "No changes to list of maintainers."
+      ofail "No changes to list of maintainers."
     else
-      Homebrew.regenerate_man_pages(preserve_date: true, quiet: true)
+      Manpages.regenerate_man_pages(quiet: true)
       puts "List of maintainers updated in the README and the generated man pages."
     end
   end

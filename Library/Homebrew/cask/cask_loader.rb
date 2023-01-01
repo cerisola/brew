@@ -19,12 +19,15 @@ module Cask
 
         content = ref.to_str
 
-        token  = /(?:"[^"]*"|'[^']*')/
-        curly  = /\(\s*#{token.source}\s*\)\s*\{.*\}/
-        do_end = /\s+#{token.source}\s+do(?:\s*;\s*|\s+).*end/
-        regex  = /\A\s*cask(?:#{curly.source}|#{do_end.source})\s*\Z/m
+        # Cache compiled regex
+        @regex ||= begin
+          token  = /(?:"[^"]*"|'[^']*')/
+          curly  = /\(\s*#{token.source}\s*\)\s*\{.*\}/
+          do_end = /\s+#{token.source}\s+do(?:\s*;\s*|\s+).*end/
+          /\A\s*cask(?:#{curly.source}|#{do_end.source})\s*\Z/m
+        end
 
-        content.match?(regex)
+        content.match?(@regex)
       end
 
       def initialize(content)
@@ -93,8 +96,13 @@ module Cask
       extend T::Sig
 
       def self.can_load?(ref)
-        uri_regex = ::URI::DEFAULT_PARSER.make_regexp
-        return false unless ref.to_s.match?(Regexp.new("\\A#{uri_regex.source}\\Z", uri_regex.options))
+        # Cache compiled regex
+        @uri_regex ||= begin
+          uri_regex = ::URI::DEFAULT_PARSER.make_regexp
+          Regexp.new("\\A#{uri_regex.source}\\Z", uri_regex.options)
+        end
+
+        return false unless ref.to_s.match?(@uri_regex)
 
         uri = URI(ref)
         return false unless uri
@@ -214,7 +222,18 @@ module Cask
         FromTapPathLoader,
         FromPathLoader,
       ].each do |loader_class|
-        return loader_class.new(ref) if loader_class.can_load?(ref)
+        next unless loader_class.can_load?(ref)
+
+        if loader_class == FromTapLoader && Homebrew::EnvConfig.install_from_api? &&
+           ref.start_with?("homebrew/cask/") && Homebrew::API::CaskSource.available?(ref)
+          return FromContentLoader.new(Homebrew::API::CaskSource.fetch(ref))
+        end
+
+        return loader_class.new(ref)
+      end
+
+      if Homebrew::EnvConfig.install_from_api? && Homebrew::API::CaskSource.available?(ref)
+        return FromContentLoader.new(Homebrew::API::CaskSource.fetch(ref))
       end
 
       return FromTapPathLoader.new(default_path(ref)) if FromTapPathLoader.can_load?(default_path(ref))
@@ -225,10 +244,7 @@ module Cask
       when 2..Float::INFINITY
         loaders = possible_tap_casks.map(&FromTapPathLoader.method(:new))
 
-        raise CaskError, <<~EOS
-          Cask #{ref} exists in multiple taps:
-          #{loaders.map { |loader| "  #{loader.tap}/#{loader.token}" }.join("\n")}
-        EOS
+        raise TapCaskAmbiguityError.new(ref, loaders)
       end
 
       possible_installed_cask = Cask.new(ref)

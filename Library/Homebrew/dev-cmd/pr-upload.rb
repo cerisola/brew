@@ -24,17 +24,16 @@ module Homebrew
       switch "--no-commit",
              description: "Do not generate a new commit before uploading."
       switch "--warn-on-upload-failure",
-             description: "Warn instead of raising an error if the bottle upload fails. "\
+             description: "Warn instead of raising an error if the bottle upload fails. " \
                           "Useful for repairing bottle uploads that previously failed."
       switch "--upload-only",
              description: "Skip running `brew bottle` before uploading."
       flag   "--committer=",
              description: "Specify a committer name and email in `git`'s standard author format."
-      flag   "--github-org=", hidden: true
       flag   "--root-url=",
              description: "Use the specified <URL> as the root of the bottle's URL instead of Homebrew's default."
       flag   "--root-url-using=",
-             description: "Use the specified download strategy class for downloading the bottle's URL instead of "\
+             description: "Use the specified download strategy class for downloading the bottle's URL instead of " \
                           "Homebrew's default."
 
       conflicts "--upload-only", "--keep-old"
@@ -89,8 +88,6 @@ module Homebrew
 
   def pr_upload
     args = pr_upload_args.parse
-
-    odeprecated "`brew pr-upload --github-org`", "`brew pr-upload` without `--github-org`" if args.github_org
 
     json_files = Dir["*.bottle.json"]
     odie "No bottle JSON files found in the current working directory" if json_files.blank?

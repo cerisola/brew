@@ -26,17 +26,17 @@ Unversioned symlinks for `python`, `python-config`, `pip` etc. are installed her
 $(brew --prefix)/opt/python/libexec/bin
 ```
 
-## Setuptools, Pip, etc.
+## Setuptools, pip, etc.
 
 The Python formulae install [pip](https://pip.pypa.io/) (as `pip3`) and [Setuptools](https://pypi.org/project/setuptools/).
 
-Setuptools can be updated via pip3, without having to re-brew Python:
+Setuptools can be updated via `pip`, without having to re-brew Python:
 
 ```sh
 python3 -m pip install --upgrade setuptools
 ```
 
-Similarly, pip3 can be used to upgrade itself via:
+Similarly, `pip` can be used to upgrade itself via:
 
 ```sh
 python3 -m pip install --upgrade pip
@@ -77,7 +77,7 @@ These should be installed via `pip install <package>`. To discover, you can use 
 
 ## Brewed Python modules
 
-For brewed Python, modules installed with `pip3` or `python3 setup.py install` will be installed to the `$(brew --prefix)/lib/pythonX.Y/site-packages` directory (explained above). Executable Python scripts will be in `$(brew --prefix)/bin`.
+For brewed Python, modules installed with `pip` or `python3 setup.py install` will be installed to the `$(brew --prefix)/lib/pythonX.Y/site-packages` directory (explained above). Executable Python scripts will be in `$(brew --prefix)/bin`.
 
 Since the system Python may not know which compiler flags to set when building bindings for software installed by Homebrew, you may need to run:
 
@@ -87,10 +87,9 @@ CFLAGS="-I$(brew --prefix)/include" LDFLAGS="-L$(brew --prefix)/lib" pip install
 
 ## Virtualenv
 
-**Warning!** When you `brew install` formulae that provide Python bindings, you should **not be in an active virtual environment**.
+**Warning!** When you `brew install` formulae that provide Python bindings, you should **not be in an active virtual environment.**
 
-Activate the virtualenv *after* you've brewed, or brew in a fresh terminal window.
-This will ensure Python modules are installed into Homebrew's `site-packages` and *not* into that of the virtual environment.
+Activate the virtualenv *after* you've brewed, or brew in a fresh terminal window. This will ensure Python modules are installed into Homebrew's `site-packages` and *not* into that of the virtual environment.
 
 Virtualenv has a `--system-site-packages` switch to allow "global" (i.e. Homebrew's) `site-packages` to be accessible from within the virtualenv.
 

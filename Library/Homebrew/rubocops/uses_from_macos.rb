@@ -43,6 +43,7 @@ module RuboCop
           net-snmp
           netcat
           openldap
+          pax
           pcsc-lite
           pod2man
           rpcgen
@@ -60,10 +61,12 @@ module RuboCop
         ].freeze
 
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           find_method_with_args(body_node, :keg_only, :provided_by_macos) do
             return if PROVIDED_BY_MACOS_FORMULAE.include? @formula_name
 
-            problem "Formulae that are `keg_only :provided_by_macos` should be "\
+            problem "Formulae that are `keg_only :provided_by_macos` should be " \
                     "added to the `PROVIDED_BY_MACOS_FORMULAE` list (in the Homebrew/brew repo)"
           end
         end
@@ -81,6 +84,8 @@ module RuboCop
           git
           groff
           gzip
+          less
+          mandoc
           openssl
           perl
           php
@@ -92,6 +97,8 @@ module RuboCop
         ].freeze
 
         def audit_formula(_node, _class_node, _parent_class_node, body_node)
+          return if body_node.nil?
+
           find_method_with_args(body_node, :uses_from_macos, /^"(.+)"/).each do |method|
             dep = if parameters(method).first.instance_of?(RuboCop::AST::StrNode)
               parameters(method).first

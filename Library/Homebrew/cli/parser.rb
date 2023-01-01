@@ -25,7 +25,7 @@ module Homebrew
         begin
           Homebrew.send(cmd_args_method_name) if require?(cmd_path)
         rescue NoMethodError => e
-          raise if e.name != cmd_args_method_name
+          raise if e.name.to_sym != cmd_args_method_name
 
           nil
         end
@@ -148,7 +148,7 @@ module Homebrew
         generate_banner
       end
 
-      def switch(*names, description: nil, replacement: nil, env: nil, required_for: nil, depends_on: nil,
+      def switch(*names, description: nil, replacement: nil, env: nil, depends_on: nil,
                  method: :on, hidden: false)
         global_switch = names.first.is_a?(Symbol)
         return if global_switch
@@ -167,7 +167,7 @@ module Homebrew
         end
 
         names.each do |name|
-          set_constraints(name, required_for: required_for, depends_on: depends_on)
+          set_constraints(name, depends_on: depends_on)
         end
 
         env_value = env?(env)
@@ -204,8 +204,7 @@ module Homebrew
         end
       end
 
-      def flag(*names, description: nil, replacement: nil, required_for: nil,
-               depends_on: nil, hidden: false)
+      def flag(*names, description: nil, replacement: nil, depends_on: nil, hidden: false)
         required, flag_type = if names.any? { |name| name.end_with? "=" }
           [OptionParser::REQUIRED_ARGUMENT, :required_flag]
         else
@@ -226,7 +225,7 @@ module Homebrew
         end
 
         names.each do |name|
-          set_constraints(name, required_for: required_for, depends_on: depends_on)
+          set_constraints(name, depends_on: depends_on)
         end
       end
 
@@ -330,8 +329,11 @@ module Homebrew
           remaining + non_options
         end
 
+        set_default_options
+
         unless ignore_invalid_options
           check_constraint_violations
+          validate_options
           check_named_args(named_args)
         end
 
@@ -350,6 +352,10 @@ module Homebrew
         @args
       end
 
+      def set_default_options; end
+
+      def validate_options; end
+
       def generate_help_text
         Formatter.format_help_text(@parser.to_s, width: COMMAND_DESC_WIDTH)
                  .gsub(/\n.*?@@HIDDEN@@.*?(?=\n)/, "")
@@ -362,8 +368,9 @@ module Homebrew
       end
 
       def cask_options
-        self.class.global_cask_options.each do |method, *args, **options|
-          send(method, *args, **options)
+        self.class.global_cask_options.each do |args|
+          options = args.pop
+          send(*args, **options)
           conflicts "--formula", args.last
         end
         @cask_options = true
@@ -506,31 +513,25 @@ module Homebrew
         Formatter.format_help_text(desc, width: OPTION_DESC_WIDTH).split("\n")
       end
 
-      def set_constraints(name, depends_on:, required_for:)
-        secondary = option_to_name(name)
-        unless required_for.nil?
-          primary = option_to_name(required_for)
-          @constraints << [primary, secondary, :mandatory]
-        end
-
+      def set_constraints(name, depends_on:)
         return if depends_on.nil?
 
         primary = option_to_name(depends_on)
-        @constraints << [primary, secondary, :optional]
+        secondary = option_to_name(name)
+        @constraints << [primary, secondary]
       end
 
       def check_constraints
-        @constraints.each do |primary, secondary, constraint_type|
+        @constraints.each do |primary, secondary|
           primary_passed = option_passed?(primary)
           secondary_passed = option_passed?(secondary)
+
+          next if !secondary_passed || (primary_passed && secondary_passed)
 
           primary = name_to_option(primary)
           secondary = name_to_option(secondary)
 
-          if :mandatory.equal?(constraint_type) && primary_passed && !secondary_passed
-            raise OptionConstraintError.new(primary, secondary)
-          end
-          raise OptionConstraintError.new(primary, secondary, missing: true) if secondary_passed && !primary_passed
+          raise OptionConstraintError.new(primary, secondary, missing: true)
         end
       end
 
@@ -708,3 +709,5 @@ module Homebrew
     end
   end
 end
+
+require "extend/os/parser"

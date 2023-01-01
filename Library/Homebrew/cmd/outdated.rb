@@ -33,17 +33,17 @@ module Homebrew
                           "`v1` is deprecated and is currently the default if no version is specified. " \
                           "`v2` prints outdated formulae and casks."
       switch "--fetch-HEAD",
-             description: "Fetch the upstream repository to detect if the HEAD installation of the "\
-                          "formula is outdated. Otherwise, the repository's HEAD will only be checked for "\
+             description: "Fetch the upstream repository to detect if the HEAD installation of the " \
+                          "formula is outdated. Otherwise, the repository's HEAD will only be checked for " \
                           "updates when a new stable or development version has been released."
       switch "--greedy",
-             description: "Print outdated casks with `auto_updates true` or `version :latest`."
+             description: "Also include outdated casks with `auto_updates true` or `version :latest`."
 
       switch "--greedy-latest",
-             description: "Print outdated casks including those with `version :latest`."
+             description: "Also include outdated casks including those with `version :latest`."
 
       switch "--greedy-auto-updates",
-             description: "Print outdated casks including those with `auto_updates true`."
+             description: "Also include outdated casks including those with `auto_updates true`."
 
       conflicts "--quiet", "--verbose", "--json"
       conflicts "--formula", "--cask"
@@ -98,10 +98,7 @@ module Homebrew
         if verbose?
           outdated_kegs = f.outdated_kegs(fetch_head: args.fetch_HEAD?)
 
-          current_version = if !f.head? && Homebrew::EnvConfig.install_from_api? &&
-                               (f.core_formula? || f.tap.blank?)
-            Homebrew::API::Versions.latest_formula_version(f.name)&.to_s || f.pkg_version.to_s
-          elsif f.alias_changed? && !f.latest_formula.latest_version_installed?
+          current_version = if f.alias_changed? && !f.latest_formula.latest_version_installed?
             latest = f.latest_formula
             "#{latest.name} (#{latest.pkg_version})"
           elsif f.head? && outdated_kegs.any? { |k| k.version.to_s == f.pkg_version.to_s }

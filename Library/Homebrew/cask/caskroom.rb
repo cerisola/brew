@@ -46,14 +46,16 @@ module Cask
       path.children.select(&:directory?).sort.map do |path|
         token = path.basename.to_s
 
-        if (tap_path = CaskLoader.tap_paths(token).first)
-          CaskLoader::FromTapPathLoader.new(tap_path).load(config: config)
-        elsif (caskroom_path = Pathname.glob(path.join(".metadata/*/*/*/*.rb")).first)
-          CaskLoader::FromPathLoader.new(caskroom_path).load(config: config)
-        else
+        begin
           CaskLoader.load(token, config: config)
+        rescue TapCaskAmbiguityError
+          tap_path = CaskLoader.tap_paths(token).first
+          CaskLoader::FromTapPathLoader.new(tap_path).load(config: config)
+        rescue CaskUnavailableError
+          # Don't blow up because of a single unavailable cask.
+          nil
         end
-      end
+      end.compact
     end
   end
 end

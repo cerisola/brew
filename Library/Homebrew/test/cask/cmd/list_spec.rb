@@ -106,13 +106,17 @@ describe Cask::Cmd::List, :cask do
             "outdated": false,
             "sha256": "67cdb8a02803ef37fdbf7e0be205863172e41a561ca446cd84f0d7ab35a99d94",
             "artifacts": [
-              [
-                "Caffeine.app"
-              ],
               {
-                "trash": "$HOME/support/fixtures/cask/caffeine/org.example.caffeine.plist",
-                "signal": {
-                }
+                "app": [
+                  "Caffeine.app"
+                ]
+              },
+              {
+                "zap": [
+                  {
+                    "trash": "$HOME/support/fixtures/cask/caffeine/org.example.caffeine.plist"
+                  }
+                ]
               }
             ],
             "caveats": null,
@@ -140,9 +144,11 @@ describe Cask::Cmd::List, :cask do
             "outdated": false,
             "sha256": "e44ffa103fbf83f55c8d0b1bea309a43b2880798dae8620b1ee8da5e1095ec68",
             "artifacts": [
-              [
-                "Transmission.app"
-              ]
+              {
+                "app": [
+                  "Transmission.app"
+                ]
+              }
             ],
             "caveats": null,
             "depends_on": {
@@ -160,19 +166,23 @@ describe Cask::Cmd::List, :cask do
             ],
             "desc": null,
             "homepage": "https://brew.sh/",
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine.zip",
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin-arm64/1.2.3/arm.zip",
             "appcast": null,
             "version": "1.2.3",
             "versions": {
-              "test_os": "1.2.0"
+              "big_sur": "1.2.0",
+              "catalina": "1.0.0",
+              "mojave": "1.0.0"
             },
             "installed": "1.2.3",
             "outdated": false,
             "sha256": "67cdb8a02803ef37fdbf7e0be205863172e41a561ca446cd84f0d7ab35a99d94",
             "artifacts": [
-              [
-                "Caffeine.app"
-              ]
+              {
+                "app": [
+                  "Caffeine.app"
+                ]
+              }
             ],
             "caveats": null,
             "depends_on": {
@@ -199,9 +209,11 @@ describe Cask::Cmd::List, :cask do
             "outdated": false,
             "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b",
             "artifacts": [
-              [
-                "ThirdParty.app"
-              ]
+              {
+                "app": [
+                  "ThirdParty.app"
+                ]
+              }
             ],
             "caveats": null,
             "depends_on": {
@@ -213,14 +225,27 @@ describe Cask::Cmd::List, :cask do
         ]
       EOS
     }
+    let!(:original_macos_version) { MacOS.full_version.to_s }
 
     before do
-      casks.map(&Cask::CaskLoader.method(:load)).each(&InstallHelper.method(:install_with_caskfile))
+      # Use a more limited symbols list to shorten the variations hash
+      symbols = {
+        monterey: "12",
+        big_sur:  "11",
+        catalina: "10.15",
+        mojave:   "10.14",
+      }
+      stub_const("MacOSVersions::SYMBOLS", symbols)
 
-      # Add a test OS to ensure that all cask versions are listed regardless of OS.
-      symbols = MacOS::Version::SYMBOLS.dup
-      symbols[:test_os] = "10.9"
-      stub_const("MacOS::Version::SYMBOLS", symbols)
+      # For consistency, always run on Monterey and ARM
+      MacOS.full_version = "12"
+      allow(Hardware::CPU).to receive(:type).and_return(:arm)
+
+      casks.map(&Cask::CaskLoader.method(:load)).each(&InstallHelper.method(:install_with_caskfile))
+    end
+
+    after do
+      MacOS.full_version = original_macos_version
     end
 
     it "of all installed Casks" do

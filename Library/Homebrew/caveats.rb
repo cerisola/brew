@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "language/python"
@@ -78,7 +78,7 @@ class Caveats
 
       s << "  #{Utils::Shell.export_value("CPPFLAGS", "-I#{f.opt_include}")}\n" if f.include.directory?
 
-      if which("pkg-config", ENV["HOMEBREW_PATH"]) &&
+      if which("pkg-config", ORIGINAL_PATHS) &&
          ((f.lib/"pkgconfig").directory? || (f.share/"pkgconfig").directory?)
         s << <<~EOS
 
@@ -109,7 +109,7 @@ class Caveats
 
   def function_completion_caveats(shell)
     return unless keg
-    return unless which(shell.to_s, ENV["HOMEBREW_PATH"])
+    return unless which(shell.to_s, ORIGINAL_PATHS)
 
     completion_installed = keg.completion_installed?(shell)
     functions_installed = keg.functions_installed?(shell)
@@ -176,10 +176,11 @@ class Caveats
     EOS
 
     is_running_service = f.service? && quiet_system("ps aux | grep #{f.service.command&.first}")
+    startup = f.service&.requires_root? || f.plist_startup
     if is_running_service || (f.plist && quiet_system("/bin/launchctl list #{f.plist_name} &>/dev/null"))
       s << "To restart #{f.full_name} after an upgrade:"
-      s << "  #{f.plist_startup ? "sudo " : ""}brew services restart #{f.full_name}"
-    elsif f.plist_startup
+      s << "  #{startup ? "sudo " : ""}brew services restart #{f.full_name}"
+    elsif startup
       s << "To start #{f.full_name} now and restart at startup:"
       s << "  sudo brew services start #{f.full_name}"
     else

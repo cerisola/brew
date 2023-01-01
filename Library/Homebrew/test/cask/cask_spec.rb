@@ -31,19 +31,19 @@ describe Cask::Cask, :cask do
 
     it "returns an instance of the Cask for the given token" do
       c = Cask::CaskLoader.load("local-caffeine")
-      expect(c).to be_kind_of(described_class)
+      expect(c).to be_a(described_class)
       expect(c.token).to eq("local-caffeine")
     end
 
     it "returns an instance of the Cask from a specific file location" do
       c = Cask::CaskLoader.load("#{tap_path}/Casks/local-caffeine.rb")
-      expect(c).to be_kind_of(described_class)
+      expect(c).to be_a(described_class)
       expect(c.token).to eq("local-caffeine")
     end
 
     it "returns an instance of the Cask from a URL" do
       c = Cask::CaskLoader.load("file://#{tap_path}/Casks/local-caffeine.rb")
-      expect(c).to be_kind_of(described_class)
+      expect(c).to be_a(described_class)
       expect(c.token).to eq("local-caffeine")
     end
 
@@ -57,7 +57,7 @@ describe Cask::Cask, :cask do
 
     it "returns an instance of the Cask from a relative file location" do
       c = Cask::CaskLoader.load(relative_tap_path/"Casks/local-caffeine.rb")
-      expect(c).to be_kind_of(described_class)
+      expect(c).to be_a(described_class)
       expect(c.token).to eq("local-caffeine")
     end
 
@@ -131,15 +131,17 @@ describe Cask::Cask, :cask do
     describe ":latest casks" do
       let(:cask) { described_class.new("basic-cask") }
 
-      shared_examples ":latest cask" do |greedy, tap_version, expectations|
+      shared_examples ":latest cask" do |greedy, outdated_sha, tap_version, expectations|
         expectations.each do |installed_version, expected_output|
           context "when versions #{installed_version} are installed and the " \
-                  "tap version is #{tap_version}, #{"not" unless greedy} greedy" do
+                  "tap version is #{tap_version}, #{"not " unless greedy}greedy " \
+                  "and sha is #{"not " unless outdated_sha}outdated" do
             subject { cask.outdated_versions(greedy: greedy) }
 
             it {
               allow(cask).to receive(:versions).and_return(installed_version)
               allow(cask).to receive(:version).and_return(Cask::DSL::Version.new(tap_version))
+              allow(cask).to receive(:outdated_download_sha?).and_return(outdated_sha)
               expect(cask).to receive(:outdated_versions).and_call_original
               expect(subject).to eq expected_output
             }
@@ -148,23 +150,29 @@ describe Cask::Cask, :cask do
       end
 
       describe ":latest version installed, :latest version in tap" do
-        include_examples ":latest cask", false, "latest",
+        include_examples ":latest cask", false, false, "latest",
                          ["latest"] => []
-        include_examples ":latest cask", true, "latest",
+        include_examples ":latest cask", true, false, "latest",
+                         ["latest"] => []
+        include_examples ":latest cask", true, true, "latest",
                          ["latest"] => ["latest"]
       end
 
       describe "numbered version installed, :latest version in tap" do
-        include_examples ":latest cask", false, "latest",
-                         ["1.2.3"] => ["1.2.3"]
-        include_examples ":latest cask", true, "latest",
+        include_examples ":latest cask", false, false, "latest",
+                         ["1.2.3"] => []
+        include_examples ":latest cask", true, false, "latest",
+                         ["1.2.3"] => []
+        include_examples ":latest cask", true, true, "latest",
                          ["1.2.3"] => ["1.2.3"]
       end
 
       describe "latest version installed, numbered version in tap" do
-        include_examples ":latest cask", false, "1.2.3",
+        include_examples ":latest cask", false, false, "1.2.3",
                          ["latest"] => ["latest"]
-        include_examples ":latest cask", true, "1.2.3",
+        include_examples ":latest cask", true, false, "1.2.3",
+                         ["latest"] => ["latest"]
+        include_examples ":latest cask", true, true, "1.2.3",
                          ["latest"] => ["latest"]
       end
     end
@@ -201,6 +209,96 @@ describe Cask::Cask, :cask do
           file.unlink
         end
       end
+    end
+  end
+
+  describe "#to_hash_with_variations" do
+    let!(:original_macos_version) { MacOS.full_version.to_s }
+    let(:expected_versions_variations) {
+      <<~JSON
+        {
+          "arm64_big_sur": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin-arm64/1.2.0/arm.zip",
+            "version": "1.2.0",
+            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
+          },
+          "monterey": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin/1.2.3/intel.zip"
+          },
+          "big_sur": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin/1.2.0/intel.zip",
+            "version": "1.2.0",
+            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
+          },
+          "catalina": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin/1.0.0/intel.zip",
+            "version": "1.0.0",
+            "sha256": "1866dfa833b123bb8fe7fa7185ebf24d28d300d0643d75798bc23730af734216"
+          },
+          "mojave": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin/1.0.0/intel.zip",
+            "version": "1.0.0",
+            "sha256": "1866dfa833b123bb8fe7fa7185ebf24d28d300d0643d75798bc23730af734216"
+          }
+        }
+      JSON
+    }
+    let(:expected_sha256_variations) {
+      <<~JSON
+        {
+          "monterey": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel.zip",
+            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
+          },
+          "big_sur": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel.zip",
+            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
+          },
+          "catalina": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel.zip",
+            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
+          },
+          "mojave": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel.zip",
+            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
+          }
+        }
+      JSON
+    }
+
+    before do
+      # Use a more limited symbols list to shorten the variations hash
+      symbols = {
+        monterey: "12",
+        big_sur:  "11",
+        catalina: "10.15",
+        mojave:   "10.14",
+      }
+      stub_const("MacOSVersions::SYMBOLS", symbols)
+
+      # For consistency, always run on Monterey and ARM
+      MacOS.full_version = "12"
+      allow(Hardware::CPU).to receive(:type).and_return(:arm)
+    end
+
+    after do
+      MacOS.full_version = original_macos_version
+    end
+
+    it "returns the correct variations hash for a cask with multiple versions" do
+      c = Cask::CaskLoader.load("multiple-versions")
+      h = c.to_hash_with_variations
+
+      expect(h).to be_a(Hash)
+      expect(JSON.pretty_generate(h["variations"])).to eq expected_versions_variations.strip
+    end
+
+    it "returns the correct variations hash for a cask different sha256s on each arch" do
+      c = Cask::CaskLoader.load("sha256-arch")
+      h = c.to_hash_with_variations
+
+      expect(h).to be_a(Hash)
+      expect(JSON.pretty_generate(h["variations"])).to eq expected_sha256_variations.strip
     end
   end
 end

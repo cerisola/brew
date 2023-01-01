@@ -105,7 +105,7 @@ module Homebrew
       # Ideally `ca-certificates` would not be excluded here, but sourcing a HTTP mirror was tricky.
       # Instead, we have logic elsewhere to pass `--insecure` to curl when downloading the certs.
       # TODO: try remove the OS/env conditional
-      if (OS.mac? || Homebrew::EnvConfig.simulate_macos_on_linux?) && spec_name == :stable &&
+      if Homebrew::SimulateSystem.simulating_or_running_on_macos? && spec_name == :stable &&
          owner.name != "ca-certificates" && curl_dep && !urls.find { |u| u.start_with?("http://") }
         problem "should always include at least one HTTP mirror"
       end
@@ -146,9 +146,8 @@ module Homebrew
       return if specs[:tag].present?
 
       branch = Utils.popen_read("git", "ls-remote", "--symref", url, "HEAD")
-                    .match(%r{ref: refs/heads/(.*?)\s+HEAD})[1]
-
-      return if branch == specs[:branch]
+                    .match(%r{ref: refs/heads/(.*?)\s+HEAD})&.to_a&.second
+      return if branch.blank? || branch == specs[:branch]
 
       problem "Use `branch: \"#{branch}\"` to specify the default branch"
     end

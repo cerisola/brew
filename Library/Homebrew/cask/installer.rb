@@ -7,7 +7,6 @@ require "utils/topological_hash"
 
 require "cask/config"
 require "cask/download"
-require "cask/staged"
 require "cask/quarantine"
 
 require "cgi"
@@ -20,14 +19,8 @@ module Cask
     extend T::Sig
 
     extend Predicable
-    # TODO: it is unwise for Cask::Staged to be a module, when we are
-    #       dealing with both staged and unstaged casks here. This should
-    #       either be a class which is only sometimes instantiated, or there
-    #       should be explicit checks on whether staged state is valid in
-    #       every method.
-    include Staged
 
-    def initialize(cask, command: SystemCommand, force: false,
+    def initialize(cask, command: SystemCommand, force: false, adopt: false,
                    skip_cask_deps: false, binaries: true, verbose: false,
                    zap: false, require_sha: false, upgrade: false,
                    installed_as_dependency: false, quarantine: true,
@@ -35,6 +28,7 @@ module Cask
       @cask = cask
       @command = command
       @force = force
+      @adopt = adopt
       @skip_cask_deps = skip_cask_deps
       @binaries = binaries
       @verbose = verbose
@@ -48,7 +42,7 @@ module Cask
       @quiet = quiet
     end
 
-    attr_predicate :binaries?, :force?, :skip_cask_deps?, :require_sha?,
+    attr_predicate :binaries?, :force?, :adopt?, :skip_cask_deps?, :require_sha?,
                    :reinstall?, :upgrade?, :verbose?, :zap?, :installed_as_dependency?,
                    :quarantine?, :quiet?
 
@@ -181,8 +175,9 @@ module Cask
 
     sig { params(quiet: T.nilable(T::Boolean), timeout: T.nilable(T.any(Integer, Float))).returns(Pathname) }
     def download(quiet: nil, timeout: nil)
-      @download ||= downloader.fetch(quiet: quiet, verify_download_integrity: @verify_download_integrity,
-                                     timeout: timeout)
+      # Store cask download path in cask to prevent multiple downloads in a row when checking if it's outdated
+      @cask.download ||= downloader.fetch(quiet: quiet, verify_download_integrity: @verify_download_integrity,
+                                          timeout: timeout)
     end
 
     def verify_has_sha
@@ -243,11 +238,12 @@ module Cask
 
         next if artifact.is_a?(Artifact::Binary) && !binaries?
 
-        artifact.install_phase(command: @command, verbose: verbose?, force: force?)
+        artifact.install_phase(command: @command, verbose: verbose?, adopt: adopt?, force: force?)
         already_installed_artifacts.unshift(artifact)
       end
 
       save_config_file
+      save_download_sha if @cask.version.latest?
     rescue => e
       begin
         already_installed_artifacts.each do |artifact|
@@ -353,6 +349,7 @@ module Cask
 
           Installer.new(
             cask_or_formula,
+            adopt:                   adopt?,
             binaries:                binaries?,
             verbose:                 verbose?,
             installed_as_dependency: true,
@@ -394,10 +391,17 @@ module Cask
       @cask.config_path.atomic_write(@cask.config.to_json)
     end
 
+    def save_download_sha
+      @cask.download_sha_path.atomic_write(@cask.new_download_sha) if @cask.checksumable?
+    end
+
     def uninstall
       oh1 "Uninstalling Cask #{Formatter.identifier(@cask)}"
       uninstall_artifacts(clear: true)
-      remove_config_file if !reinstall? && !upgrade?
+      if !reinstall? && !upgrade?
+        remove_download_sha
+        remove_config_file
+      end
       purge_versioned_files
       purge_caskroom_path if force?
     end
@@ -405,6 +409,10 @@ module Cask
     def remove_config_file
       FileUtils.rm_f @cask.config_path
       @cask.config_path.parent.rmdir_if_possible
+    end
+
+    def remove_download_sha
+      FileUtils.rm_f @cask.download_sha_path if @cask.download_sha_path.exist?
     end
 
     def start_upgrade
