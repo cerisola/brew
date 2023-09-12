@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require "utils/popen"
@@ -94,9 +93,9 @@ describe Utils do
     end
 
     it "raises an error if the command fails" do
-      expect {
+      expect do
         described_class.safe_popen_write("grep", "success") { |pipe| pipe.write "failure\n" }
-      }.to raise_error(ErrorDuringExecution)
+      end.to raise_error(ErrorDuringExecution)
       expect($CHILD_STATUS).to be_a_failure
     end
   end

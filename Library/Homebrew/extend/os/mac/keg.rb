@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 class Keg
@@ -28,7 +28,11 @@ class Keg
 
   def codesign_patched_binary(file)
     return if MacOS.version < :big_sur
-    return unless Hardware::CPU.arm?
+
+    unless Hardware::CPU.arm?
+      result = system_command("codesign", args: ["--verify", file], print_stderr: false)
+      return unless result.stderr.match?(/invalid signature/i)
+    end
 
     odebug "Codesigning #{file}"
     prepare_codesign_writable_files(file) do
@@ -108,7 +112,7 @@ class Keg
   # Needed to make symlink permissions consistent on macOS and Linux for
   # reproducible bottles.
   def consistent_reproducible_symlink_permissions!
-    find do |file|
+    path.find do |file|
       File.lchmod 0777, file if file.symlink?
     end
   end

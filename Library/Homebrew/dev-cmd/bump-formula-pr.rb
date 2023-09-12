@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "formula"
@@ -7,8 +7,6 @@ require "utils/pypi"
 require "utils/tar"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -87,7 +85,7 @@ module Homebrew
       conflicts "--no-audit", "--online"
       conflicts "--url", "--tag"
 
-      named_args :formula, max: 1
+      named_args :formula, max: 1, without_api: true
     end
   end
 
@@ -119,11 +117,11 @@ module Homebrew
 
     # This will be run by `brew audit` later so run it first to not start
     # spamming during normal output.
-    Homebrew.install_bundler_gems!
+    Homebrew.install_bundler_gems! unless args.no_audit?
 
-    tap_remote_repo = formula.tap.remote_repo
+    tap_remote_repo = formula.tap.full_name || formula.tap.remote_repo
     remote = "origin"
-    remote_branch = formula.tap.path.git_origin_branch
+    remote_branch = formula.tap.git_repo.origin_branch_name
     previous_branch = "-"
 
     check_open_pull_requests(formula, tap_remote_repo, args: args)
@@ -160,7 +158,7 @@ module Homebrew
       false
     elsif old_hash.blank?
       if new_tag.blank? && new_version.blank? && new_revision.blank?
-        raise UsageError, "#{formula}: no --tag= or --version= argument specified!"
+        raise UsageError, "#{formula}: no `--tag` or `--version` argument specified!"
       end
 
       if old_tag.present?
@@ -172,7 +170,7 @@ module Homebrew
           EOS
         end
         check_new_version(formula, tap_remote_repo, url: old_url, tag: new_tag, args: args) if new_version.blank?
-        resource_path, forced_version = fetch_resource(formula, new_version, old_url, tag: new_tag)
+        resource_path, forced_version = fetch_resource_and_forced_version(formula, new_version, old_url, tag: new_tag)
         new_revision = Utils.popen_read("git", "-C", resource_path.to_s, "rev-parse", "-q", "--verify", "HEAD")
         new_revision = new_revision.strip
       elsif new_revision.blank?
@@ -180,7 +178,7 @@ module Homebrew
       end
       false
     elsif new_url.blank? && new_version.blank?
-      raise UsageError, "#{formula}: no --url= or --version= argument specified!"
+      raise UsageError, "#{formula}: no `--url` or `--version` argument specified!"
     else
       new_url ||= PyPI.update_pypi_url(old_url, new_version)
       if new_url.blank?
@@ -199,7 +197,7 @@ module Homebrew
         EOS
       end
       check_new_version(formula, tap_remote_repo, url: new_url, args: args) if new_version.blank?
-      resource_path, forced_version = fetch_resource(formula, new_version, new_url)
+      resource_path, forced_version = fetch_resource_and_forced_version(formula, new_version, new_url)
       Utils::Tar.validate_file(resource_path)
       new_hash = resource_path.sha256
     end
@@ -327,7 +325,7 @@ module Homebrew
 
     unless args.dry_run?
       resources_checked = PyPI.update_python_resources! formula,
-                                                        version:                  new_formula_version,
+                                                        version:                  new_formula_version.to_s,
                                                         package_name:             args.python_package_name,
                                                         extra_packages:           args.python_extra_packages,
                                                         exclude_packages:         args.python_exclude_packages,
@@ -342,8 +340,30 @@ module Homebrew
       pr_message += <<~EOS
 
 
-        `resource` blocks may require updates.
+        - [ ] `resource` blocks have been checked for updates.
       EOS
+    end
+
+    if new_url =~ %r{^https://github\.com/([\w-]+)/([\w-]+)/archive/refs/tags/(v?[.0-9]+)\.tar\.}
+      owner = Regexp.last_match(1)
+      repo = Regexp.last_match(2)
+      tag = Regexp.last_match(3)
+      github_release_data = begin
+        GitHub::API.open_rest("#{GitHub::API_URL}/repos/#{owner}/#{repo}/releases/tags/#{tag}")
+      rescue GitHub::API::HTTPNotFoundError
+        # If this is a 404: we can't do anything.
+        nil
+      end
+
+      if github_release_data.present?
+        pre = "pre" if github_release_data["prerelease"].present?
+        pr_message += <<~XML
+          <details>
+            <summary>#{pre}release notes</summary>
+            <pre>#{github_release_data["body"]}</pre>
+          </details>
+        XML
+      end
     end
 
     pr_info = {
@@ -388,12 +408,12 @@ module Homebrew
     end
   end
 
-  def fetch_resource(formula, new_version, url, **specs)
+  def fetch_resource_and_forced_version(formula, new_version, url, **specs)
     resource = Resource.new
     resource.url(url, specs)
     resource.owner = Resource.new(formula.name)
     forced_version = new_version && new_version != resource.version.to_s
-    resource.version = new_version if forced_version
+    resource.version(new_version) if forced_version
     odie "Couldn't identify version, specify it using `--version=`." if resource.version.blank?
     [resource.fetch, forced_version]
   end
@@ -454,7 +474,7 @@ module Homebrew
     name, old_alias_version = versioned_alias.split("@")
     new_alias_regex = (old_alias_version.split(".").length == 1) ? /^\d+/ : /^\d+\.\d+/
     new_alias_version, = *new_formula_version.to_s.match(new_alias_regex)
-    return if Version.create(new_alias_version) <= Version.create(old_alias_version)
+    return if Version.new(new_alias_version) <= Version.new(old_alias_version)
 
     [versioned_alias, "#{name}@#{new_alias_version}"]
   end

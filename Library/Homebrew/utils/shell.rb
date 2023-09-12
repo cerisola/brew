@@ -3,8 +3,6 @@
 
 module Utils
   module Shell
-    extend T::Sig
-
     module_function
 
     # Take a path and heuristically convert it to a shell name,
@@ -18,9 +16,14 @@ module Utils
       shell_name.to_sym if %w[bash csh fish ksh mksh sh tcsh zsh].include?(shell_name)
     end
 
+    sig { params(default: String).returns(String) }
+    def preferred_path(default: "")
+      ENV.fetch("SHELL", default)
+    end
+
     sig { returns(T.nilable(Symbol)) }
     def preferred
-      from_path(ENV.fetch("SHELL", ""))
+      from_path(preferred_path)
     end
 
     sig { returns(T.nilable(Symbol)) }

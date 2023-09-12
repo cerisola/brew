@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require "completions"
@@ -200,7 +199,7 @@ describe Homebrew::Completions do
           "--force"       => "Always do a slower, full update check (even if unnecessary).",
           "--help"        => "Show this message.",
           "--merge"       => "Use `git merge` to apply updates (rather than `git rebase`).",
-          "--quiet"       => "Make some output more quiet",
+          "--quiet"       => "Make some output more quiet.",
           "--verbose"     => "Print the directories checked and `git` operations performed.",
         }
         expect(described_class.command_options("update")).to eq expected_options
@@ -208,9 +207,9 @@ describe Homebrew::Completions do
 
       it "handles --[no]- options correctly" do
         options = described_class.command_options("audit")
-        expect(options.key?("--appcast")).to be true
-        expect(options.key?("--no-appcast")).to be true
-        expect(options["--appcast"] == options["--no-appcast"]).to be true
+        expect(options.key?("--signing")).to be true
+        expect(options.key?("--no-signing")).to be true
+        expect(options["--signing"] == options["--no-signing"]).to be true
       end
 
       it "return an empty array if command is not found" do
@@ -223,7 +222,7 @@ describe Homebrew::Completions do
 
       it "will override global options with local descriptions" do
         options = described_class.command_options("upgrade")
-        expect(options["--verbose"]).to eq "Print the verification and postinstall steps."
+        expect(options["--verbose"]).to eq "Print the verification and post-install steps."
       end
     end
 
@@ -262,7 +261,7 @@ describe Homebrew::Completions do
                 "
                 return
                 ;;
-              *)
+              *) ;;
             esac
             __brew_complete_formulae
           }
@@ -287,7 +286,7 @@ describe Homebrew::Completions do
                 "
                 return
                 ;;
-              *)
+              *) ;;
             esac
           }
         COMPLETION

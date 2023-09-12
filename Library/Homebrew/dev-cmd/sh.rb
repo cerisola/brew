@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "extend/ENV"
@@ -6,8 +6,6 @@ require "formula"
 require "cli/parser"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -38,10 +36,12 @@ module Homebrew
     ENV.setup_build_environment
     if superenv?(args.env)
       # superenv stopped adding brew's bin but generally users will want it
-      ENV["PATH"] = PATH.new(ENV.fetch("PATH")).insert(1, HOMEBREW_PREFIX/"bin")
+      ENV["PATH"] = PATH.new(ENV.fetch("PATH")).insert(1, HOMEBREW_PREFIX/"bin").to_s
     end
 
     ENV["VERBOSE"] = "1" if args.verbose?
+
+    preferred_shell = Utils::Shell.preferred_path(default: "/bin/bash")
 
     if args.cmd.present?
       safe_system(preferred_shell, "-c", args.cmd)

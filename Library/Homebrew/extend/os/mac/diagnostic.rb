@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 module Homebrew
@@ -206,7 +206,6 @@ module Homebrew
 
       def check_ruby_version
         return if RUBY_VERSION == HOMEBREW_REQUIRED_RUBY_VERSION
-        return if RUBY_VERSION == "2.6.10" # TODO: require 2.6.10
         return if Homebrew::EnvConfig.developer? && OS::Mac.version.prerelease?
 
         <<~EOS
@@ -344,7 +343,7 @@ module Homebrew
           nil
         end
         if libiconv&.linked_keg&.directory?
-          unless libiconv.keg_only?
+          unless libiconv&.keg_only?
             <<~EOS
               A libiconv formula is installed and linked.
               This will break stuff. For serious. Unlink it.
@@ -379,7 +378,7 @@ module Homebrew
             real_tmp = tmp.realpath.parent
             where_tmp = volumes.which real_tmp
           ensure
-            Dir.delete tmp
+            Dir.delete tmp.to_s
           end
         rescue
           return
@@ -446,7 +445,7 @@ module Homebrew
           path_version = sdk.path.basename.to_s[MacOS::SDK::VERSIONED_SDK_REGEX, 1]
           next true if path_version.blank?
 
-          sdk.version == MacOS::Version.new(path_version).strip_patch
+          sdk.version == MacOSVersion.new(path_version).strip_patch
         end
 
         if locator.source == :clt

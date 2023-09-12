@@ -1,14 +1,12 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "metafiles"
 require "formula"
 require "cli/parser"
-require "cask/cmd"
+require "cask/list"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -16,7 +14,6 @@ module Homebrew
     Homebrew::CLI::Parser.new do
       description <<~EOS
         List all installed formulae and casks.
-
         If <formula> is provided, summarise the paths within its current keg.
         If <cask> is provided, list its artifacts.
       EOS
@@ -164,7 +161,7 @@ module Homebrew
     end
     return if casks.blank?
 
-    Cask::Cmd::List.list_casks(
+    Cask::List.list_casks(
       *casks,
       one:       args.public_send(:"1?"),
       full_name: args.full_name?,
@@ -211,8 +208,8 @@ class PrettyListing
       elsif block_given? && yield(pn)
         puts pn
         other = "other "
-      else
-        remaining_root_files << pn unless pn.basename.to_s == ".DS_Store"
+      elsif pn.basename.to_s != ".DS_Store"
+        remaining_root_files << pn
       end
     end
 

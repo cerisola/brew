@@ -3,24 +3,19 @@
 
 require "cask/artifact/abstract_artifact"
 
-require "extend/hash_validator"
-using HashValidator
-
 module Cask
   module Artifact
     # Superclass for all artifacts which have a source and a target location.
     #
     # @api private
     class Relocated < AbstractArtifact
-      extend T::Sig
-
       def self.from_args(cask, *args)
         source_string, target_hash = args
 
         if target_hash
           raise CaskInvalidError unless target_hash.respond_to?(:keys)
 
-          target_hash.assert_valid_keys!(:target)
+          target_hash.assert_valid_keys(:target)
         end
 
         target_hash ||= {}
@@ -69,7 +64,7 @@ module Cask
         end
       end
 
-      sig { returns(String) }
+      sig { override.returns(String) }
       def summarize
         target_string = @target_string.empty? ? "" : " -> #{@target_string}"
         "#{@source_string}#{target_string}"

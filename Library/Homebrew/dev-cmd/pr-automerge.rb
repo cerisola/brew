@@ -1,12 +1,10 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "cli/parser"
 require "utils/github"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -23,11 +21,15 @@ module Homebrew
              description: "Pull requests must have this label."
       comma_array "--without-labels",
                   description: "Pull requests must not have these labels (default: " \
-                               "`do not merge`, `new formula`, `automerge-skip`)."
+                               "`do not merge`, `new formula`, `automerge-skip`, " \
+                               "`pre-release`, `CI-published-bottle-commits`)."
       switch "--without-approval",
              description: "Pull requests do not require approval to be merged."
       switch "--publish",
              description: "Run `brew pr-publish` on matching pull requests."
+      switch "--autosquash",
+             description: "Instruct `brew pr-publish` to automatically reformat and reword commits " \
+                          "in the pull request to the preferred format."
       switch "--no-autosquash",
              description: "Instruct `brew pr-publish` to skip automatically reformatting and rewording commits " \
                           "in the pull request to the preferred format."
@@ -41,10 +43,14 @@ module Homebrew
   def pr_automerge
     args = pr_automerge_args.parse
 
+    odeprecated "`brew pr-publish --no-autosquash`" if args.no_autosquash?
+
     without_labels = args.without_labels || [
       "do not merge",
       "new formula",
       "automerge-skip",
+      "pre-release",
+      "CI-published-bottle-commits",
     ]
     tap = Tap.fetch(args.tap || CoreTap.instance.name)
 
@@ -61,7 +67,7 @@ module Homebrew
       return
     end
 
-    ohai "#{prs.count} matching pull #{"request".pluralize(prs.count)}:"
+    ohai "#{prs.count} matching pull #{Utils.pluralize("request", prs.count)}:"
     pr_urls = []
     prs.each do |pr|
       puts "#{tap.full_name unless tap.core_tap?}##{pr["number"]}: #{pr["title"]}"
@@ -71,7 +77,7 @@ module Homebrew
     publish_args = ["pr-publish"]
     publish_args << "--tap=#{tap}" if tap
     publish_args << "--workflow=#{args.workflow}" if args.workflow
-    publish_args << "--no-autosquash" if args.no_autosquash?
+    publish_args << "--autosquash" if args.autosquash?
     if args.publish?
       safe_system HOMEBREW_BREW_FILE, *publish_args, *pr_urls
     else

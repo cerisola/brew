@@ -1,20 +1,15 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "formula"
 require "keg"
 require "cli/parser"
-require "cask/cmd"
 require "cask/caskroom"
 require "api"
 
 module Homebrew
-  extend T::Sig
-
-  module_function
-
   sig { returns(CLI::Parser) }
-  def outdated_args
+  def self.outdated_args
     Homebrew::CLI::Parser.new do
       description <<~EOS
         List installed casks and formulae that have an updated version available. By default, version
@@ -36,7 +31,7 @@ module Homebrew
              description: "Fetch the upstream repository to detect if the HEAD installation of the " \
                           "formula is outdated. Otherwise, the repository's HEAD will only be checked for " \
                           "updates when a new stable or development version has been released."
-      switch "--greedy",
+      switch "-g", "--greedy",
              description: "Also include outdated casks with `auto_updates true` or `version :latest`."
 
       switch "--greedy-latest",
@@ -52,7 +47,7 @@ module Homebrew
     end
   end
 
-  def outdated
+  def self.outdated
     args = outdated_args.parse
 
     case json_version(args.json)
@@ -90,7 +85,7 @@ module Homebrew
     Homebrew.failed = args.named.present? && outdated.present?
   end
 
-  def print_outdated(formulae_or_casks, args:)
+  def self.print_outdated(formulae_or_casks, args:)
     formulae_or_casks.each do |formula_or_cask|
       if formula_or_cask.is_a?(Formula)
         f = formula_or_cask
@@ -128,7 +123,7 @@ module Homebrew
     end
   end
 
-  def json_info(formulae_or_casks, args:)
+  def self.json_info(formulae_or_casks, args:)
     formulae_or_casks.map do |formula_or_cask|
       if formula_or_cask.is_a?(Formula)
         f = formula_or_cask
@@ -153,11 +148,11 @@ module Homebrew
     end
   end
 
-  def verbose?
+  def self.verbose?
     ($stdout.tty? || super) && !quiet?
   end
 
-  def json_version(version)
+  def self.json_version(version)
     version_hash = {
       nil  => nil,
       true => :default,
@@ -170,11 +165,11 @@ module Homebrew
     version_hash[version]
   end
 
-  def outdated_formulae(args:)
+  def self.outdated_formulae(args:)
     select_outdated((args.named.to_resolved_formulae.presence || Formula.installed), args: args).sort
   end
 
-  def outdated_casks(args:)
+  def self.outdated_casks(args:)
     if args.named.present?
       select_outdated(args.named.to_casks, args: args)
     else
@@ -182,7 +177,7 @@ module Homebrew
     end
   end
 
-  def outdated_formulae_casks(args:)
+  def self.outdated_formulae_casks(args:)
     formulae, casks = args.named.to_resolved_formulae_to_casks
 
     if formulae.blank? && casks.blank?
@@ -193,7 +188,7 @@ module Homebrew
     [select_outdated(formulae, args: args).sort, select_outdated(casks, args: args)]
   end
 
-  def select_outdated(formulae_or_casks, args:)
+  def self.select_outdated(formulae_or_casks, args:)
     formulae_or_casks.select do |formula_or_cask|
       if formula_or_cask.is_a?(Formula)
         formula_or_cask.outdated?(fetch_head: args.fetch_HEAD?)

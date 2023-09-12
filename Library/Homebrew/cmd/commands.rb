@@ -1,11 +1,9 @@
-# typed: false
+# typed: strict
 # frozen_string_literal: true
 
 require "cli/parser"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -24,6 +22,7 @@ module Homebrew
     end
   end
 
+  sig { void }
   def commands
     args = commands_args.parse
 
@@ -32,7 +31,7 @@ module Homebrew
       return
     end
 
-    prepend_separator = false
+    prepend_separator = T.let(false, T::Boolean)
 
     {
       "Built-in commands"           => Commands.internal_commands,

@@ -12,12 +12,10 @@ require "build_environment"
 #
 # @api private
 class Requirement
-  extend T::Sig
-
   include Dependable
   extend Cachable
 
-  attr_reader :tags, :name, :cask, :download
+  attr_reader :name, :cask, :download
 
   def initialize(tags = [])
     # Only allow instances of subclasses. This base class enforces no constraints on its own.
@@ -164,8 +162,6 @@ class Requirement
   end
 
   class << self
-    extend T::Sig
-
     include BuildEnvironment::DSL
 
     attr_reader :env_proc, :build
@@ -223,7 +219,7 @@ class Requirement
     # `[dependent, req]` pairs to allow callers to apply arbitrary filters to
     # the list.
     # The default filter, which is applied when a block is not given, omits
-    # optionals and recommendeds based on what the dependent has asked for.
+    # optionals and recommends based on what the dependent has asked for.
     def expand(dependent, cache_key: nil, &block)
       if cache_key.present?
         cache[cache_key] ||= {}
@@ -243,7 +239,13 @@ class Requirement
         end
       end
 
-      cache[cache_key][cache_id dependent] = reqs.dup if cache_key.present?
+      if cache_key.present?
+        # Even though we setup the cache above
+        # 'dependent.recursive_dependencies.map(&:to_formula)'
+        # is invalidating the singleton cache
+        cache[cache_key] ||= {}
+        cache[cache_key][cache_id dependent] = reqs.dup
+      end
       reqs
     end
 

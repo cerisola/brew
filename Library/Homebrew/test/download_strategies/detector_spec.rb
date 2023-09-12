@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require "download_strategy"
@@ -27,9 +26,9 @@ describe DownloadStrategyDetector do
     end
 
     it "raises an error when passed an unrecognized strategy" do
-      expect {
+      expect do
         described_class.detect("foo", Class.new)
-      }.to raise_error(TypeError)
+      end.to raise_error(TypeError)
     end
   end
 end

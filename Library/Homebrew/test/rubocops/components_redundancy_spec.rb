@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require "rubocops/components_redundancy"
@@ -11,7 +10,7 @@ describe RuboCop::Cop::FormulaAudit::ComponentsRedundancy do
       expect_offense(<<~RUBY)
         class Foo < Formula
           url "https://brew.sh/foo-1.0.tgz"
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `url` should be put inside `stable` block
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/ComponentsRedundancy: `url` should be put inside `stable` block
           stable do
             # stuff
           end
@@ -28,7 +27,7 @@ describe RuboCop::Cop::FormulaAudit::ComponentsRedundancy do
         class Foo < Formula
           head "https://brew.sh/foo.git"
           head do
-          ^^^^^^^ `head` and `head do` should not be simultaneously present
+          ^^^^^^^ FormulaAudit/ComponentsRedundancy: `head` and `head do` should not be simultaneously present
             # stuff
           end
         end
@@ -40,7 +39,7 @@ describe RuboCop::Cop::FormulaAudit::ComponentsRedundancy do
         class Foo < Formula
           url "https://brew.sh/foo-1.0.tgz"
           bottle do
-          ^^^^^^^^^ `bottle :modifier` and `bottle do` should not be simultaneously present
+          ^^^^^^^^^ FormulaAudit/ComponentsRedundancy: `bottle :modifier` and `bottle do` should not be simultaneously present
             # bottles go here
           end
           bottle :unneeded

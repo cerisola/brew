@@ -10,9 +10,13 @@ module Homebrew
   #
   # @api private
   module Completions
-    extend T::Sig
-
-    module_function
+    Variables = Struct.new(
+      :aliases,
+      :builtin_command_descriptions,
+      :completion_functions,
+      :function_mappings,
+      keyword_init: true,
+    )
 
     COMPLETIONS_DIR = (HOMEBREW_REPOSITORY/"completions").freeze
     TEMPLATE_DIR = (HOMEBREW_LIBRARY_PATH/"completions").freeze
@@ -34,7 +38,7 @@ module Homebrew
       tap:               "__brew_complete_tapped",
       installed_tap:     "__brew_complete_tapped",
       command:           "__brew_complete_commands",
-      diagnostic_check:  '__brewcomp "$(brew doctor --list-checks)"',
+      diagnostic_check:  '__brewcomp "${__HOMEBREW_DOCTOR_CHECKS=$(brew doctor --list-checks)}"',
       file:              "__brew_complete_files",
     }.freeze
 
@@ -66,7 +70,7 @@ module Homebrew
     }.freeze
 
     sig { void }
-    def link!
+    def self.link!
       Settings.write :linkcompletions, true
       Tap.each do |tap|
         Utils::Link.link_completions tap.path, "brew completions link"
@@ -74,7 +78,7 @@ module Homebrew
     end
 
     sig { void }
-    def unlink!
+    def self.unlink!
       Settings.write :linkcompletions, false
       Tap.each do |tap|
         next if tap.official?
@@ -84,12 +88,12 @@ module Homebrew
     end
 
     sig { returns(T::Boolean) }
-    def link_completions?
+    def self.link_completions?
       Settings.read(:linkcompletions) == "true"
     end
 
     sig { returns(T::Boolean) }
-    def completions_to_link?
+    def self.completions_to_link?
       Tap.each do |tap|
         next if tap.official?
 
@@ -102,7 +106,7 @@ module Homebrew
     end
 
     sig { void }
-    def show_completions_message_if_needed
+    def self.show_completions_message_if_needed
       return if Settings.read(:completionsmessageshown) == "true"
       return unless completions_to_link?
 
@@ -117,7 +121,7 @@ module Homebrew
     end
 
     sig { void }
-    def update_shell_completions!
+    def self.update_shell_completions!
       commands = Commands.commands(external: false, aliases: true).sort
 
       puts "Writing completions to #{COMPLETIONS_DIR}"
@@ -128,12 +132,12 @@ module Homebrew
     end
 
     sig { params(command: String).returns(T::Boolean) }
-    def command_gets_completions?(command)
+    def self.command_gets_completions?(command)
       command_options(command).any?
     end
 
     sig { params(description: String, fish: T::Boolean).returns(String) }
-    def format_description(description, fish: false)
+    def self.format_description(description, fish: false)
       description = if fish
         description.gsub("'", "\\\\'")
       else
@@ -143,7 +147,7 @@ module Homebrew
     end
 
     sig { params(command: String).returns(T::Hash[String, String]) }
-    def command_options(command)
+    def self.command_options(command)
       options = {}
       Commands.command_options(command)&.each do |option|
         next if option.blank?
@@ -161,7 +165,7 @@ module Homebrew
     end
 
     sig { params(command: String).returns(T.nilable(String)) }
-    def generate_bash_subcommand_completion(command)
+    def self.generate_bash_subcommand_completion(command)
       return unless command_gets_completions? command
 
       named_completion_string = ""
@@ -187,31 +191,30 @@ module Homebrew
               "
               return
               ;;
-            *)
+            *) ;;
           esac#{named_completion_string}
         }
       COMPLETION
     end
 
     sig { params(commands: T::Array[String]).returns(String) }
-    def generate_bash_completion_file(commands)
-      variables = OpenStruct.new
+    def self.generate_bash_completion_file(commands)
+      variables = Variables.new(
+        completion_functions: commands.map do |command|
+          generate_bash_subcommand_completion command
+        end.compact,
+        function_mappings:    commands.map do |command|
+          next unless command_gets_completions? command
 
-      variables[:completion_functions] = commands.map do |command|
-        generate_bash_subcommand_completion command
-      end.compact
-
-      variables[:function_mappings] = commands.map do |command|
-        next unless command_gets_completions? command
-
-        "#{command}) _brew_#{Commands.method_name command} ;;"
-      end.compact
+          "#{command}) _brew_#{Commands.method_name command} ;;"
+        end.compact,
+      )
 
       ERB.new((TEMPLATE_DIR/"bash.erb").read, trim_mode: ">").result(variables.instance_eval { binding })
     end
 
     sig { params(command: String).returns(T.nilable(String)) }
-    def generate_zsh_subcommand_completion(command)
+    def self.generate_zsh_subcommand_completion(command)
       return unless command_gets_completions? command
 
       options = command_options(command)
@@ -263,7 +266,7 @@ module Homebrew
       COMPLETION
     end
 
-    def generate_zsh_option_exclusions(command, option)
+    def self.generate_zsh_option_exclusions(command, option)
       conflicts = Commands.option_conflicts(command, option.gsub(/^--/, ""))
       return "" unless conflicts.presence
 
@@ -271,34 +274,34 @@ module Homebrew
     end
 
     sig { params(commands: T::Array[String]).returns(String) }
-    def generate_zsh_completion_file(commands)
-      variables = OpenStruct.new
+    def self.generate_zsh_completion_file(commands)
+      variables = Variables.new(
+        aliases:                      Commands::HOMEBREW_INTERNAL_COMMAND_ALIASES.map do |alias_command, command|
+          alias_command = "'#{alias_command}'" if alias_command.start_with? "-"
+          command = "'#{command}'" if command.start_with? "-"
+          "#{alias_command} #{command}"
+        end.compact,
 
-      variables[:aliases] = Commands::HOMEBREW_INTERNAL_COMMAND_ALIASES.map do |alias_command, command|
-        alias_command = "'#{alias_command}'" if alias_command.start_with? "-"
-        command = "'#{command}'" if command.start_with? "-"
-        "#{alias_command} #{command}"
-      end.compact
+        builtin_command_descriptions: commands.map do |command|
+          next if Commands::HOMEBREW_INTERNAL_COMMAND_ALIASES.key? command
 
-      variables[:builtin_command_descriptions] = commands.map do |command|
-        next if Commands::HOMEBREW_INTERNAL_COMMAND_ALIASES.key? command
+          description = Commands.command_description(command, short: true)
+          next if description.blank?
 
-        description = Commands.command_description(command, short: true)
-        next if description.blank?
+          description = format_description description
+          "'#{command}:#{description}'"
+        end.compact,
 
-        description = format_description description
-        "'#{command}:#{description}'"
-      end.compact
-
-      variables[:completion_functions] = commands.map do |command|
-        generate_zsh_subcommand_completion command
-      end.compact
+        completion_functions:         commands.map do |command|
+          generate_zsh_subcommand_completion command
+        end.compact,
+      )
 
       ERB.new((TEMPLATE_DIR/"zsh.erb").read, trim_mode: ">").result(variables.instance_eval { binding })
     end
 
     sig { params(command: String).returns(T.nilable(String)) }
-    def generate_fish_subcommand_completion(command)
+    def self.generate_fish_subcommand_completion(command)
       return unless command_gets_completions? command
 
       command_description = format_description Commands.command_description(command, short: true), fish: true
@@ -345,12 +348,12 @@ module Homebrew
     end
 
     sig { params(commands: T::Array[String]).returns(String) }
-    def generate_fish_completion_file(commands)
-      variables = OpenStruct.new
-
-      variables[:completion_functions] = commands.map do |command|
-        generate_fish_subcommand_completion command
-      end.compact
+    def self.generate_fish_completion_file(commands)
+      variables = Variables.new(
+        completion_functions: commands.map do |command|
+          generate_fish_subcommand_completion command
+        end.compact,
+      )
 
       ERB.new((TEMPLATE_DIR/"fish.erb").read, trim_mode: ">").result(variables.instance_eval { binding })
     end

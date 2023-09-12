@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require "rubocops/text"
@@ -13,7 +12,7 @@ describe RuboCop::Cop::FormulaAuditStrict::Text do
           url "https://brew.sh/foo-1.0.tgz"
 
           env :userpaths
-          ^^^^^^^^^^^^^^ `env :userpaths` in homebrew/core formulae is deprecated
+          ^^^^^^^^^^^^^^ FormulaAuditStrict/Text: `env :userpaths` in homebrew/core formulae is deprecated
         end
       RUBY
     end
@@ -24,7 +23,7 @@ describe RuboCop::Cop::FormulaAuditStrict::Text do
           url "https://brew.sh/foo-1.0.tgz"
 
           env :std
-          ^^^^^^^^ `env :std` in homebrew/core formulae is deprecated
+          ^^^^^^^^ FormulaAuditStrict/Text: `env :std` in homebrew/core formulae is deprecated
         end
       RUBY
     end
@@ -34,7 +33,7 @@ describe RuboCop::Cop::FormulaAuditStrict::Text do
         class Foo < Formula
           def install
             ohai "\#{share}/foo"
-                 ^^^^^^^^^^^^^^ Use `\#{pkgshare}` instead of `\#{share}/foo`
+                 ^^^^^^^^^^^^^^ FormulaAuditStrict/Text: Use `\#{pkgshare}` instead of `\#{share}/foo`
           end
         end
       RUBY
@@ -43,7 +42,7 @@ describe RuboCop::Cop::FormulaAuditStrict::Text do
         class Foo < Formula
           def install
             ohai "\#{share}/foo/bar"
-                 ^^^^^^^^^^^^^^^^^^ Use `\#{pkgshare}` instead of `\#{share}/foo`
+                 ^^^^^^^^^^^^^^^^^^ FormulaAuditStrict/Text: Use `\#{pkgshare}` instead of `\#{share}/foo`
           end
         end
       RUBY
@@ -52,7 +51,7 @@ describe RuboCop::Cop::FormulaAuditStrict::Text do
         class Foolibcxx < Formula
           def install
             ohai "\#{share}/foolibc++"
-                 ^^^^^^^^^^^^^^^^^^^^ Use `\#{pkgshare}` instead of `\#{share}/foolibc++`
+                 ^^^^^^^^^^^^^^^^^^^^ FormulaAuditStrict/Text: Use `\#{pkgshare}` instead of `\#{share}/foolibc++`
           end
         end
       RUBY
@@ -63,7 +62,7 @@ describe RuboCop::Cop::FormulaAuditStrict::Text do
         class Foo < Formula
           def install
             ohai share/"foo"
-                 ^^^^^^^^^^^ Use `pkgshare` instead of `share/"foo"`
+                 ^^^^^^^^^^^ FormulaAuditStrict/Text: Use `pkgshare` instead of `share/"foo"`
           end
         end
       RUBY
@@ -72,7 +71,7 @@ describe RuboCop::Cop::FormulaAuditStrict::Text do
         class Foo < Formula
           def install
             ohai share/"foo/bar"
-                 ^^^^^^^^^^^^^^^ Use `pkgshare` instead of `share/"foo"`
+                 ^^^^^^^^^^^^^^^ FormulaAuditStrict/Text: Use `pkgshare` instead of `share/"foo"`
           end
         end
       RUBY
@@ -81,7 +80,7 @@ describe RuboCop::Cop::FormulaAuditStrict::Text do
         class Foolibcxx < Formula
           def install
             ohai share/"foolibc++"
-                 ^^^^^^^^^^^^^^^^^ Use `pkgshare` instead of `share/"foolibc++"`
+                 ^^^^^^^^^^^^^^^^^ FormulaAuditStrict/Text: Use `pkgshare` instead of `share/"foolibc++"`
           end
         end
       RUBY
@@ -123,7 +122,7 @@ describe RuboCop::Cop::FormulaAuditStrict::Text do
       RUBY
     end
 
-    it %Q(reports no offenses if formula name appears afer "\#{share}/<directory name>") do
+    it %Q(reports no offenses if formula name appears after "\#{share}/<directory name>") do
       expect_no_offenses(<<~RUBY, "/homebrew-core/Formula/foo.rb")
         class Foo < Formula
           def install

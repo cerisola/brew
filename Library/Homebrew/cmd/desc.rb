@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "descriptions"
@@ -7,8 +7,6 @@ require "description_cache_store"
 require "cli/parser"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -29,7 +27,7 @@ module Homebrew
                           "it is interpreted as a regular expression."
       switch "--eval-all",
              description: "Evaluate all available formulae and casks, whether installed or not, to search their " \
-                          "descriptions. Implied if HOMEBREW_EVAL_ALL is set."
+                          "descriptions. Implied if `HOMEBREW_EVAL_ALL` is set."
       switch "--formula", "--formulae",
              description: "Treat all named arguments as formulae."
       switch "--cask", "--casks",
@@ -45,7 +43,7 @@ module Homebrew
     args = desc_args.parse
 
     if !args.eval_all? && !Homebrew::EnvConfig.eval_all?
-      odeprecated "brew desc", "brew desc --eval-all or HOMEBREW_EVAL_ALL"
+      raise UsageError, "`brew desc` needs `--eval-all` passed or `HOMEBREW_EVAL_ALL` set!"
     end
 
     search_type = if args.search?

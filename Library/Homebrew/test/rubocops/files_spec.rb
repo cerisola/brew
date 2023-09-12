@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require "rubocops/files"
@@ -14,7 +13,7 @@ describe RuboCop::Cop::FormulaAudit::Files do
 
         expect_offense(<<~RUBY, file)
           class Foo < Formula
-          ^^^^^^^^^^^^^^^^^^^ Incorrect file permissions (000): chmod +r #{filename}
+          ^^^^^^^^^^^^^^^^^^^ FormulaAudit/Files: Incorrect file permissions (000): chmod +r #{filename}
             url "https://brew.sh/foo-1.0.tgz"
           end
         RUBY

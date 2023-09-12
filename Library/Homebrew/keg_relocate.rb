@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 class Keg
@@ -12,8 +12,6 @@ class Keg
   NULL_BYTE_STRING = "\\x00"
 
   class Relocation
-    extend T::Sig
-
     RELOCATABLE_PATH_REGEX_PREFIX = /(?:(?<=-F|-I|-L|-isystem)|(?<![a-zA-Z0-9]))/.freeze
 
     def initialize
@@ -36,7 +34,7 @@ class Keg
       @replacement_map.fetch(key)
     end
 
-    sig { params(text: String).void }
+    sig { params(text: String).returns(T::Boolean) }
     def replace_text(text)
       replacements = @replacement_map.values.to_h
 
@@ -44,12 +42,12 @@ class Keg
         key.is_a?(String) ? key.length : 999
       end.reverse
 
-      any_changed = false
+      any_changed = T.let(nil, T.nilable(String))
       sorted_keys.each do |key|
         changed = text.gsub!(key, replacements[key])
         any_changed ||= changed
       end
-      any_changed
+      !any_changed.nil?
     end
 
     sig { params(path: T.any(String, Regexp)).returns(Regexp) }
@@ -144,7 +142,7 @@ class Keg
   def replace_text_in_files(relocation, files: nil)
     files ||= text_files | libtool_files
 
-    changed_files = []
+    changed_files = T.let([], Array)
     files.map(&path.method(:join)).group_by { |f| f.stat.ino }.each_value do |first, *rest|
       s = first.open("rb", &:read)
 
@@ -179,11 +177,11 @@ class Keg
         binary = File.binread file
         odebug "Replacing build prefix in: #{file}"
         binary_strings = binary.split(/#{NULL_BYTE}/o, -1)
-        match_indices = binary_strings.each_index.select { |i| binary_strings[i].include?(old_prefix) }
+        match_indices = binary_strings.each_index.select { |i| binary_strings.fetch(i).include?(old_prefix) }
 
         # Only perform substitution on strings which match prefix regex.
         match_indices.each do |i|
-          s = binary_strings[i]
+          s = binary_strings.fetch(i)
           binary_strings[i] = s.gsub(old_prefix, new_prefix)
                                .ljust(s.size, NULL_BYTE)
         end

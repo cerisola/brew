@@ -4,8 +4,6 @@
 require "cli/parser"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -40,7 +38,7 @@ module Homebrew
     case args.named.first
     when nil, "state"
       if env_vars.any?
-        puts "Developer mode is enabled because #{env_vars.to_sentence} #{"is".pluralize(env_vars.count)} set."
+        puts "Developer mode is enabled because #{env_vars.to_sentence} #{(env_vars.count == 1) ? "is" : "are"} set."
       elsif Homebrew::Settings.read("devcmdrun") == "true"
         puts "Developer mode is enabled."
       else

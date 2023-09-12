@@ -5,8 +5,6 @@ require "cli/parser"
 require "utils/github"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -21,8 +19,8 @@ module Homebrew
              description: "Build timeout (in minutes, default: 60)."
       flag   "--issue=",
              description: "If specified, post a comment to this issue number if the job fails."
-      comma_array "--macos=",
-                  description: "Version(s) of macOS the bottle should be built for."
+      comma_array "--macos",
+                  description: "macOS version (or comma-separated list of versions) the bottle should be built for."
       flag   "--workflow=",
              description: "Dispatch specified workflow (default: `dispatch-build-bottle.yml`)."
       switch "--upload",
@@ -55,9 +53,9 @@ module Homebrew
         os, arch = element.then do |s|
           tag = Utils::Bottles::Tag.from_symbol(s.to_sym)
           [tag.to_macos_version, tag.arch]
-        rescue ArgumentError, MacOSVersionError
+        rescue ArgumentError, MacOSVersion::Error
           os, arch = s.split("-", 2)
-          [MacOS::Version.new(os), arch&.to_sym]
+          [MacOSVersion.new(os), arch&.to_sym]
         end
 
         if arch.present? && arch != :x86_64
@@ -74,7 +72,7 @@ module Homebrew
       runners << "linux-self-hosted-1"
     end
 
-    raise UsageError, "Must specify --macos or --linux or --linux-self-hosted option" if runners.empty?
+    raise UsageError, "Must specify `--macos`, `--linux` or `--linux-self-hosted` option." if runners.empty?
 
     args.named.to_resolved_formulae.each do |formula|
       # Required inputs
@@ -87,8 +85,7 @@ module Homebrew
       # These cannot be passed as nil to GitHub API
       inputs[:timeout] = args.timeout if args.timeout
       inputs[:issue] = args.issue if args.issue
-      inputs[:upload] = args.upload?.to_s if args.upload?
-      inputs[:wheezy] = args.linux_wheezy?.to_s if args.linux_wheezy?
+      inputs[:upload] = args.upload?
 
       ohai "Dispatching #{tap} bottling request of formula \"#{formula.name}\" for #{runners.join(", ")}"
       GitHub.workflow_dispatch_event(user, repo, workflow, ref, inputs)

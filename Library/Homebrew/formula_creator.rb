@@ -9,8 +9,6 @@ module Homebrew
   #
   # @api private
   class FormulaCreator
-    extend T::Sig
-
     attr_reader :args, :url, :sha256, :desc, :homepage
     attr_accessor :name, :version, :tap, :path, :mode, :license
 
@@ -38,7 +36,7 @@ module Homebrew
       end
       update_path
       @version = if @version
-        Version.create(@version)
+        Version.new(@version)
       else
         Version.detect(url)
       end
@@ -47,7 +45,7 @@ module Homebrew
     def update_path
       return if @name.nil? || @tap.nil?
 
-      @path = Formulary.path "#{@tap}/#{@name}"
+      @path = @tap.new_formula_path(@name)
     end
 
     def fetch?
@@ -62,8 +60,7 @@ module Homebrew
       raise "#{path} already exists" if path.exist?
 
       if version.nil? || version.null?
-        opoo "Version cannot be determined from URL."
-        puts "You'll need to add an explicit 'version' to the formula."
+        odie "Version cannot be determined from URL. Explicitly set the version with `--set-version` instead."
       elsif fetch?
         unless head?
           r = Resource.new
@@ -110,7 +107,7 @@ module Homebrew
           homepage "#{homepage}"
         <% unless head? %>
           url "#{url}"
-        <% unless version.nil? or version.detected_from_url? %>
+        <% unless version.detected_from_url? %>
           version "#{version}"
         <% end %>
           sha256 "#{sha256}"
@@ -168,11 +165,9 @@ module Homebrew
         <% elsif mode == :go %>
             system "go", "build", *std_go_args(ldflags: "-s -w")
         <% elsif mode == :meson %>
-            mkdir "build" do
-              system "meson", *std_meson_args, ".."
-              system "ninja", "-v"
-              system "ninja", "install", "-v"
-            end
+            system "meson", "setup", "build", *std_meson_args
+            system "meson", "compile", "-C", "build", "--verbose"
+            system "meson", "install", "-C", "build"
         <% elsif mode == :node %>
             system "npm", "install", *Language::Node.std_npm_install_args(libexec)
             bin.install_symlink Dir["\#{libexec}/bin/*"]

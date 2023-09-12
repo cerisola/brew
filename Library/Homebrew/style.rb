@@ -1,18 +1,17 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "shellwords"
+require "source_location"
 
 module Homebrew
   # Helper module for running RuboCop.
   #
   # @api private
   module Style
-    module_function
-
     # Checks style for a list of files, printing simple RuboCop output.
     # Returns true if violations were found, false otherwise.
-    def check_style_and_print(files, **options)
+    def self.check_style_and_print(files, **options)
       success = check_style_impl(files, :print, **options)
 
       if ENV["GITHUB_ACTIONS"] && !success
@@ -32,16 +31,16 @@ module Homebrew
 
     # Checks style for a list of files, returning results as an {Offenses}
     # object parsed from its JSON output.
-    def check_style_json(files, **options)
+    def self.check_style_json(files, **options)
       check_style_impl(files, :json, **options)
     end
 
-    def check_style_impl(files, output_type,
-                         fix: false,
-                         except_cops: nil, only_cops: nil,
-                         display_cop_names: false,
-                         reset_cache: false,
-                         debug: false, verbose: false)
+    def self.check_style_impl(files, output_type,
+                              fix: false,
+                              except_cops: nil, only_cops: nil,
+                              display_cop_names: false,
+                              reset_cache: false,
+                              debug: false, verbose: false)
       raise ArgumentError, "Invalid output type: #{output_type.inspect}" if [:print, :json].exclude?(output_type)
 
       shell_files, ruby_files =
@@ -80,9 +79,9 @@ module Homebrew
 
     RUBOCOP = (HOMEBREW_LIBRARY_PATH/"utils/rubocop.rb").freeze
 
-    def run_rubocop(files, output_type,
-                    fix: false, except_cops: nil, only_cops: nil, display_cop_names: false, reset_cache: false,
-                    debug: false, verbose: false)
+    def self.run_rubocop(files, output_type,
+                         fix: false, except_cops: nil, only_cops: nil, display_cop_names: false, reset_cache: false,
+                         debug: false, verbose: false)
       Homebrew.install_bundler_gems!
 
       require "warnings"
@@ -103,7 +102,6 @@ module Homebrew
       end
 
       args += ["--extra-details"] if verbose
-      args += ["--display-cop-names"] if display_cop_names || verbose
 
       if except_cops
         except_cops.map! { |cop| RuboCop::Cop::Cop.registry.qualified_cop_name(cop.to_s, "") }
@@ -129,12 +127,7 @@ module Homebrew
       if files.blank? || files == [HOMEBREW_REPOSITORY]
         files = [HOMEBREW_LIBRARY_PATH]
       elsif files.none? { |f| f.to_s.start_with? HOMEBREW_LIBRARY_PATH }
-        config = if files.any? { |f| (f/"spec").exist? }
-          HOMEBREW_LIBRARY/".rubocop_rspec.yml"
-        else
-          HOMEBREW_LIBRARY/".rubocop.yml"
-        end
-        args << "--config" << config
+        args << "--config" << (HOMEBREW_LIBRARY/".rubocop.yml")
       end
 
       args += files
@@ -165,7 +158,7 @@ module Homebrew
       end
     end
 
-    def run_shellcheck(files, output_type, fix: false)
+    def self.run_shellcheck(files, output_type, fix: false)
       files = shell_scripts if files.blank?
 
       files = files.map(&:realpath) # use absolute file paths
@@ -235,7 +228,7 @@ module Homebrew
       end
     end
 
-    def run_shfmt(files, fix: false)
+    def self.run_shfmt(files, fix: false)
       files = shell_scripts if files.blank?
       # Do not format completions and Dockerfile
       files.delete(HOMEBREW_REPOSITORY/"completions/bash/brew")
@@ -248,7 +241,7 @@ module Homebrew
       $CHILD_STATUS.success?
     end
 
-    def json_result!(result)
+    def self.json_result!(result)
       # An exit status of 1 just means violations were found; other numbers mean
       # execution errors.
       # JSON needs to be at least 2 characters.
@@ -257,7 +250,7 @@ module Homebrew
       JSON.parse(result.stdout)
     end
 
-    def shell_scripts
+    def self.shell_scripts
       [
         HOMEBREW_BREW_FILE,
         HOMEBREW_REPOSITORY/"completions/bash/brew",
@@ -276,12 +269,12 @@ module Homebrew
       ]
     end
 
-    def shellcheck
+    def self.shellcheck
       ensure_formula_installed!("shellcheck", latest: true,
                                               reason: "shell style checks").opt_bin/"shellcheck"
     end
 
-    def shfmt
+    def self.shfmt
       ensure_formula_installed!("shfmt", latest: true,
                                          reason: "formatting shell scripts")
       HOMEBREW_LIBRARY/"Homebrew/utils/shfmt.sh"
@@ -319,7 +312,8 @@ module Homebrew
         @message = json["message"]
         @cop_name = json["cop_name"]
         @corrected = json["corrected"]
-        @location = LineLocation.new(json["location"])
+        location = json["location"]
+        @location = SourceLocation.new(location.fetch("line"), location["column"])
       end
 
       def severity_code
@@ -328,23 +322,6 @@ module Homebrew
 
       def corrected?
         @corrected
-      end
-    end
-
-    # Source location of a style offense.
-    class LineLocation
-      extend T::Sig
-
-      attr_reader :line, :column
-
-      def initialize(json)
-        @line = json["line"]
-        @column = json["column"]
-      end
-
-      sig { returns(String) }
-      def to_s
-        "#{line}: col #{column}"
       end
     end
   end

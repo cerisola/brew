@@ -1,6 +1,6 @@
 #####
-##### First do the essential, fast things to be able to make e.g. brew --prefix and other commands we want to be
-##### able to `source` in shell configuration quick.
+##### First do the essential, fast things to ensure commands like `brew --prefix` and others that we want
+##### to be able to `source` in shell configurations run quickly.
 #####
 
 # Doesn't need a default case because we don't support other OSs
@@ -13,15 +13,23 @@ case "${HOMEBREW_SYSTEM}" in
   Linux) HOMEBREW_LINUX="1" ;;
 esac
 
-# Where we store built products; a Cellar in HOMEBREW_PREFIX (often /usr/local
-# for bottles) unless there's already a Cellar in HOMEBREW_REPOSITORY.
-# These variables are set by bin/brew
-# shellcheck disable=SC2154
-if [[ -d "${HOMEBREW_REPOSITORY}/Cellar" ]]
+HOMEBREW_MACOS_ARM_DEFAULT_PREFIX="/opt/homebrew"
+HOMEBREW_MACOS_ARM_DEFAULT_REPOSITORY="${HOMEBREW_MACOS_ARM_DEFAULT_PREFIX}"
+HOMEBREW_LINUX_DEFAULT_PREFIX="/home/linuxbrew/.linuxbrew"
+HOMEBREW_LINUX_DEFAULT_REPOSITORY="${HOMEBREW_LINUX_DEFAULT_PREFIX}/Homebrew"
+HOMEBREW_GENERIC_DEFAULT_PREFIX="/usr/local"
+HOMEBREW_GENERIC_DEFAULT_REPOSITORY="${HOMEBREW_GENERIC_DEFAULT_PREFIX}/Homebrew"
+if [[ -n "${HOMEBREW_MACOS}" && "${HOMEBREW_PROCESSOR}" == "arm64" ]]
 then
-  HOMEBREW_CELLAR="${HOMEBREW_REPOSITORY}/Cellar"
+  HOMEBREW_DEFAULT_PREFIX="${HOMEBREW_MACOS_ARM_DEFAULT_PREFIX}"
+  HOMEBREW_DEFAULT_REPOSITORY="${HOMEBREW_MACOS_ARM_DEFAULT_REPOSITORY}"
+elif [[ -n "${HOMEBREW_LINUX}" ]]
+then
+  HOMEBREW_DEFAULT_PREFIX="${HOMEBREW_LINUX_DEFAULT_PREFIX}"
+  HOMEBREW_DEFAULT_REPOSITORY="${HOMEBREW_LINUX_DEFAULT_REPOSITORY}"
 else
-  HOMEBREW_CELLAR="${HOMEBREW_PREFIX}/Cellar"
+  HOMEBREW_DEFAULT_PREFIX="${HOMEBREW_GENERIC_DEFAULT_PREFIX}"
+  HOMEBREW_DEFAULT_REPOSITORY="${HOMEBREW_GENERIC_DEFAULT_REPOSITORY}"
 fi
 
 if [[ -n "${HOMEBREW_MACOS}" ]]
@@ -34,6 +42,37 @@ else
   HOMEBREW_DEFAULT_CACHE="${CACHE_HOME}/Homebrew"
   HOMEBREW_DEFAULT_LOGS="${CACHE_HOME}/Homebrew/Logs"
   HOMEBREW_DEFAULT_TEMP="/tmp"
+fi
+
+realpath() {
+  (cd "$1" &>/dev/null && pwd -P)
+}
+
+# Support systems where HOMEBREW_PREFIX is the default,
+# but a parent directory is a symlink.
+# Example: Fedora Silverblue symlinks /home -> var/home
+if [[ "${HOMEBREW_PREFIX}" != "${HOMEBREW_DEFAULT_PREFIX}" && "$(realpath "${HOMEBREW_DEFAULT_PREFIX}")" == "${HOMEBREW_PREFIX}" ]]
+then
+  HOMEBREW_PREFIX="${HOMEBREW_DEFAULT_PREFIX}"
+fi
+
+# Support systems where HOMEBREW_REPOSITORY is the default,
+# but a parent directory is a symlink.
+# Example: Fedora Silverblue symlinks /home -> var/home
+if [[ "${HOMEBREW_REPOSITORY}" != "${HOMEBREW_DEFAULT_REPOSITORY}" && "$(realpath "${HOMEBREW_DEFAULT_REPOSITORY}")" == "${HOMEBREW_REPOSITORY}" ]]
+then
+  HOMEBREW_REPOSITORY="${HOMEBREW_DEFAULT_REPOSITORY}"
+fi
+
+# Where we store built products; a Cellar in HOMEBREW_PREFIX (often /usr/local
+# for bottles) unless there's already a Cellar in HOMEBREW_REPOSITORY.
+# These variables are set by bin/brew
+# shellcheck disable=SC2154
+if [[ -d "${HOMEBREW_REPOSITORY}/Cellar" ]]
+then
+  HOMEBREW_CELLAR="${HOMEBREW_REPOSITORY}/Cellar"
+else
+  HOMEBREW_CELLAR="${HOMEBREW_PREFIX}/Cellar"
 fi
 
 HOMEBREW_CACHE="${HOMEBREW_CACHE:-${HOMEBREW_DEFAULT_CACHE}}"
@@ -62,7 +101,8 @@ case "$*" in
     ;;
   shellenv)
     source "${HOMEBREW_LIBRARY}/Homebrew/cmd/shellenv.sh"
-    homebrew-shellenv
+    shift
+    homebrew-shellenv "$1"
     exit 0
     ;;
   formulae)
@@ -75,10 +115,10 @@ case "$*" in
     homebrew-casks
     exit 0
     ;;
-  # falls back to cmd/prefix.rb on a non-zero return
-  --prefix*)
-    source "${HOMEBREW_LIBRARY}/Homebrew/prefix.sh"
-    homebrew-prefix "$@" && exit 0
+  # falls back to cmd/--prefix.rb and cmd/--cellar.rb on a non-zero return
+  --prefix* | --cellar*)
+    source "${HOMEBREW_LIBRARY}/Homebrew/formula_path.sh"
+    homebrew-formula-path "$@" && exit 0
     ;;
 esac
 
@@ -202,10 +242,23 @@ check-prefix-is-not-tmpdir() {
   then
     odie <<EOS
 Your HOMEBREW_PREFIX is in the Homebrew temporary directory, which Homebrew
-uses to store downloads and builds. You can resolve this by installing Homebrew to
-either the standard prefix (/usr/local) or to a non-standard prefix that is not
-in the Homebrew temporary directory.
+uses to store downloads and builds. You can resolve this by installing Homebrew
+to either the standard prefix for your platform or to a non-standard prefix that
+is not in the Homebrew temporary directory.
 EOS
+  fi
+}
+
+# NOTE: the members of the array in the second arg must not have spaces!
+check-array-membership() {
+  local item=$1
+  shift
+
+  if [[ " ${*} " == *" ${item} "* ]]
+  then
+    return 0
+  else
+    return 1
   fi
 }
 
@@ -237,26 +290,51 @@ auto-update() {
   # If we've checked for updates, we don't need to check again.
   export HOMEBREW_AUTO_UPDATE_CHECKED="1"
 
-  if [[ "${HOMEBREW_COMMAND}" == "install" ]] ||
-     [[ "${HOMEBREW_COMMAND}" == "upgrade" ]] ||
-     [[ "${HOMEBREW_COMMAND}" == "bump-formula-pr" ]] ||
-     [[ "${HOMEBREW_COMMAND}" == "bump-cask-pr" ]] ||
-     [[ "${HOMEBREW_COMMAND}" == "bundle" ]] ||
-     [[ "${HOMEBREW_COMMAND}" == "release" ]] ||
-     [[ "${HOMEBREW_COMMAND}" == "tap" && "${HOMEBREW_ARG_COUNT}" -gt 1 ]]
+  if [[ -n "${HOMEBREW_AUTO_UPDATE_COMMAND}" ]]
   then
     export HOMEBREW_AUTO_UPDATING="1"
 
     if [[ -z "${HOMEBREW_AUTO_UPDATE_SECS}" ]]
     then
-      HOMEBREW_AUTO_UPDATE_SECS="300"
+      if [[ -n "${HOMEBREW_NO_INSTALL_FROM_API}" ]]
+      then
+        # 5 minutes
+        HOMEBREW_AUTO_UPDATE_SECS="300"
+      elif [[ -n "${HOMEBREW_DEV_CMD_RUN}" ]]
+      then
+        # 1 hour
+        HOMEBREW_AUTO_UPDATE_SECS="3600"
+      else
+        # 24 hours
+        HOMEBREW_AUTO_UPDATE_SECS="86400"
+      fi
     fi
 
-    # Skip auto-update if the repository has been updated in the
+    repo_fetch_heads=("${HOMEBREW_REPOSITORY}/.git/FETCH_HEAD")
+    # We might have done an auto-update recently, but not a core/cask clone auto-update.
+    # So we check the core/cask clone FETCH_HEAD too.
+    if [[ -n "${HOMEBREW_AUTO_UPDATE_CORE_TAP}" && -d "${HOMEBREW_CORE_REPOSITORY}/.git" ]]
+    then
+      repo_fetch_heads+=("${HOMEBREW_CORE_REPOSITORY}/.git/FETCH_HEAD")
+    fi
+    if [[ -n "${HOMEBREW_AUTO_UPDATE_CASK_TAP}" && -d "${HOMEBREW_CASK_REPOSITORY}/.git" ]]
+    then
+      repo_fetch_heads+=("${HOMEBREW_CASK_REPOSITORY}/.git/FETCH_HEAD")
+    fi
+
+    # Skip auto-update if all of the selected repositories have been checked in the
     # last $HOMEBREW_AUTO_UPDATE_SECS.
-    repo_fetch_head="${HOMEBREW_REPOSITORY}/.git/FETCH_HEAD"
-    if [[ -f "${repo_fetch_head}" ]] &&
-       [[ -n "$(find "${repo_fetch_head}" -type f -mtime -"${HOMEBREW_AUTO_UPDATE_SECS}"s 2>/dev/null)" ]]
+    needs_auto_update=
+    for repo_fetch_head in "${repo_fetch_heads[@]}"
+    do
+      if [[ ! -f "${repo_fetch_head}" ]] ||
+         [[ -z "$(find "${repo_fetch_head}" -type f -mtime -"${HOMEBREW_AUTO_UPDATE_SECS}"s 2>/dev/null)" ]]
+      then
+        needs_auto_update=1
+        break
+      fi
+    done
+    if [[ -z "${needs_auto_update}" ]]
     then
       return
     fi
@@ -277,9 +355,18 @@ auto-update() {
 
     unset HOMEBREW_AUTO_UPDATING
 
+    # Restore user path as it'll be refiltered by HOMEBREW_BREW_FILE (bin/brew)
+    export PATH=${HOMEBREW_PATH}
+
     # exec a new process to set any new environment variables.
     exec "${HOMEBREW_BREW_FILE}" "$@"
   fi
+
+  unset AUTO_UPDATE_COMMANDS
+  unset AUTO_UPDATE_CORE_TAP_COMMANDS
+  unset AUTO_UPDATE_CASK_TAP_COMMANDS
+  unset HOMEBREW_AUTO_UPDATE_CORE_TAP
+  unset HOMEBREW_AUTO_UPDATE_CASK_TAP
 }
 
 #####
@@ -415,6 +502,17 @@ case "$*" in
     ;;
 esac
 
+# TODO: bump version when new macOS is released or announced
+# and also update references in docs/Installation.md,
+# https://github.com/Homebrew/install/blob/HEAD/install.sh and
+# MacOSVersion::SYMBOLS
+HOMEBREW_MACOS_NEWEST_UNSUPPORTED="14"
+# TODO: bump version when new macOS is released and also update
+# references in docs/Installation.md and
+# https://github.com/Homebrew/install/blob/HEAD/install.sh
+HOMEBREW_MACOS_OLDEST_SUPPORTED="11"
+HOMEBREW_MACOS_OLDEST_ALLOWED="10.11"
+
 if [[ -n "${HOMEBREW_MACOS}" ]]
 then
   HOMEBREW_PRODUCT="Homebrew"
@@ -434,6 +532,8 @@ then
   # Intentionally set this variable by exploding another.
   # shellcheck disable=SC2086,SC2183
   printf -v HOMEBREW_MACOS_VERSION_NUMERIC "%02d%02d%02d" ${HOMEBREW_MACOS_VERSION//./ }
+  # shellcheck disable=SC2248
+  printf -v HOMEBREW_MACOS_OLDEST_ALLOWED_NUMERIC "%02d%02d%02d" ${HOMEBREW_MACOS_OLDEST_ALLOWED//./ }
 
   # Don't include minor versions for Big Sur and later.
   if [[ "${HOMEBREW_MACOS_VERSION_NUMERIC}" -gt "110000" ]]
@@ -444,7 +544,7 @@ then
   fi
 
   # Refuse to run on pre-El Capitan
-  if [[ "${HOMEBREW_MACOS_VERSION_NUMERIC}" -lt "101100" ]]
+  if [[ "${HOMEBREW_MACOS_VERSION_NUMERIC}" -lt "${HOMEBREW_MACOS_OLDEST_ALLOWED_NUMERIC}" ]]
   then
     printf "ERROR: Your version of macOS (%s) is too old to run Homebrew!\\n" "${HOMEBREW_MACOS_VERSION}" >&2
     if [[ "${HOMEBREW_MACOS_VERSION_NUMERIC}" -lt "100700" ]]
@@ -483,7 +583,7 @@ then
 
   # Set a variable when the macOS system Ruby is new enough to avoid spawning
   # a Ruby process unnecessarily.
-  if [[ "${HOMEBREW_MACOS_VERSION_NUMERIC}" -lt "120000" ]]
+  if [[ "${HOMEBREW_MACOS_VERSION_NUMERIC}" -lt "120601" ]]
   then
     unset HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH
   else
@@ -493,7 +593,9 @@ then
   fi
 else
   HOMEBREW_PRODUCT="${HOMEBREW_SYSTEM}brew"
-  [[ -n "${HOMEBREW_LINUX}" ]] && HOMEBREW_OS_VERSION="$(lsb_release -s -d 2>/dev/null)"
+  # Don't try to follow /etc/os-release
+  # shellcheck disable=SC1091,SC2154
+  [[ -n "${HOMEBREW_LINUX}" ]] && HOMEBREW_OS_VERSION="$(source /etc/os-release && echo "${PRETTY_NAME}")"
   : "${HOMEBREW_OS_VERSION:=$(uname -r)}"
   HOMEBREW_OS_USER_AGENT_VERSION="${HOMEBREW_OS_VERSION}"
 
@@ -591,6 +693,7 @@ then
   unset HOMEBREW_BOTTLE_DOMAIN
 fi
 
+HOMEBREW_API_DEFAULT_DOMAIN="https://formulae.brew.sh/api"
 HOMEBREW_BOTTLE_DEFAULT_DOMAIN="http://127.0.0.1:8080"
 
 HOMEBREW_USER_AGENT="${HOMEBREW_PRODUCT}/${HOMEBREW_USER_AGENT_VERSION} (${HOMEBREW_SYSTEM}; ${HOMEBREW_PROCESSOR} ${HOMEBREW_OS_USER_AGENT_VERSION})"
@@ -598,7 +701,20 @@ curl_version_output="$(curl --version 2>/dev/null)"
 curl_name_and_version="${curl_version_output%% (*}"
 HOMEBREW_USER_AGENT_CURL="${HOMEBREW_USER_AGENT} ${curl_name_and_version// //}"
 
+# Timeout values to check for dead connections
+# We don't use --max-time to support slow connections
+HOMEBREW_CURL_SPEED_LIMIT=100
+HOMEBREW_CURL_SPEED_TIME=5
+
 export HOMEBREW_VERSION
+export HOMEBREW_MACOS_ARM_DEFAULT_PREFIX
+export HOMEBREW_LINUX_DEFAULT_PREFIX
+export HOMEBREW_GENERIC_DEFAULT_PREFIX
+export HOMEBREW_DEFAULT_PREFIX
+export HOMEBREW_MACOS_ARM_DEFAULT_REPOSITORY
+export HOMEBREW_LINUX_DEFAULT_REPOSITORY
+export HOMEBREW_GENERIC_DEFAULT_REPOSITORY
+export HOMEBREW_DEFAULT_REPOSITORY
 export HOMEBREW_DEFAULT_CACHE
 export HOMEBREW_CACHE
 export HOMEBREW_DEFAULT_LOGS
@@ -616,15 +732,22 @@ export HOMEBREW_GIT
 export HOMEBREW_GIT_WARNING
 export HOMEBREW_MINIMUM_GIT_VERSION
 export HOMEBREW_LINUX_MINIMUM_GLIBC_VERSION
+export HOMEBREW_PHYSICAL_PROCESSOR
 export HOMEBREW_PROCESSOR
 export HOMEBREW_PRODUCT
 export HOMEBREW_OS_VERSION
 export HOMEBREW_MACOS_VERSION
 export HOMEBREW_MACOS_VERSION_NUMERIC
+export HOMEBREW_MACOS_NEWEST_UNSUPPORTED
+export HOMEBREW_MACOS_OLDEST_SUPPORTED
+export HOMEBREW_MACOS_OLDEST_ALLOWED
 export HOMEBREW_USER_AGENT
 export HOMEBREW_USER_AGENT_CURL
+export HOMEBREW_API_DEFAULT_DOMAIN
 export HOMEBREW_BOTTLE_DEFAULT_DOMAIN
 export HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH
+export HOMEBREW_CURL_SPEED_LIMIT
+export HOMEBREW_CURL_SPEED_TIME
 
 if [[ -n "${HOMEBREW_MACOS}" && -x "/usr/bin/xcode-select" ]]
 then
@@ -679,6 +802,8 @@ done
 HOMEBREW_ARG_COUNT="$#"
 HOMEBREW_COMMAND="$1"
 shift
+# If you are going to change anything in below case statement,
+# be sure to also update HOMEBREW_INTERNAL_COMMAND_ALIASES hash in commands.rb
 case "${HOMEBREW_COMMAND}" in
   ls) HOMEBREW_COMMAND="list" ;;
   homepage) HOMEBREW_COMMAND="home" ;;
@@ -687,6 +812,7 @@ case "${HOMEBREW_COMMAND}" in
   ln) HOMEBREW_COMMAND="link" ;;
   instal) HOMEBREW_COMMAND="install" ;; # gem does the same
   uninstal) HOMEBREW_COMMAND="uninstall" ;;
+  post_install) HOMEBREW_COMMAND="postinstall" ;;
   rm) HOMEBREW_COMMAND="uninstall" ;;
   remove) HOMEBREW_COMMAND="uninstall" ;;
   abv) HOMEBREW_COMMAND="info" ;;
@@ -695,6 +821,8 @@ case "${HOMEBREW_COMMAND}" in
   environment) HOMEBREW_COMMAND="--env" ;;
   --config) HOMEBREW_COMMAND="config" ;;
   -v) HOMEBREW_COMMAND="--version" ;;
+  lc) HOMEBREW_COMMAND="livecheck" ;;
+  tc) HOMEBREW_COMMAND="typecheck" ;;
 esac
 
 # Set HOMEBREW_DEV_CMD_RUN for users who have run a development command.
@@ -710,6 +838,49 @@ then
 
   # Don't allow non-developers to customise Ruby warnings.
   unset HOMEBREW_RUBY_WARNINGS
+fi
+
+unset HOMEBREW_AUTO_UPDATE_COMMAND
+
+# Check for commands that should call `brew update --auto-update` first.
+AUTO_UPDATE_COMMANDS=(
+  install
+  outdated
+  upgrade
+  bundle
+  release
+)
+if check-array-membership "${HOMEBREW_COMMAND}" "${AUTO_UPDATE_COMMANDS[@]}" ||
+   [[ "${HOMEBREW_COMMAND}" == "tap" && "${HOMEBREW_ARG_COUNT}" -gt 1 ]]
+then
+  export HOMEBREW_AUTO_UPDATE_COMMAND="1"
+fi
+
+# Check for commands that should auto-update the homebrew-core tap.
+AUTO_UPDATE_CORE_TAP_COMMANDS=(
+  bump
+  bump-formula-pr
+)
+if check-array-membership "${HOMEBREW_COMMAND}" "${AUTO_UPDATE_CORE_TAP_COMMANDS[@]}"
+then
+  export HOMEBREW_AUTO_UPDATE_COMMAND="1"
+  export HOMEBREW_AUTO_UPDATE_CORE_TAP="1"
+else
+  unset HOMEBREW_AUTO_UPDATE_CORE_TAP
+fi
+
+# Check for commands that should auto-update the homebrew-cask tap.
+AUTO_UPDATE_CASK_TAP_COMMANDS=(
+  bump
+  bump-cask-pr
+  bump-unversioned-casks
+)
+if check-array-membership "${HOMEBREW_COMMAND}" "${AUTO_UPDATE_CASK_TAP_COMMANDS[@]}"
+then
+  export HOMEBREW_AUTO_UPDATE_COMMAND="1"
+  export HOMEBREW_AUTO_UPDATE_CASK_TAP="1"
+else
+  unset HOMEBREW_AUTO_UPDATE_CORE_TAP
 fi
 
 # Disable Ruby options we don't need.
@@ -741,19 +912,34 @@ then
   export HOMEBREW_DEVELOPER_COMMAND="1"
 fi
 
+# Provide a (temporary, undocumented) way to disable Sorbet globally if needed
+# to avoid reverting the above.
+if [[ -n "${HOMEBREW_NO_SORBET_RUNTIME}" ]]
+then
+  unset HOMEBREW_SORBET_RUNTIME
+fi
+
 if [[ -n "${HOMEBREW_DEVELOPER_COMMAND}" && -z "${HOMEBREW_DEVELOPER}" ]]
 then
   if [[ -z "${HOMEBREW_DEV_CMD_RUN}" ]]
   then
-    message="$(bold "${HOMEBREW_COMMAND}") is a developer command, so
-Homebrew's developer mode has been automatically turned on.
-To turn developer mode off, run $(bold "brew developer off")
-"
-    opoo "${message}"
+    opoo <<EOS
+$(bold "${HOMEBREW_COMMAND}") is a developer command, so Homebrew's
+developer mode has been automatically turned on.
+To turn developer mode off, run:
+  brew developer off
+
+EOS
   fi
 
   git config --file="${HOMEBREW_GIT_CONFIG_FILE}" --replace-all homebrew.devcmdrun true 2>/dev/null
   export HOMEBREW_DEV_CMD_RUN="1"
+fi
+
+if [[ -n "${HOMEBREW_DEVELOPER}" || -n "${HOMEBREW_DEV_CMD_RUN}" ]]
+then
+  # Always run with Sorbet for Homebrew developers or when a Homebrew developer command has been run.
+  export HOMEBREW_SORBET_RUNTIME="1"
 fi
 
 if [[ -f "${HOMEBREW_LIBRARY}/Homebrew/cmd/${HOMEBREW_COMMAND}.sh" ]]

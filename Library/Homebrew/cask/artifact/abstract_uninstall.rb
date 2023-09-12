@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "timeout"
@@ -6,8 +6,6 @@ require "timeout"
 require "utils/user"
 require "cask/artifact/abstract_artifact"
 require "cask/pkg"
-require "extend/hash_validator"
-using HashValidator
 
 module Cask
   module Artifact
@@ -15,8 +13,6 @@ module Cask
     #
     # @api private
     class AbstractUninstall < AbstractArtifact
-      extend T::Sig
-
       ORDERED_DIRECTIVES = [
         :early_script,
         :launchctl,
@@ -38,15 +34,18 @@ module Cask
       attr_reader :directives
 
       def initialize(cask, directives)
-        directives.assert_valid_keys!(*ORDERED_DIRECTIVES)
+        directives.assert_valid_keys(*ORDERED_DIRECTIVES)
 
         super(cask, **directives)
         directives[:signal] = Array(directives[:signal]).flatten.each_slice(2).to_a
         @directives = directives
 
+        # This is already included when loading from the API.
+        return if cask.loaded_from_api?
         return unless directives.key?(:kext)
 
         cask.caveats do
+          T.bind(self, ::Cask::DSL::Caveats)
           kext
         end
       end
@@ -55,7 +54,7 @@ module Cask
         directives.to_h
       end
 
-      sig { returns(String) }
+      sig { override.returns(String) }
       def summarize
         to_h.flat_map { |key, val| Array(val).map { |v| "#{key.inspect} => #{v.inspect}" } }.join(", ")
       end
@@ -106,30 +105,47 @@ module Cask
 
         all_services.each do |service|
           ohai "Removing launchctl service #{service}"
-          booleans.each do |with_sudo|
+          booleans.each do |sudo|
             plist_status = command.run(
               "/bin/launchctl",
-              args: ["list", service],
-              sudo: with_sudo, print_stderr: false
+              args:         ["list", service],
+              sudo:         sudo,
+              sudo_as_root: sudo,
+              print_stderr: false,
             ).stdout
             if plist_status.start_with?("{")
-              command.run!("/bin/launchctl", args: ["remove", service], sudo: with_sudo)
+              command.run!(
+                "/bin/launchctl",
+                args:         ["remove", service],
+                sudo:         sudo,
+                sudo_as_root: sudo,
+              )
               sleep 1
             end
             paths = [
               +"/Library/LaunchAgents/#{service}.plist",
               +"/Library/LaunchDaemons/#{service}.plist",
             ]
-            paths.each { |elt| elt.prepend(Dir.home).freeze } unless with_sudo
+            paths.each { |elt| elt.prepend(Dir.home).freeze } unless sudo
             paths = paths.map { |elt| Pathname(elt) }.select(&:exist?)
             paths.each do |path|
-              command.run!("/bin/rm", args: ["-f", "--", path], sudo: with_sudo)
+              command.run!("/bin/rm", args: ["-f", "--", path], sudo: sudo, sudo_as_root: sudo)
             end
             # undocumented and untested: pass a path to uninstall :launchctl
             next unless Pathname(service).exist?
 
-            command.run!("/bin/launchctl", args: ["unload", "-w", "--", service], sudo: with_sudo)
-            command.run!("/bin/rm", args: ["-f", "--", service], sudo: with_sudo)
+            command.run!(
+              "/bin/launchctl",
+              args:         ["unload", "-w", "--", service],
+              sudo:         sudo,
+              sudo_as_root: sudo,
+            )
+            command.run!(
+              "/bin/rm",
+              args:         ["-f", "--", service],
+              sudo:         sudo,
+              sudo_as_root: sudo,
+            )
             sleep 1
           end
         end
@@ -157,9 +173,15 @@ module Cask
 
       sig { returns(String) }
       def automation_access_instructions
+        navigation_path = if MacOS.version >= :ventura
+          "System Settings → Privacy & Security"
+        else
+          "System Preferences → Security & Privacy → Privacy"
+        end
+
         <<~EOS
           Enable Automation access for "Terminal → System Events" in:
-            System Preferences → Security & Privacy → Privacy → Automation
+            #{navigation_path} → Automation
           if you haven't already.
         EOS
       end
@@ -169,7 +191,7 @@ module Cask
         bundle_ids.each do |bundle_id|
           next unless running?(bundle_id)
 
-          unless User.current.gui?
+          unless T.must(User.current).gui?
             opoo "Not logged into a GUI; skipping quitting application ID '#{bundle_id}'."
             next
           end
@@ -244,12 +266,12 @@ module Cask
       # :signal should come after :quit so it can be used as a backup when :quit fails
       def uninstall_signal(*signals, command: nil, **_)
         signals.each do |pair|
-          raise CaskInvalidError.new(cask, "Each #{stanza} :signal must consist of 2 elements.") unless pair.size == 2
+          raise CaskInvalidError.new(cask, "Each #{stanza} :signal must consist of 2 elements.") if pair.size != 2
 
           signal, bundle_id = pair
           ohai "Signalling '#{signal}' to application ID '#{bundle_id}'"
           pids = running_processes(bundle_id).map(&:first)
-          next unless pids.any?
+          next if pids.none?
 
           # Note that unlike :quit, signals are sent from the current user (not
           # upgraded to the superuser). This is a todo item for the future, but
@@ -263,8 +285,8 @@ module Cask
         end
       end
 
-      def uninstall_login_item(*login_items, command: nil, upgrade: false, **_)
-        return if upgrade
+      def uninstall_login_item(*login_items, command: nil, successor: nil, **_)
+        return if successor
 
         apps = cask.artifacts.select { |a| a.class.dsl_key == :app }
         derived_login_items = apps.map { |a| { path: a.target } }
@@ -296,14 +318,35 @@ module Cask
       def uninstall_kext(*kexts, command: nil, **_)
         kexts.each do |kext|
           ohai "Unloading kernel extension #{kext}"
-          is_loaded = system_command!("/usr/sbin/kextstat", args: ["-l", "-b", kext], sudo: true).stdout
+          is_loaded = system_command!(
+            "/usr/sbin/kextstat",
+            args:         ["-l", "-b", kext],
+            sudo:         true,
+            sudo_as_root: true,
+          ).stdout
           if is_loaded.length > 1
-            system_command!("/sbin/kextunload", args: ["-b", kext], sudo: true)
+            system_command!(
+              "/sbin/kextunload",
+              args:         ["-b", kext],
+              sudo:         true,
+              sudo_as_root: true,
+            )
             sleep 1
           end
-          system_command!("/usr/sbin/kextfind", args: ["-b", kext], sudo: true).stdout.chomp.lines.each do |kext_path|
+          found_kexts = system_command!(
+            "/usr/sbin/kextfind",
+            args:         ["-b", kext],
+            sudo:         true,
+            sudo_as_root: true,
+          ).stdout.chomp.lines
+          found_kexts.each do |kext_path|
             ohai "Removing kernel extension #{kext_path}"
-            system_command!("/bin/rm", args: ["-rf", kext_path], sudo: true)
+            system_command!(
+              "/bin/rm",
+              args:         ["-rf", kext_path],
+              sudo:         true,
+              sudo_as_root: true,
+            )
           end
         end
       end
@@ -368,8 +411,14 @@ module Cask
           rescue Errno::EPERM
             raise if File.readable?(File.expand_path("~/Library/Application Support/com.apple.TCC"))
 
+            navigation_path = if MacOS.version >= :ventura
+              "System Settings → Privacy & Security"
+            else
+              "System Preferences → Security & Privacy → Privacy"
+            end
+
             odie "Unable to remove some files. Please enable Full Disk Access for your terminal under " \
-                 "System Preferences → Security & Privacy → Privacy → Full Disk Access."
+                 "#{navigation_path} → Full Disk Access."
           end
         end
       end
@@ -433,32 +482,48 @@ module Cask
       end
 
       def recursive_rmdir(*directories, command: nil, **_)
-        success = true
-        each_resolved_path(:rmdir, directories) do |_path, resolved_paths|
-          resolved_paths.select(&method(:all_dirs?)).each do |resolved_path|
-            puts resolved_path.sub(Dir.home, "~")
+        directories.all? do |resolved_path|
+          puts resolved_path.sub(Dir.home, "~")
 
-            if (ds_store = resolved_path.join(".DS_Store")).exist?
-              command.run!("/bin/rm", args: ["-f", "--", ds_store], sudo: true, print_stderr: false)
-            end
+          if resolved_path.readable?
+            children = resolved_path.children
 
-            unless recursive_rmdir(*resolved_path.children, command: command)
-              success = false
-              next
-            end
+            next false unless children.all? { |child| child.directory? || child.basename.to_s == ".DS_Store" }
+          else
+            lines = command.run!("/bin/ls", args: ["-A", "-F", "--", resolved_path], sudo: true, print_stderr: false)
+                           .stdout.lines.map(&:chomp)
+                           .flat_map(&:chomp)
 
-            status = command.run("/bin/rmdir", args: ["--", resolved_path], sudo: true, print_stderr: false).success?
-            success &= status
+            # Using `-F` above outputs directories ending with `/`.
+            next false unless lines.all? { |l| l.end_with?("/") || l == ".DS_Store" }
+
+            children = lines.map { |l| resolved_path/l.delete_suffix("/") }
           end
+
+          # Directory counts as empty if it only contains a `.DS_Store`.
+          if children.include?(ds_store = resolved_path/".DS_Store")
+            Utils.gain_permissions_remove(ds_store, command: command)
+            children.delete(ds_store)
+          end
+
+          next false unless recursive_rmdir(*children, command: command)
+
+          Utils.gain_permissions_rmdir(resolved_path, command: command)
+
+          true
         end
-        success
       end
 
-      def uninstall_rmdir(*args, **kwargs)
-        return if args.empty?
+      def uninstall_rmdir(*directories, **kwargs)
+        return if directories.empty?
 
         ohai "Removing directories if empty:"
-        recursive_rmdir(*args, **kwargs)
+
+        each_resolved_path(:rmdir, directories) do |_path, resolved_paths|
+          next unless resolved_paths.all?(&:directory?)
+
+          recursive_rmdir(*resolved_paths, **kwargs)
+        end
       end
     end
   end

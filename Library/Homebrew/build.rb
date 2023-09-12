@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 # This script is loaded by formula_installer as a separate instance.
@@ -57,7 +57,7 @@ class Build
       build = effective_build_options_for(dependent)
       if dep.prune_from_option?(build) ||
          dep.prune_if_build_and_not_dependent?(dependent, formula) ||
-         (dep.test? && !dep.build?)
+         (dep.test? && !dep.build?) || dep.implicit?
         Dependency.prune
       elsif dep.build?
         Dependency.keep_but_prune_recursive_deps
@@ -198,19 +198,19 @@ class Build
     keg.detect_cxx_stdlibs(skip_executables: true)
   end
 
-  def fixopt(f)
-    path = if f.linked_keg.directory? && f.linked_keg.symlink?
-      f.linked_keg.resolved_path
-    elsif f.prefix.directory?
-      f.prefix
-    elsif (kids = f.rack.children).size == 1 && kids.first.directory?
+  def fixopt(formula)
+    path = if formula.linked_keg.directory? && formula.linked_keg.symlink?
+      formula.linked_keg.resolved_path
+    elsif formula.prefix.directory?
+      formula.prefix
+    elsif (kids = formula.rack.children).size == 1 && kids.first.directory?
       kids.first
     else
       raise
     end
     Keg.new(path).optlink(verbose: args.verbose?)
   rescue
-    raise "#{f.opt_prefix} not present or broken\nPlease reinstall #{f.full_name}. Sorry :("
+    raise "#{formula.opt_prefix} not present or broken\nPlease reinstall #{formula.full_name}. Sorry :("
   end
 end
 
@@ -235,12 +235,12 @@ rescue Exception => e # rubocop:disable Lint/RescueException
   # BuildErrors are specific to build processes and not other
   # children, which is why we create the necessary state here
   # and not in Utils.safe_fork.
-  case error_hash["json_class"]
-  when "BuildError"
+  case e
+  when BuildError
     error_hash["cmd"] = e.cmd
     error_hash["args"] = e.args
     error_hash["env"] = e.env
-  when "ErrorDuringExecution"
+  when ErrorDuringExecution
     error_hash["cmd"] = e.cmd
     error_hash["status"] = if e.status.is_a?(Process::Status)
       {

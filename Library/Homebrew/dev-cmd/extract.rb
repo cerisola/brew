@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "cli/parser"
@@ -8,68 +8,73 @@ require "software_spec"
 require "tap"
 
 def with_monkey_patch
+  # Since `method_defined?` is not a supported type guard, the use of `alias_method` below is not typesafe:
   BottleSpecification.class_eval do
-    alias_method :old_method_missing, :method_missing if method_defined?(:method_missing)
-    define_method(:method_missing) { |*| }
+    T.unsafe(self).alias_method :old_method_missing, :method_missing if method_defined?(:method_missing)
+    define_method(:method_missing) do |*|
+      # do nothing
+    end
   end
 
   Module.class_eval do
-    alias_method :old_method_missing, :method_missing if method_defined?(:method_missing)
-    define_method(:method_missing) { |*| }
+    T.unsafe(self).alias_method :old_method_missing, :method_missing if method_defined?(:method_missing)
+    define_method(:method_missing) do |*|
+      # do nothing
+    end
   end
 
   Resource.class_eval do
-    alias_method :old_method_missing, :method_missing if method_defined?(:method_missing)
-    define_method(:method_missing) { |*| }
+    T.unsafe(self).alias_method :old_method_missing, :method_missing if method_defined?(:method_missing)
+    define_method(:method_missing) do |*|
+      # do nothing
+    end
   end
 
   DependencyCollector.class_eval do
-    alias_method :old_parse_symbol_spec, :parse_symbol_spec if method_defined?(:parse_symbol_spec)
-    define_method(:parse_symbol_spec) { |*| }
+    T.unsafe(self).alias_method :old_parse_symbol_spec, :parse_symbol_spec if method_defined?(:parse_symbol_spec)
+    define_method(:parse_symbol_spec) do |*|
+      # do nothing
+    end
   end
 
   yield
 ensure
   BottleSpecification.class_eval do
     if method_defined?(:old_method_missing)
-      alias_method :method_missing, :old_method_missing
+      T.unsafe(self).alias_method :method_missing, :old_method_missing
       undef :old_method_missing
     end
   end
 
   Module.class_eval do
     if method_defined?(:old_method_missing)
-      alias_method :method_missing, :old_method_missing
+      T.unsafe(self).alias_method :method_missing, :old_method_missing
       undef :old_method_missing
     end
   end
 
   Resource.class_eval do
     if method_defined?(:old_method_missing)
-      alias_method :method_missing, :old_method_missing
+      T.unsafe(self).alias_method :method_missing, :old_method_missing
       undef :old_method_missing
     end
   end
 
   DependencyCollector.class_eval do
     if method_defined?(:old_parse_symbol_spec)
-      alias_method :parse_symbol_spec, :old_parse_symbol_spec
+      T.unsafe(self).alias_method :parse_symbol_spec, :old_parse_symbol_spec
       undef :old_parse_symbol_spec
     end
   end
 end
 
 module Homebrew
-  extend T::Sig
-
-  module_function
-
   BOTTLE_BLOCK_REGEX = /  bottle (?:do.+?end|:[a-z]+)\n\n/m.freeze
 
   sig { returns(CLI::Parser) }
-  def extract_args
+  def self.extract_args
     Homebrew::CLI::Parser.new do
-      usage_banner "`extract` [<--version>`=`] [<--force>] <formula> <tap>"
+      usage_banner "`extract` [`--version=`] [`--force`] <formula> <tap>"
       description <<~EOS
         Look through repository history to find the most recent version of <formula> and
         create a copy in <tap>. Specifically, the command will create the new
@@ -83,32 +88,33 @@ module Homebrew
       switch "-f", "--force",
              description: "Overwrite the destination formula if it already exists."
 
-      named_args [:formula, :tap], number: 2
+      named_args [:formula, :tap], number: 2, without_api: true
     end
   end
 
-  def extract
+  def self.extract
     args = extract_args.parse
 
     if (match = args.named.first.match(HOMEBREW_TAP_FORMULA_REGEX))
       name = match[3].downcase
       source_tap = Tap.fetch(match[1], match[2])
-      raise TapFormulaUnavailableError.new(source_tap, name) unless source_tap.installed?
     else
       name = args.named.first.downcase
       source_tap = CoreTap.instance
     end
+    raise TapFormulaUnavailableError.new(source_tap, name) unless source_tap.installed?
 
     destination_tap = Tap.fetch(args.named.second)
     unless Homebrew::EnvConfig.developer?
       odie "Cannot extract formula to homebrew/core!" if destination_tap.core_tap?
+      odie "Cannot extract formula to homebrew/cask!" if destination_tap.core_cask_tap?
       odie "Cannot extract formula to the same tap!" if destination_tap == source_tap
     end
     destination_tap.install unless destination_tap.installed?
 
     repo = source_tap.path
     pattern = if source_tap.core_tap?
-      [repo/"Formula/#{name}.rb"]
+      [source_tap.new_formula_path(name), repo/"Formula/#{name}.rb"].uniq
     else
       # A formula can technically live in the root directory of a tap or in any of its subdirectories
       [repo/"#{name}.rb", repo/"**/#{name}.rb"]
@@ -118,8 +124,8 @@ module Homebrew
       ohai "Searching repository history"
       version = args.version
       version_segments = Gem::Version.new(version).segments if Gem::Version.correct?(version)
-      rev = nil
-      test_formula = nil
+      rev = T.let(nil, T.nilable(String))
+      test_formula = T.let(nil, T.nilable(Formula))
       result = ""
       loop do
         rev = rev.nil? ? "HEAD" : "#{rev}~1"
@@ -158,7 +164,7 @@ module Homebrew
     else
       # Search in the root directory of <repo> as well as recursively in all of its subdirectories
       files = Dir[repo/"{,**/}"].map do |dir|
-        Pathname.glob(["#{dir}/#{name}.rb"]).find(&:file?)
+        Pathname.glob("#{dir}/#{name}.rb").find(&:file?)
       end.compact
 
       if files.empty?
@@ -166,11 +172,11 @@ module Homebrew
         rev, (path,) = Utils::Git.last_revision_commit_of_files(repo, pattern)
         odie "Could not find #{name}! The formula or version may not have existed." if rev.nil?
         file = repo/path
-        version = formula_at_revision(repo, name, file, rev).version
+        version = T.must(formula_at_revision(repo, name, file, rev)).version
         result = Utils::Git.last_revision_of_file(repo, file)
       else
-        file = files.first.realpath
-        rev = "HEAD"
+        file = files.fetch(0).realpath
+        rev = T.let("HEAD", T.nilable(String))
         version = Formulary.factory(file).version
         result = File.read(file)
       end
@@ -206,7 +212,8 @@ module Homebrew
   end
 
   # @private
-  def formula_at_revision(repo, name, file, rev)
+  sig { params(repo: Pathname, name: String, file: Pathname, rev: String).returns(T.nilable(Formula)) }
+  def self.formula_at_revision(repo, name, file, rev)
     return if rev.empty?
 
     contents = Utils::Git.last_revision_of_file(repo, file, before_commit: rev)

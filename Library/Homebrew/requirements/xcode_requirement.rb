@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "requirement"
@@ -7,13 +7,14 @@ require "requirement"
 #
 # @api private
 class XcodeRequirement < Requirement
-  extend T::Sig
-
   fatal true
 
   attr_reader :version
 
-  satisfy(build_env: false) { xcode_installed_version }
+  satisfy(build_env: false) do
+    T.bind(self, XcodeRequirement)
+    xcode_installed_version
+  end
 
   def initialize(tags = [])
     @version = tags.shift if tags.first.to_s.match?(/(\d\.)+\d/)
@@ -55,9 +56,9 @@ class XcodeRequirement < Requirement
   end
 
   def display_s
-    return name.capitalize unless @version
+    return "#{name.capitalize} (on macOS)" unless @version
 
-    "#{name.capitalize} >= #{@version}"
+    "#{name.capitalize} >= #{@version} (on macOS)"
   end
 end
 

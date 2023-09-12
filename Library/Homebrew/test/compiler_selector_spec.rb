@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require "compilers"
@@ -10,20 +9,15 @@ describe CompilerSelector do
   let(:compilers) { [:clang, :gnu] }
   let(:software_spec) { SoftwareSpec.new }
   let(:cc) { :clang }
-  let(:versions) do
-    double(
-      llvm_build_version:  Version::NULL,
-      clang_build_version: Version.create("600"),
-    )
-  end
+  let(:versions) { class_double(DevelopmentTools, clang_build_version: Version.new("600")) }
 
   before do
     allow(versions).to receive(:gcc_version) do |name|
       case name
-      when "gcc-7" then Version.create("7.1")
-      when "gcc-6" then Version.create("6.1")
-      when "gcc-5" then Version.create("5.1")
-      when "gcc-4.9" then Version.create("4.9.1")
+      when "gcc-7" then Version.new("7.1")
+      when "gcc-6" then Version.new("6.1")
+      when "gcc-5" then Version.new("5.1")
+      when "gcc-4.9" then Version.new("4.9.1")
       else Version::NULL
       end
     end
@@ -46,13 +40,17 @@ describe CompilerSelector do
 
     it "returns gcc-6 if gcc formula offers gcc-6 on mac", :needs_macos do
       software_spec.fails_with(:clang)
-      allow(Formulary).to receive(:factory).with("gcc").and_return(double(version: Version.new("6.0")))
+      allow(Formulary).to receive(:factory)
+        .with("gcc")
+        .and_return(instance_double(Formula, version: Version.new("6.0")))
       expect(selector.compiler).to eq("gcc-6")
     end
 
     it "returns gcc-5 if gcc formula offers gcc-5 on linux", :needs_linux do
       software_spec.fails_with(:clang)
-      allow(Formulary).to receive(:factory).with("gcc@11").and_return(double(version: Version.new("5.0")))
+      allow(Formulary).to receive(:factory)
+        .with("gcc@11")
+        .and_return(instance_double(Formula, version: Version.new("5.0")))
       expect(selector.compiler).to eq("gcc-5")
     end
 
@@ -60,14 +58,18 @@ describe CompilerSelector do
       software_spec.fails_with(:clang)
       software_spec.fails_with(gcc: "5")
       software_spec.fails_with(gcc: "7")
-      allow(Formulary).to receive(:factory).with("gcc@11").and_return(double(version: Version.new("5.0")))
+      allow(Formulary).to receive(:factory)
+        .with("gcc@11")
+        .and_return(instance_double(Formula, version: Version.new("5.0")))
       expect(selector.compiler).to eq("gcc-6")
     end
 
     it "returns gcc-7 if gcc formula offers gcc-5 and fails with gcc <= 6 on linux", :needs_linux do
       software_spec.fails_with(:clang)
       software_spec.fails_with(:gcc) { version "6" }
-      allow(Formulary).to receive(:factory).with("gcc@11").and_return(double(version: Version.new("5.0")))
+      allow(Formulary).to receive(:factory)
+        .with("gcc@11")
+        .and_return(instance_double(Formula, version: Version.new("5.0")))
       expect(selector.compiler).to eq("gcc-7")
     end
 

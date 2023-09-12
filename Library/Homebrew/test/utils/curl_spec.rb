@@ -1,10 +1,11 @@
-# typed: false
 # frozen_string_literal: true
 
 require "utils/curl"
 
 describe "Utils::Curl" do
-  let(:details) {
+  include Utils::Curl
+
+  let(:details) do
     details = {
       normal:     {},
       cloudflare: {},
@@ -111,17 +112,17 @@ describe "Utils::Curl" do
     ]
 
     details
-  }
+  end
 
-  let(:location_urls) {
+  let(:location_urls) do
     %w[
       https://example.com/example/
       https://example.com/example1/
       https://example.com/example2/
     ]
-  }
+  end
 
-  let(:response_hash) {
+  let(:response_hash) do
     response_hash = {}
 
     response_hash[:ok] = {
@@ -240,9 +241,9 @@ describe "Utils::Curl" do
     }
 
     response_hash
-  }
+  end
 
-  let(:response_text) {
+  let(:response_text) do
     response_text = {}
 
     response_text[:ok] = <<~EOS
@@ -279,9 +280,9 @@ describe "Utils::Curl" do
     )
 
     response_text
-  }
+  end
 
-  let(:body) {
+  let(:body) do
     body = {}
 
     body[:default] = <<~EOS
@@ -303,7 +304,7 @@ describe "Utils::Curl" do
     body[:with_http_status_line] = body[:default].sub("<html>", "HTTP/1.1 200\r\n<html>")
 
     body
-  }
+  end
 
   describe "curl_args" do
     let(:args) { ["foo"] }
@@ -314,9 +315,25 @@ describe "Utils::Curl" do
       expect(curl_args(*args).first).to eq("--disable")
     end
 
-    it "doesn't return `--disable` as the first argument when HOMEBREW_CURLRC is set" do
+    it "doesn't return `--disable` as the first argument when HOMEBREW_CURLRC is set but not a path" do
       ENV["HOMEBREW_CURLRC"] = "1"
       expect(curl_args(*args).first).not_to eq("--disable")
+    end
+
+    it "doesn't return `--config` when HOMEBREW_CURLRC is unset" do
+      expect(curl_args(*args)).not_to include(a_string_starting_with("--config"))
+    end
+
+    it "returns `--config` when HOMEBREW_CURLRC is a valid path" do
+      Tempfile.create do |tmpfile|
+        path = tmpfile.path
+        ENV["HOMEBREW_CURLRC"] = path
+        # We still expect --disable
+        expect(curl_args(*args).first).to eq("--disable")
+        expect(curl_args(*args).join(" ")).to include("--config #{path}")
+      end
+    ensure
+      ENV["HOMEBREW_CURLRC"] = nil
     end
 
     it "uses `--connect-timeout` when `:connect_timeout` is Numeric" do
@@ -369,6 +386,14 @@ describe "Utils::Curl" do
 
     it "errors when `:retry_max_time` is not Numeric" do
       expect { curl_args(*args, retry_max_time: "test") }.to raise_error(TypeError)
+    end
+
+    it "uses `--referer` when :referer is present" do
+      expect(curl_args(*args, referer: "https://brew.sh").join(" ")).to include("--referer https://brew.sh")
+    end
+
+    it "doesn't use `--referer` when :referer is nil" do
+      expect(curl_args(*args, referer: nil).join(" ")).not_to include("--referer")
     end
 
     it "uses HOMEBREW_USER_AGENT_FAKE_SAFARI when `:user_agent` is `:browser` or `:fake`" do

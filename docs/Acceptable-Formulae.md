@@ -2,6 +2,9 @@
 
 Some formulae should not go in [homebrew/core](https://github.com/Homebrew/homebrew-core). But there are additional [Interesting Taps and Forks](Interesting-Taps-and-Forks.md) and anyone can [start their own](How-to-Create-and-Maintain-a-Tap.md)!
 
+* Table of Contents
+{:toc}
+
 ## Requirements for `homebrew/core`
 
 ### Supported platforms
@@ -69,6 +72,12 @@ Clang is the default C/C++ compiler on macOS (and has been for a long time). Sof
 ### Stuff that requires heavy manual pre/post-install intervention
 
 We're a package manager so we want to do things like resolve dependencies and set up applications for our users. If things require too much manual intervention then they aren't useful in a package manager.
+
+### Static libraries
+
+In general, formulae should not ship static libraries since these cannot be updated without a rebuild of the dependant software.
+If a formula gets a lot of requests to install static libraries, they may be installed by the formula.
+Applications in homebrew/core linking against libraries should link against shared libraries not static versions.
 
 ### Stuff that requires vendored versions of Homebrew formulae
 

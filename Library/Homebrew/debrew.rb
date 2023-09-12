@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "mutex_m"
@@ -28,8 +28,6 @@ module Debrew
 
   # Module for displaying a debugging menu.
   class Menu
-    extend T::Sig
-
     Entry = Struct.new(:name, :action)
 
     attr_accessor :prompt, :entries
@@ -47,7 +45,7 @@ module Debrew
       menu = new
       yield menu
 
-      choice = nil
+      choice = T.let(nil, T.nilable(Entry))
       while choice.nil?
         menu.entries.each_with_index { |e, i| puts "#{i + 1}. #{e.name}" }
         print menu.prompt unless menu.prompt.nil?
@@ -90,7 +88,7 @@ module Debrew
       yield
     rescue SystemExit
       raise
-    rescue Exception => e # rubocop:disable Lint/RescueException
+    rescue Ignorable::ExceptionMixin => e
       e.ignore if debug(e) == :ignore # execution jumps back to where the exception was thrown
     ensure
       Ignorable.unhook_raise
@@ -98,28 +96,28 @@ module Debrew
     end
   end
 
-  def self.debug(e)
-    raise(e) if !active? || !debugged_exceptions.add?(e) || !try_lock
+  def self.debug(exception)
+    raise(exception) if !active? || !debugged_exceptions.add?(exception) || !mu_try_lock
 
     begin
-      puts e.backtrace.first.to_s
-      puts Formatter.error(e, label: e.class.name)
+      puts exception.backtrace.first
+      puts Formatter.error(exception, label: exception.class.name)
 
       loop do
         Menu.choose do |menu|
           menu.prompt = "Choose an action: "
 
-          menu.choice(:raise) { raise(e) }
-          menu.choice(:ignore) { return :ignore } if e.is_a?(Ignorable::ExceptionMixin)
-          menu.choice(:backtrace) { puts e.backtrace }
+          menu.choice(:raise) { raise(exception) }
+          menu.choice(:ignore) { return :ignore } if exception.is_a?(Ignorable::ExceptionMixin)
+          menu.choice(:backtrace) { puts exception.backtrace }
 
-          if e.is_a?(Ignorable::ExceptionMixin)
+          if exception.is_a?(Ignorable::ExceptionMixin)
             menu.choice(:irb) do
               puts "When you exit this IRB session, execution will continue."
               set_trace_func proc { |event, _, _, id, binding, klass|
                 if klass == Object && id == :raise && event == "return"
                   set_trace_func(nil)
-                  synchronize { IRB.start_within(binding) }
+                  mu_synchronize { IRB.start_within(binding) }
                 end
               }
 
@@ -134,7 +132,7 @@ module Debrew
         end
       end
     ensure
-      unlock
+      mu_unlock
     end
   end
 end

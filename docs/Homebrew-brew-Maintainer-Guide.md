@@ -25,11 +25,9 @@ If possible, PRs should also have GPG-signed commits (see the private `ops` repo
 
 ### Automatic approvals
 
-To ensure that non-urgent PRs have the opportunity to be seen and reviewed by any other maintainers who wish to take a look, all PRs require an approval before they can be merged. However, not every PR is reviewed by another maintainer, and some PRs are urgent enough that they need to be merged without an approval by another maintainer.
+To ensure that non-urgent PRs have the opportunity to be seen and reviewed by any other maintainers who wish to take a look, all PRs require an approval before they can be merged. However, some PRs are urgent enough that they need to be merged without an approval by another maintainer.
 
-As a compromise between always needing a review and allowing maintainers to merge PRs they deem ready, the `Triage` CI job will ensure that PRs cannot be merged until they've been open for 24 hours (only counting hours that occur Monday to Friday). After the triage period has expired, the CI job will show up as "passed" and [@BrewTestBot](https://github.com/BrewTestBot) will approve the PR, allowing it to be merged. This gives all maintainers a reasonable opportunity to review every PR, but won't block any PR for lack of reviews.
-
-If the PR is urgent enough that it is necessary to bypass that 24 hour window, the `critical` label should be applied to the PR. When this label is applied, the `Triage` CI job will immediately be successful and [@BrewTestBot](https://github.com/BrewTestBot) will approve the PR.
+As a compromise between always needing a review and allowing maintainers to merge PRs they deem critical, the `Triage` CI job will ensure that if a PR is labelled `critical`, [@BrewTestBot](https://github.com/BrewTestBot) approves the PR, allowing it to be merged.
 
 ## CI
 
@@ -43,10 +41,10 @@ There are many checks that run on every PR. The following is a quick list of the
 - `CI / vendored gems`: This checks whether there was a change to the vendored gems on Linux that needs to be committed to the PR branch.
 - `CI / test default formula (Linux)`: This runs `brew test-bot` on Linux to ensure it still works as expected.
 - `CI / syntax`: This is run first to check whether the PR passes `brew style` and `brew typecheck`. If this job fails the following jobs will not run.
-- `CI / tap syntax`: This runs `brew style` and `brew audit` on all official taps (note that although this runs on Linux, it does check all cask repos).
+- `CI / tap syntax`: This runs `brew style` and `brew audit` on all official taps (note that although this runs on Linux, it does check all cask repositories).
 - `CI / docker`: This builds and deploys a new Homebrew Docker image to GitHub Packages and Docker Hub.
 - `CI / test everything (macOS)`: This runs several checks on macOS including `brew tests`, `brew update-tests`, `brew test-bot --only-formulae --test-default-formula`, `brew readall` and `brew doctor`.
-- `CI / tests (no-compatibility mode)`, `CI / tests (generic OS)` and `CI / tests (Linux)`: These run `brew tests` with various options on Linux.
+- `CI / tests (generic OS)` and `CI / tests (Linux)`: These run `brew tests` with various options on Linux.
 - `Documentation CI / linting` and `rubydoc`: These check the prose and formatting of the written documentation, and verify the [rubydoc API documentation](https://rubydoc.brew.sh) can be built without issue.
 
 _Note that this list is non-exhaustive and can change over time._

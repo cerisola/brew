@@ -2,13 +2,11 @@
 # frozen_string_literal: true
 
 require "open3"
-require "ostruct"
 require "plist"
 require "shellwords"
 
 require "extend/io"
 require "extend/predicable"
-require "extend/hash_validator"
 
 require "extend/time"
 
@@ -16,14 +14,10 @@ require "extend/time"
 #
 # @api private
 class SystemCommand
-  extend T::Sig
-
   using TimeRemaining
 
   # Helper functions for calling {SystemCommand.run}.
   module Mixin
-    extend T::Sig
-
     def system_command(executable, **options)
       SystemCommand.run(executable, **options)
     end
@@ -71,6 +65,7 @@ class SystemCommand
       executable:   T.any(String, Pathname),
       args:         T::Array[T.any(String, Integer, Float, URI::Generic)],
       sudo:         T::Boolean,
+      sudo_as_root: T::Boolean,
       env:          T::Hash[String, String],
       input:        T.any(String, T::Array[String]),
       must_succeed: T::Boolean,
@@ -87,6 +82,7 @@ class SystemCommand
     executable,
     args: [],
     sudo: false,
+    sudo_as_root: false,
     env: {},
     input: [],
     must_succeed: false,
@@ -101,7 +97,11 @@ class SystemCommand
     require "extend/ENV"
     @executable = executable
     @args = args
+
+    raise ArgumentError, "sudo_as_root cannot be set if sudo is false" if !sudo && sudo_as_root
+
     @sudo = sudo
+    @sudo_as_root = sudo_as_root
     env.each_key do |name|
       next if /^[\w&&\D]\w*$/.match?(name)
 
@@ -121,14 +121,14 @@ class SystemCommand
 
   sig { returns(T::Array[String]) }
   def command
-    [*sudo_prefix, *env_args, executable.to_s, *expanded_args]
+    [*command_prefix, executable.to_s, *expanded_args]
   end
 
   private
 
   attr_reader :executable, :args, :input, :chdir, :env
 
-  attr_predicate :sudo?, :print_stdout?, :print_stderr?, :must_succeed?
+  attr_predicate :sudo?, :sudo_as_root?, :print_stdout?, :print_stderr?, :must_succeed?
 
   sig { returns(T::Boolean) }
   def debug?
@@ -154,15 +154,25 @@ class SystemCommand
 
     return [] if set_variables.empty?
 
-    ["/usr/bin/env", *set_variables]
+    set_variables
   end
 
   sig { returns(T::Array[String]) }
   def sudo_prefix
-    return [] unless sudo?
-
+    user_flags = []
+    user_flags += ["-u", "root"] if sudo_as_root?
     askpass_flags = ENV.key?("SUDO_ASKPASS") ? ["-A"] : []
-    ["/usr/bin/sudo", *askpass_flags, "-E", "--"]
+    ["/usr/bin/sudo", *user_flags, *askpass_flags, "-E", *env_args, "--"]
+  end
+
+  sig { returns(T::Array[String]) }
+  def env_prefix
+    ["/usr/bin/env", *env_args]
+  end
+
+  sig { returns(T::Array[String]) }
+  def command_prefix
+    sudo? ? sudo_prefix : env_prefix
   end
 
   sig { returns(T::Array[String]) }
@@ -191,10 +201,13 @@ class SystemCommand
     }
     options[:chdir] = chdir if chdir
 
-    pid = T.let(nil, T.nilable(Integer))
     raw_stdin, raw_stdout, raw_stderr, raw_wait_thr = ignore_interrupts do
-      T.unsafe(Open3).popen3(env, [executable, executable], *args, **options)
-       .tap { |*, wait_thr| pid = wait_thr.pid }
+      Open3.popen3(
+        env.merge({ "COLUMNS" => Tty.width.to_s }),
+        [executable, executable],
+        *args,
+        **options,
+      )
     end
 
     write_input_to(raw_stdin)
@@ -222,7 +235,7 @@ class SystemCommand
     thread_done_queue << true
     line_thread.join
   rescue Interrupt
-    Process.kill("INT", pid) if pid && !sudo?
+    Process.kill("INT", raw_wait_thr.pid) if raw_wait_thr && !sudo?
     raise Interrupt
   rescue SystemCallError => e
     @status = $CHILD_STATUS
@@ -273,8 +286,6 @@ class SystemCommand
 
   # Result containing the output and exit status of a finished sub-process.
   class Result
-    extend T::Sig
-
     include Context
 
     attr_accessor :command, :status, :exit_status
@@ -349,7 +360,7 @@ class SystemCommand
           Regexp.last_match(1)
         end
 
-        Plist.parse_xml(output)
+        Plist.parse_xml(output, marshal: false)
       end
     end
 

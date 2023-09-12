@@ -1,6 +1,7 @@
 # typed: true
 # frozen_string_literal: true
 
+require "securerandom"
 require "utils/tty"
 
 module GitHub
@@ -8,8 +9,6 @@ module GitHub
   #
   # @api private
   module Actions
-    extend T::Sig
-
     sig { params(string: String).returns(String) }
     def self.escape(string)
       # See https://github.community/t/set-output-truncates-multiline-strings/16852/3.
@@ -18,10 +17,26 @@ module GitHub
             .gsub("\r", "%0D")
     end
 
+    sig { params(name: String, value: String).returns(String) }
+    def self.format_multiline_string(name, value)
+      # Format multiline strings for environment files
+      # See https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#multiline-strings
+
+      delimiter = "ghadelimiter_#{SecureRandom.uuid}"
+
+      if name.include?(delimiter) || value.include?(delimiter)
+        raise "`name` and `value` must not contain the delimiter"
+      end
+
+      <<~EOS
+        #{name}<<#{delimiter}
+        #{value}
+        #{delimiter}
+      EOS
+    end
+
     # Helper class for formatting annotations on GitHub Actions.
     class Annotation
-      extend T::Sig
-
       ANNOTATION_TYPES = [:notice, :warning, :error].freeze
 
       sig { params(path: T.any(String, Pathname)).returns(T.nilable(Pathname)) }

@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "resource"
@@ -26,7 +26,7 @@ module Patch
     when nil
       raise ArgumentError, "nil value for strip"
     else
-      raise ArgumentError, "unexpected value #{strip.inspect} for strip"
+      raise ArgumentError, "Unexpected value #{strip.inspect} for strip"
     end
   end
 end
@@ -35,8 +35,6 @@ end
 #
 # @api private
 class EmbeddedPatch
-  extend T::Sig
-
   attr_writer :owner
   attr_reader :strip
 
@@ -67,8 +65,6 @@ end
 #
 # @api private
 class DATAPatch < EmbeddedPatch
-  extend T::Sig
-
   attr_accessor :path
 
   def initialize(strip)
@@ -110,8 +106,6 @@ end
 #
 # @api private
 class ExternalPatch
-  extend T::Sig
-
   extend Forwardable
 
   attr_reader :resource, :strip
@@ -131,8 +125,8 @@ class ExternalPatch
   end
 
   def owner=(owner)
-    resource.owner   = owner
-    resource.version = resource.checksum || ERB::Util.url_encode(resource.url)
+    resource.owner = owner
+    resource.version(resource.checksum&.hexdigest || ERB::Util.url_encode(resource.url))
   end
 
   def apply
@@ -141,14 +135,14 @@ class ExternalPatch
       patch_dir = Pathname.pwd
       if patch_files.empty?
         children = patch_dir.children
-        if children.length != 1 || !children.first.file?
+        if children.length != 1 || !children.fetch(0).file?
           raise MissingApplyError, <<~EOS
             There should be exactly one patch file in the staging directory unless
             the "apply" method was used one or more times in the patch-do block.
           EOS
         end
 
-        patch_files << children.first.basename
+        patch_files << children.fetch(0).basename
       end
       dir = base_dir
       dir /= resource.directory if resource.directory.present?

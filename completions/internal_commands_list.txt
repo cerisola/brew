@@ -30,6 +30,7 @@ contributions
 create
 deps
 desc
+determine-test-runners
 developer
 dispatch-build-bottle
 docs
@@ -41,6 +42,8 @@ extract
 fetch
 formula
 formulae
+generate-cask-api
+generate-formula-api
 generate-man-completions
 gist-logs
 help
@@ -61,15 +64,20 @@ log
 ls
 migrate
 missing
+nodenv-sync
 options
 outdated
 pin
+post_install
+postgresql-upgrade-database
 postinstall
 pr-automerge
 pr-publish
 pr-pull
 pr-upload
 prof
+pyenv-sync
+rbenv-sync
 readall
 reinstall
 release

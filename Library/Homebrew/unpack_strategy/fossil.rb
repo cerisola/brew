@@ -6,12 +6,8 @@ require "system_command"
 module UnpackStrategy
   # Strategy for unpacking Fossil repositories.
   class Fossil
-    extend T::Sig
-
     include UnpackStrategy
     extend SystemCommand::Mixin
-
-    using Magic
 
     sig { returns(T::Array[String]) }
     def self.extensions

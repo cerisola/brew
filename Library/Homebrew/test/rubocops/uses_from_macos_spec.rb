@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require "rubocops/uses_from_macos"
@@ -13,7 +12,7 @@ describe RuboCop::Cop::FormulaAudit::UsesFromMacos do
         homepage "https://brew.sh"
 
         uses_from_macos "postgresql"
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `uses_from_macos` should only be used for macOS dependencies, not postgresql.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/UsesFromMacos: `uses_from_macos` should only be used for macOS dependencies, not postgresql.
       end
     RUBY
   end

@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 if ENV["HOMEBREW_TESTS_COVERAGE"]
@@ -27,7 +26,6 @@ end
 
 require "rspec/its"
 require "rspec/github"
-require "rspec/wait"
 require "rspec/retry"
 require "rspec/sorbet"
 require "rubocop/rspec/support"
@@ -39,7 +37,7 @@ $LOAD_PATH.push(File.expand_path("#{ENV.fetch("HOMEBREW_LIBRARY")}/Homebrew/test
 
 require_relative "../global"
 
-require "test/support/no_seed_progress_formatter"
+require "test/support/quiet_progress_formatter"
 require "test/support/helper/cask"
 require "test/support/helper/fixtures"
 require "test/support/helper/formula"
@@ -73,18 +71,16 @@ RSpec.configure do |config|
 
   config.silence_filter_announcements = true if ENV["TEST_ENV_NUMBER"]
 
+  # Improve backtrace formatting
+  config.filter_gems_from_backtrace "rspec-retry", "sorbet-runtime"
+  config.backtrace_exclusion_patterns << %r{test/spec_helper\.rb}
+
   config.expect_with :rspec do |c|
     c.max_formatted_output_length = 200
   end
 
   # Use rspec-retry to handle flaky tests.
   config.default_sleep_interval = 1
-
-  # Don't make retries as noisy unless in CI.
-  if ENV["CI"]
-    config.verbose_retry = true
-    config.display_try_failure_messages = true
-  end
 
   # Don't want the nicer default retry behaviour when using BuildPulse to
   # identify flaky tests.
@@ -121,10 +117,6 @@ RSpec.configure do |config|
   config.include(Test::Helper::MkTmpDir)
   config.include(Test::Helper::OutputAsTTY)
 
-  config.before(:each, :needs_compat) do
-    skip "Requires the compatibility layer." if ENV["HOMEBREW_NO_COMPAT"]
-  end
-
   config.before(:each, :needs_linux) do
     skip "Not running on Linux." unless OS.linux?
   end
@@ -133,12 +125,16 @@ RSpec.configure do |config|
     skip "Not running on macOS." unless OS.mac?
   end
 
+  config.before(:each, :needs_ci) do
+    skip "Not running on CI." unless ENV["CI"]
+  end
+
   config.before(:each, :needs_java) do
     skip "Java is not installed." unless which("java")
   end
 
   config.before(:each, :needs_python) do
-    skip "Python is not installed." unless which("python")
+    skip "Python is not installed." if !which("python3") && !which("python")
   end
 
   config.before(:each, :needs_network) do
@@ -171,7 +167,7 @@ RSpec.configure do |config|
 
   config.before(:each, :needs_homebrew_curl) do
     ENV["HOMEBREW_CURL"] = HOMEBREW_BREWED_CURL_PATH
-    skip "A `curl` with TLS 1.3 support is required." unless curl_supports_tls13?
+    skip "A `curl` with TLS 1.3 support is required." unless Utils::Curl.curl_supports_tls13?
   rescue FormulaUnavailableError
     skip "No `curl` formula is available."
   end

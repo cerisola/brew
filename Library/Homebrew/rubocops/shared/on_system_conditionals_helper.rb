@@ -1,7 +1,7 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
-require "macos_versions"
+require "macos_version"
 require "rubocops/shared/helper_functions"
 
 module RuboCop
@@ -15,7 +15,7 @@ module RuboCop
 
       ARCH_OPTIONS = [:arm, :intel].freeze
       BASE_OS_OPTIONS = [:macos, :linux].freeze
-      MACOS_VERSION_OPTIONS = MacOSVersions::SYMBOLS.keys.freeze
+      MACOS_VERSION_OPTIONS = MacOSVersion::SYMBOLS.keys.freeze
       ON_SYSTEM_OPTIONS = [*ARCH_OPTIONS, *BASE_OS_OPTIONS, *MACOS_VERSION_OPTIONS, :system].freeze
 
       MACOS_VERSION_CONDITIONALS = {
@@ -172,7 +172,7 @@ module RuboCop
 
       def if_node_is_allowed?(if_node, allowed_methods: [], allowed_blocks: [])
         # TODO: check to see if it's legal
-        valid = false
+        valid = T.let(false, T::Boolean)
         if_node.each_ancestor do |ancestor|
           valid_method_names = case ancestor.type
           when :def

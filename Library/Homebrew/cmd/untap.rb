@@ -4,8 +4,6 @@
 require "cli/parser"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -25,9 +23,9 @@ module Homebrew
     args = untap_args.parse
 
     args.named.to_installed_taps.each do |tap|
-      odie "Untapping #{tap} is not allowed" if tap.core_tap? && !Homebrew::EnvConfig.install_from_api?
+      odie "Untapping #{tap} is not allowed" if tap.core_tap? && Homebrew::EnvConfig.no_install_from_api?
 
-      if !Homebrew::EnvConfig.install_from_api? || (!tap.core_tap? && tap != "homebrew/cask")
+      if Homebrew::EnvConfig.no_install_from_api? || (!tap.core_tap? && tap != "homebrew/cask")
         installed_tap_formulae = Formula.installed.select { |formula| formula.tap == tap }
         installed_tap_casks = Cask::Caskroom.casks.select { |cask| cask.tap == tap }
 

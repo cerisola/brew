@@ -23,8 +23,12 @@ module Homebrew
       other =~ @text
     end
 
-    def include?(s)
-      @text.include? s
+    def include?(string)
+      @text.include? string
+    end
+
+    def to_s
+      @text
     end
 
     def line_number(regex, skip = 0)

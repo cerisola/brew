@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "active_support/core_ext/object/deep_dup"
@@ -9,13 +9,14 @@ module Cask
     #
     # @api private
     class AbstractArtifact
-      extend T::Sig
+      extend T::Helpers
+      abstract!
 
       include Comparable
       extend Predicable
 
       def self.english_name
-        @english_name ||= name.sub(/^.*:/, "").gsub(/(.)([A-Z])/, '\1 \2')
+        @english_name ||= T.must(name).sub(/^.*:/, "").gsub(/(.)([A-Z])/, '\1 \2')
       end
 
       def self.english_article
@@ -23,12 +24,15 @@ module Cask
       end
 
       def self.dsl_key
-        @dsl_key ||= name.sub(/^.*:/, "").gsub(/(.)([A-Z])/, '\1_\2').downcase.to_sym
+        @dsl_key ||= T.must(name).sub(/^.*:/, "").gsub(/(.)([A-Z])/, '\1_\2').downcase.to_sym
       end
 
       def self.dirmethod
         @dirmethod ||= "#{dsl_key}dir".to_sym
       end
+
+      sig { abstract.returns(String) }
+      def summarize; end
 
       def staged_path_join_executable(path)
         path = Pathname(path)
@@ -77,6 +81,7 @@ module Cask
             Service,
             InputMethod,
             InternetPlugin,
+            KeyboardLayout,
             AudioUnitPlugin,
             VstPlugin,
             Vst3Plugin,
@@ -99,7 +104,12 @@ module Cask
         description = key ? "#{stanza} #{key.inspect}" : stanza.to_s
 
         # backward-compatible string value
-        arguments = { executable: arguments } if arguments.is_a?(String)
+        arguments = if arguments.is_a?(String)
+          { executable: arguments }
+        else
+          # Avoid mutating the original argument
+          arguments.dup
+        end
 
         # key sanity
         permitted_keys = [:args, :input, :executable, :must_succeed, :sudo, :print_stdout, :print_stderr]

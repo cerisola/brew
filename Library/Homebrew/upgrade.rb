@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "reinstall"
@@ -22,6 +22,7 @@ module Homebrew
       installed_on_request: false,
       force_bottle: false,
       build_from_source_formulae: [],
+      dependents: false,
       interactive: false,
       keep_tmp: false,
       debug_symbols: false,
@@ -70,6 +71,20 @@ module Homebrew
           )
           unless dry_run
             fi.prelude
+
+            # Don't need to install this bottle if all the runtime dependencies
+            # are already satisfied.
+            next if dependents && fi.bottle_tab_runtime_dependencies.presence&.none? do |dependency, hash|
+              installed_version = begin
+                Formula[dependency].any_installed_version
+              rescue FormulaUnavailableError
+                nil
+              end
+              next true unless installed_version
+
+              Version.new(hash["version"]) > installed_version.version
+            end
+
             fi.fetch
           end
           fi
@@ -209,7 +224,7 @@ module Homebrew
     ensure
       # restore previous installation state if build failed
       begin
-        linked_kegs.each(&:link) if linked_kegs.present? && !f.latest_version_installed?
+        linked_kegs&.each(&:link) unless formula.latest_version_installed?
       rescue
         nil
       end
@@ -256,10 +271,12 @@ module Homebrew
       verbose: false
     )
       if Homebrew::EnvConfig.no_installed_dependents_check?
-        opoo <<~EOS
-          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK is set: not checking for outdated
-          dependents or dependents with broken linkage!
-        EOS
+        unless Homebrew::EnvConfig.no_env_hints?
+          opoo <<~EOS
+            HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK is set: not checking for outdated
+            dependents or dependents with broken linkage!
+          EOS
+        end
         return
       end
 
@@ -269,6 +286,7 @@ module Homebrew
 
       already_broken_dependents = check_broken_dependents(installed_formulae)
 
+      # TODO: this should be refactored to use FormulaInstaller new logic
       outdated_dependents =
         installed_formulae.flat_map(&:runtime_installed_formula_dependents)
                           .uniq
@@ -299,7 +317,7 @@ module Homebrew
                            .sort { |a, b| depends_on(a, b) }
 
       if pinned_dependents.present?
-        plural = "dependent".pluralize(pinned_dependents.count)
+        plural = Utils.pluralize("dependent", pinned_dependents.count)
         ohai "Not upgrading #{pinned_dependents.count} pinned #{plural}:"
         puts(pinned_dependents.map do |f|
           "#{f.full_specified_name} #{f.pkg_version}"
@@ -310,10 +328,10 @@ module Homebrew
       if upgradeable_dependents.blank?
         ohai "No outdated dependents to upgrade!" unless dry_run
       else
-        dependent_plural = "dependent".pluralize(upgradeable_dependents.count)
-        formula_plural = "formula".pluralize(installed_formulae.count)
+        formula_plural = Utils.pluralize("formula", installed_formulae.count, plural: "e")
         upgrade_verb = dry_run ? "Would upgrade" : "Upgrading"
-        ohai "#{upgrade_verb} #{upgradeable_dependents.count} #{dependent_plural} of upgraded #{formula_plural}:"
+        ohai "#{upgrade_verb} #{Utils.pluralize("dependent", upgradeable_dependents.count,
+                                                include_count: true)} of upgraded #{formula_plural}:"
         Upgrade.puts_no_installed_dependents_check_disable_message_if_not_already!
         formulae_upgrades = upgradeable_dependents.map do |f|
           name = f.full_specified_name
@@ -333,6 +351,7 @@ module Homebrew
           installed_on_request:       installed_on_request,
           force_bottle:               force_bottle,
           build_from_source_formulae: build_from_source_formulae,
+          dependents:                 true,
           interactive:                interactive,
           keep_tmp:                   keep_tmp,
           debug_symbols:              debug_symbols,
@@ -375,7 +394,7 @@ module Homebrew
       # Print the pinned dependents.
       if outdated_pinned_broken_dependents.present?
         count = outdated_pinned_broken_dependents.count
-        plural = "dependent".pluralize(outdated_pinned_broken_dependents.count)
+        plural = Utils.pluralize("dependent", outdated_pinned_broken_dependents.count)
         onoe "Not reinstalling #{count} broken and outdated, but pinned #{plural}:"
         $stderr.puts(outdated_pinned_broken_dependents.map do |f|
           "#{f.full_specified_name} #{f.pkg_version}"
@@ -386,9 +405,8 @@ module Homebrew
       if reinstallable_broken_dependents.blank?
         ohai "No broken dependents to reinstall!"
       else
-        count = reinstallable_broken_dependents.count
-        plural = "dependent".pluralize(reinstallable_broken_dependents.count)
-        ohai "Reinstalling #{count} #{plural} with broken linkage from source:"
+        ohai "Reinstalling #{Utils.pluralize("dependent", reinstallable_broken_dependents.count,
+                                             include_count: true)} with broken linkage from source:"
         Upgrade.puts_no_installed_dependents_check_disable_message_if_not_already!
         puts reinstallable_broken_dependents.map(&:full_specified_name)
                                             .join(", ")
@@ -423,13 +441,13 @@ module Homebrew
       end
     end
 
-    def depends_on(a, b)
-      if a.any_installed_keg
+    def depends_on(one, two)
+      if one.any_installed_keg
          &.runtime_dependencies
-         &.any? { |d| d["full_name"] == b.full_name }
+         &.any? { |dependency| dependency["full_name"] == two.full_name }
         1
       else
-        a <=> b
+        one <=> two
       end
     end
     private_class_method :depends_on

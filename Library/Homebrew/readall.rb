@@ -31,7 +31,7 @@ module Readall
           failed = true
         end
 
-        if (formula_dir/"#{f.basename}.rb").exist?
+        if formula_dir.glob("**/#{f.basename}.rb").any?(&:exist?)
           onoe "Formula duplicating alias: #{f}"
           failed = true
         end
@@ -62,57 +62,43 @@ module Readall
       success
     end
 
-    def valid_casks?(casks, bottle_tag: nil)
-      return true if bottle_tag.present? && bottle_tag.system == :linux
-
-      success = T.let(true, T::Boolean)
-      casks.each do |file|
-        Cask::CaskLoader.load(file)
-      rescue Interrupt
-        raise
-      rescue Exception => e # rubocop:disable Lint/RescueException
-        onoe "Invalid cask (#{bottle_tag}): #{file}"
-        $stderr.puts e
-        success = false
-      end
-      success
+    def valid_casks?(_casks, os_name: nil, arch: nil)
+      true
     end
 
-    def valid_tap?(tap, options = {})
+    def valid_tap?(tap, aliases: false, no_simulate: false, os_arch_combinations: nil)
       success = true
-      if options[:aliases]
+
+      if aliases
         valid_aliases = valid_aliases?(tap.alias_dir, tap.formula_dir)
         success = false unless valid_aliases
       end
-      if options[:no_simulate]
+      if no_simulate
         success = false unless valid_formulae?(tap.formula_files)
         success = false unless valid_casks?(tap.cask_files)
       else
-        arches = [:arm, :intel]
-        os_names = [*MacOSVersions::SYMBOLS.keys, :linux]
-        arches.each do |arch|
-          os_names.each do |os_name|
-            bottle_tag = Utils::Bottles::Tag.new(system: os_name, arch: arch)
-            next unless bottle_tag.valid_combination?
+        # TODO: Remove this default case once `--os` and `--arch` are passed explicitly to `brew readall` in CI.
+        os_arch_combinations ||= [*MacOSVersion::SYMBOLS.keys, :linux].product(OnSystem::ARCH_OPTIONS)
 
-            Homebrew::SimulateSystem.arch = arch
-            Homebrew::SimulateSystem.os = os_name
+        os_arch_combinations.each do |os, arch|
+          bottle_tag = Utils::Bottles::Tag.new(system: os, arch: arch)
+          next unless bottle_tag.valid_combination?
 
+          Homebrew::SimulateSystem.with os: os, arch: arch do
             success = false unless valid_formulae?(tap.formula_files, bottle_tag: bottle_tag)
-            success = false unless valid_casks?(tap.cask_files, bottle_tag: bottle_tag)
-
-            Homebrew::SimulateSystem.clear
+            success = false unless valid_casks?(tap.cask_files, os_name: os, arch: arch)
           end
         end
       end
+
       success
     end
 
     private
 
-    def syntax_errors_or_warnings?(rb)
+    def syntax_errors_or_warnings?(filename)
       # Retrieve messages about syntax errors/warnings printed to `$stderr`.
-      _, err, status = system_command(RUBY_PATH, args: ["-c", "-w", rb], print_stderr: false)
+      _, err, status = system_command(RUBY_PATH, args: ["-c", "-w", filename], print_stderr: false)
 
       # Ignore unnecessary warning about named capture conflicts.
       # See https://bugs.ruby-lang.org/issues/12359.

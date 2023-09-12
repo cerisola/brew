@@ -1,9 +1,7 @@
 # typed: true
 # frozen_string_literal: true
 
-require "download_strategy"
-require "checksum"
-require "version"
+require "downloadable"
 require "mktemp"
 require "livecheck"
 require "extend/on_system"
@@ -13,55 +11,39 @@ require "extend/on_system"
 # of this class.
 #
 # @api private
-class Resource
-  extend T::Sig
-
-  include Context
+class Resource < Downloadable
   include FileUtils
   include OnSystem::MacOSAndLinux
 
-  attr_reader :mirrors, :specs, :using, :source_modified_time, :patches, :owner
-  attr_writer :version
-  attr_accessor :download_strategy, :checksum
+  attr_reader :source_modified_time, :patches, :owner
+  attr_writer :checksum
+  attr_accessor :download_strategy
 
   # Formula name must be set after the DSL, as we have no access to the
   # formula name before initialization of the formula.
   attr_accessor :name
 
+  sig { params(name: T.nilable(String), block: T.nilable(T.proc.bind(Resource).void)).void }
   def initialize(name = nil, &block)
+    super()
     # Ensure this is synced with `initialize_dup` and `freeze` (excluding simple objects like integers and booleans)
     @name = name
-    @url = nil
-    @version = nil
-    @mirrors = []
-    @specs = {}
-    @checksum = nil
-    @using = nil
     @patches = []
     @livecheck = Livecheck.new(self)
     @livecheckable = false
+    @insecure = false
     instance_eval(&block) if block
   end
 
   def initialize_dup(other)
     super
     @name = @name.dup
-    @version = @version.dup
-    @mirrors = @mirrors.dup
-    @specs = @specs.dup
-    @checksum = @checksum.dup
-    @using = @using.dup
     @patches = @patches.dup
     @livecheck = @livecheck.dup
   end
 
   def freeze
     @name.freeze
-    @version.freeze
-    @mirrors.freeze
-    @specs.freeze
-    @checksum.freeze
-    @using.freeze
     @patches.freeze
     @livecheck.freeze
     super
@@ -74,15 +56,15 @@ class Resource
     return if !owner.respond_to?(:full_name) || owner.full_name != "ca-certificates"
     return if Homebrew::EnvConfig.no_insecure_redirect?
 
-    @specs[:insecure] = !specs[:bottle] && !DevelopmentTools.ca_file_handles_most_https_certificates?
-  end
+    @insecure = !specs[:bottle] && !DevelopmentTools.ca_file_handles_most_https_certificates?
+    return if @url.nil?
 
-  def downloader
-    return @downloader if @downloader.present?
-
-    url, *mirrors = determine_url_mirrors
-    @downloader = download_strategy.new(url, download_name, version,
-                                        mirrors: mirrors, **specs)
+    specs = if @insecure
+      @url.specs.merge({ insecure: true })
+    else
+      @url.specs.except(:insecure)
+    end
+    @url = URL.new(@url.to_s, specs)
   end
 
   # Removes /s from resource names; this allows Go package names
@@ -99,18 +81,6 @@ class Resource
     "#{owner.name}--#{escaped_name}"
   end
 
-  def downloaded?
-    cached_download.exist?
-  end
-
-  def cached_download
-    downloader.cached_location
-  end
-
-  def clear_cache
-    downloader.clear_cache
-  end
-
   # Verifies download and unpacks it.
   # The block may call `|resource, staging| staging.retain!` to retain the staging
   # directory. Subclasses that override stage should implement the tmp
@@ -118,7 +88,7 @@ class Resource
   #
   # @api public
   def stage(target = nil, debug_symbols: false, &block)
-    raise ArgumentError, "target directory or block is required" if !target && block.blank?
+    raise ArgumentError, "Target directory or block is required" if !target && block.blank?
 
     prepare_patches
     fetch_patches(skip_downloaded: true)
@@ -172,33 +142,9 @@ class Resource
   end
 
   def fetch(verify_download_integrity: true)
-    HOMEBREW_CACHE.mkpath
-
     fetch_patches
 
-    begin
-      downloader.fetch
-    rescue ErrorDuringExecution, CurlDownloadStrategyError => e
-      raise DownloadError.new(self, e)
-    end
-
-    download = cached_download
-    verify_download_integrity(download) if verify_download_integrity
-    download
-  end
-
-  def verify_download_integrity(fn)
-    if fn.file?
-      ohai "Verifying checksum for '#{fn.basename}'" if verbose?
-      fn.verify_checksum(checksum)
-    end
-  rescue ChecksumMissingError
-    opoo <<~EOS
-      Cannot verify integrity of '#{fn.basename}'.
-      No checksum was provided for this resource.
-      For your reference, the checksum is:
-        sha256 "#{fn.sha256}"
-    EOS
+    super(verify_download_integrity: verify_download_integrity)
   end
 
   # @!attribute [w] livecheck
@@ -231,24 +177,29 @@ class Resource
   end
 
   def url(val = nil, **specs)
-    return @url if val.nil?
+    return @url&.to_s if val.nil?
 
     specs = specs.dup
     # Don't allow this to be set.
     specs.delete(:insecure)
 
-    @url = val
-    @using = specs.delete(:using)
-    @download_strategy = DownloadStrategyDetector.detect(url, using)
-    @specs.merge!(specs)
+    specs[:insecure] = true if @insecure
+
+    @url = URL.new(val, specs)
     @downloader = nil
-    @version = detect_version(@version)
+    @download_strategy = @url.download_strategy
   end
 
+  sig { params(val: T.nilable(T.any(String, Version))).returns(T.nilable(Version)) }
   def version(val = nil)
-    return @version if val.nil?
+    return super() if val.nil?
 
-    @version = detect_version(val)
+    @version = case val
+    when String
+      val.blank? ? Version::NULL : Version.new(val)
+    when Version
+      val
+    end
   end
 
   def mirror(val)
@@ -260,6 +211,14 @@ class Resource
     patches << p
   end
 
+  def using
+    @url&.using
+  end
+
+  def specs
+    @url&.specs || {}.freeze
+  end
+
   protected
 
   def stage_resource(prefix, debug_symbols: false, &block)
@@ -268,25 +227,13 @@ class Resource
 
   private
 
-  def detect_version(val)
-    version = case val
-    when nil     then url.nil? ? Version::NULL : Version.detect(url, **specs)
-    when String  then Version.create(val)
-    when Version then val
-    else
-      raise TypeError, "version '#{val.inspect}' should be a string"
-    end
-
-    version unless version.null?
-  end
-
   def determine_url_mirrors
     extra_urls = []
 
     # glibc-bootstrap
     if url.start_with?("https://github.com/Homebrew/glibc-bootstrap/releases/download")
-      if Homebrew::EnvConfig.artifact_domain.present?
-        extra_urls << url.sub("https://github.com", Homebrew::EnvConfig.artifact_domain)
+      if (artifact_domain = Homebrew::EnvConfig.artifact_domain.presence)
+        extra_urls << url.sub("https://github.com", artifact_domain)
       end
       if Homebrew::EnvConfig.bottle_domain != HOMEBREW_BOTTLE_DEFAULT_DOMAIN
         tag, filename = url.split("/").last(2)
@@ -295,14 +242,14 @@ class Resource
     end
 
     # PyPI packages: PEP 503 – Simple Repository API <https://peps.python.org/pep-0503>
-    if Homebrew::EnvConfig.pip_index_url.present?
-      pip_index_base_url = Homebrew::EnvConfig.pip_index_url.chomp("/").chomp("/simple")
+    if (pip_index_url = Homebrew::EnvConfig.pip_index_url.presence)
+      pip_index_base_url = pip_index_url.chomp("/").chomp("/simple")
       %w[https://files.pythonhosted.org https://pypi.org].each do |base_url|
         extra_urls << url.sub(base_url, pip_index_base_url) if url.start_with?("#{base_url}/packages")
       end
     end
 
-    [*extra_urls, url, *mirrors].uniq
+    [*extra_urls, *super].uniq
   end
 
   # A resource containing a Go package.
@@ -342,8 +289,6 @@ end
 #
 # @api private
 class ResourceStageContext
-  extend T::Sig
-
   extend Forwardable
 
   # The {Resource} that is being staged.

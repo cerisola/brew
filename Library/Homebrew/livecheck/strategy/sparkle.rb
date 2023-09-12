@@ -14,8 +14,6 @@ module Homebrew
       #
       # @api private
       class Sparkle
-        extend T::Sig
-
         # A priority of zero causes livecheck to skip the strategy. We do this
         # for {Sparkle} so we can selectively apply it when appropriate.
         PRIORITY = 0
@@ -46,8 +44,6 @@ module Homebrew
           :bundle_version,
           keyword_init: true,
         ) do
-          extend T::Sig
-
           extend Forwardable
 
           # @api public
@@ -66,25 +62,8 @@ module Homebrew
         # @return [Item, nil]
         sig { params(content: String).returns(T::Array[Item]) }
         def self.items_from_content(content)
-          require "rexml/document"
-
-          parsing_tries = 0
-          xml = begin
-            REXML::Document.new(content)
-          rescue REXML::UndefinedNamespaceException => e
-            undefined_prefix = e.to_s[/Undefined prefix ([^ ]+) found/i, 1]
-            raise if undefined_prefix.blank?
-
-            # Only retry parsing once after removing prefix from content
-            parsing_tries += 1
-            raise if parsing_tries > 1
-
-            # When an XML document contains a prefix without a corresponding
-            # namespace, it's necessary to remove the prefix from the content
-            # to be able to successfully parse it using REXML
-            content = content.gsub(%r{(</?| )#{Regexp.escape(undefined_prefix)}:}, '\1')
-            retry
-          end
+          xml = Xml.parse_xml(content)
+          return [] if xml.blank?
 
           # Remove prefixes, so we can reliably identify elements and attributes
           xml.root&.each_recursive do |node|
@@ -113,7 +92,7 @@ module Homebrew
             pub_date = item.elements["pubDate"]&.text&.strip&.presence&.then do |date_string|
               Time.parse(date_string)
             rescue ArgumentError
-              # Omit unparseable strings (e.g. non-English dates)
+              # Omit unparsable strings (e.g. non-English dates)
               nil
             end
 
@@ -128,8 +107,8 @@ module Homebrew
 
             if (minimum_system_version = item.elements["minimumSystemVersion"]&.text&.gsub(/\A\D+|\D+\z/, ""))
               macos_minimum_system_version = begin
-                OS::Mac::Version.new(minimum_system_version).strip_patch
-              rescue MacOSVersionError
+                MacOSVersion.new(minimum_system_version).strip_patch
+              rescue MacOSVersion::Error
                 nil
               end
 
@@ -163,7 +142,7 @@ module Homebrew
           params(
             content: String,
             regex:   T.nilable(Regexp),
-            block:   T.untyped,
+            block:   T.nilable(Proc),
           ).returns(T::Array[String])
         }
         def self.versions_from_content(content, regex = nil, &block)
@@ -198,18 +177,20 @@ module Homebrew
             url:     String,
             regex:   T.nilable(Regexp),
             _unused: T.nilable(T::Hash[Symbol, T.untyped]),
-            block:   T.untyped,
+            block:   T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }
         def self.find_versions(url:, regex: nil, **_unused, &block)
           if regex.present? && block.blank?
-            raise ArgumentError, "#{T.must(name).demodulize} only supports a regex when using a `strategy` block"
+            raise ArgumentError,
+                  "#{Utils.demodulize(T.must(name))} only supports a regex when using a `strategy` block"
           end
 
           match_data = { matches: {}, regex: regex, url: url }
 
           match_data.merge!(Strategy.page_content(url))
           content = match_data.delete(:content)
+          return match_data if content.blank?
 
           versions_from_content(content, regex, &block).each do |version_text|
             match_data[:matches][version_text] = Version.new(version_text)

@@ -4,11 +4,7 @@
 module UnpackStrategy
   # Strategy for unpacking P7ZIP archives.
   class P7Zip
-    extend T::Sig
-
     include UnpackStrategy
-
-    using Magic
 
     sig { returns(T::Array[String]) }
     def self.extensions

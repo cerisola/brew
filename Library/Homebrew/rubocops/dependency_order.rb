@@ -1,7 +1,7 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
-require "rubocops/extend/formula"
+require "rubocops/extend/formula_cop"
 
 module RuboCop
   module Cop
@@ -65,11 +65,13 @@ module RuboCop
         # `depends_on :apple if build.with? "foo"` should always be defined
         #  after `depends_on :foo`.
         # This method reorders the dependencies array according to the above rule.
+        sig { params(ordered: T::Array[RuboCop::AST::Node]).returns(T::Array[RuboCop::AST::Node]) }
         def sort_conditional_dependencies!(ordered)
           length = ordered.size
           idx = 0
           while idx < length
-            idx1, idx2 = nil
+            idx1 = T.let(nil, T.nilable(Integer))
+            idx2 = T.let(nil, T.nilable(Integer))
             ordered.each_with_index do |dep, pos|
               idx = pos+1
               match_nodes = build_with_dependency_name(dep)
@@ -83,7 +85,7 @@ module RuboCop
               end
               break if idx2
             end
-            insert_after!(ordered, idx1, idx2+idx1) if idx2
+            insert_after!(ordered, idx1, idx2 + T.must(idx1)) if idx2
           end
           ordered
         end
@@ -93,8 +95,8 @@ module RuboCop
         def verify_order_in_source(ordered)
           ordered.each_with_index do |node_1, idx|
             l1 = line_number(node_1)
-            l2 = nil
-            node_2 = nil
+            l2 = T.let(nil, T.nilable(Integer))
+            node_2 = T.let(nil, T.nilable(RuboCop::AST::Node))
             ordered.drop(idx + 1).each do |test_node|
               l2 = line_number(test_node)
               node_2 = test_node if l2 < l1

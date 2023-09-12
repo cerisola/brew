@@ -1,7 +1,8 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "cask/utils"
+require "extend/on_system"
 
 module Cask
   class DSL
@@ -16,7 +17,7 @@ module Cask
         @command = command
       end
 
-      def_delegators :@cask, :token, :version, :caskroom_path, :staged_path, :appdir, :language
+      def_delegators :@cask, :token, :version, :caskroom_path, :staged_path, :appdir, :language, :arch
 
       def system_command(executable, **options)
         @command.run!(executable, **options)
@@ -26,7 +27,7 @@ module Cask
       # rubocop:disable Style/MissingRespondToMissing
       def method_missing(method, *)
         if method
-          underscored_class = self.class.name.gsub(/([[:lower:]])([[:upper:]][[:lower:]])/, '\1_\2').downcase
+          underscored_class = T.must(self.class.name).gsub(/([[:lower:]])([[:upper:]][[:lower:]])/, '\1_\2').downcase
           section = underscored_class.split("::").last
           Utils.method_missing_message(method, @cask.to_s, section)
           nil

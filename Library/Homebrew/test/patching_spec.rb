@@ -1,25 +1,31 @@
-# typed: false
 # frozen_string_literal: true
 
 require "formula"
 
 describe "patching" do
-  TESTBALL_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1.tbz"
-  TESTBALL_PATCHES_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1-patches.tgz"
-  PATCH_URL_A = "file://#{TEST_FIXTURE_DIR}/patches/noop-a.diff"
-  PATCH_URL_B = "file://#{TEST_FIXTURE_DIR}/patches/noop-b.diff"
-  PATCH_A_CONTENTS = File.read("#{TEST_FIXTURE_DIR}/patches/noop-a.diff").freeze
-  PATCH_B_CONTENTS = File.read("#{TEST_FIXTURE_DIR}/patches/noop-b.diff").freeze
-  APPLY_A = "noop-a.diff"
-  APPLY_B = "noop-b.diff"
-  APPLY_C = "noop-c.diff"
+  let(:formula_subclass) do
+    Class.new(Formula) do
+      # These are defined within an anonymous class to avoid polluting the global namespace.
+      # rubocop:disable RSpec/LeakyConstantDeclaration,Lint/ConstantDefinitionInBlock
+      TESTBALL_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1.tbz"
+      TESTBALL_PATCHES_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1-patches.tgz"
+      PATCH_URL_A = "file://#{TEST_FIXTURE_DIR}/patches/noop-a.diff"
+      PATCH_URL_B = "file://#{TEST_FIXTURE_DIR}/patches/noop-b.diff"
+      PATCH_A_CONTENTS = File.read("#{TEST_FIXTURE_DIR}/patches/noop-a.diff").freeze
+      PATCH_B_CONTENTS = File.read("#{TEST_FIXTURE_DIR}/patches/noop-b.diff").freeze
+      APPLY_A = "noop-a.diff"
+      APPLY_B = "noop-b.diff"
+      APPLY_C = "noop-c.diff"
+      # rubocop:enable RSpec/LeakyConstantDeclaration,Lint/ConstantDefinitionInBlock
 
-  def formula(name = "formula_name", path: Formulary.core_path(name), spec: :stable, alias_path: nil, &block)
-    Class.new(Formula) {
       url TESTBALL_URL
       sha256 TESTBALL_SHA256
-      class_eval(&block)
-    }.new(name, path, spec, alias_path: alias_path)
+    end
+  end
+
+  def formula(name = "formula_name", path: Formulary.core_path(name), spec: :stable, alias_path: nil, &block)
+    formula_subclass.class_eval(&block)
+    formula_subclass.new(name, path, spec, alias_path: alias_path)
   end
 
   matcher :be_patched do
@@ -58,11 +64,11 @@ describe "patching" do
 
   matcher :miss_apply do
     match do |formula|
-      expect {
+      expect do
         formula.brew do
           formula.patch
         end
-      }.to raise_error(MissingApplyError)
+      end.to raise_error(MissingApplyError)
     end
   end
 
@@ -141,7 +147,7 @@ describe "patching" do
   end
 
   specify "single_patch_dsl_with_incorrect_strip" do
-    expect {
+    expect do
       f = formula do
         patch :p0 do
           url PATCH_URL_A
@@ -150,11 +156,11 @@ describe "patching" do
       end
 
       f.brew { |formula, _staging| formula.patch }
-    }.to raise_error(BuildError)
+    end.to raise_error(BuildError)
   end
 
   specify "single_patch_dsl_with_incorrect_strip_with_apply" do
-    expect {
+    expect do
       f = formula do
         patch :p0 do
           url TESTBALL_PATCHES_URL
@@ -164,7 +170,7 @@ describe "patching" do
       end
 
       f.brew { |formula, _staging| formula.patch }
-    }.to raise_error(BuildError)
+    end.to raise_error(BuildError)
   end
 
   specify "patch_p0_dsl" do
@@ -210,7 +216,7 @@ describe "patching" do
   end
 
   specify "single_patch_dsl_with_apply_enoent_fail" do
-    expect {
+    expect do
       f = formula do
         patch do
           url TESTBALL_PATCHES_URL
@@ -220,7 +226,7 @@ describe "patching" do
       end
 
       f.brew { |formula, _staging| formula.patch }
-    }.to raise_error(BuildError)
+    end.to raise_error(BuildError)
   end
 end
 

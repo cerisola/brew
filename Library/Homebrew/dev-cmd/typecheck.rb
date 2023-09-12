@@ -1,15 +1,11 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "cli/parser"
 
 module Homebrew
-  extend T::Sig
-
-  module_function
-
   sig { returns(CLI::Parser) }
-  def typecheck_args
+  def self.typecheck_args
     Homebrew::CLI::Parser.new do
       description <<~EOS
         Check for typechecking errors using Sorbet.
@@ -25,10 +21,6 @@ module Homebrew
       switch "--suggest-typed",
              depends_on:  "--update",
              description: "Try upgrading `typed` sigils."
-      switch "--fail-if-not-changed",
-             hidden:      true,
-             description: "Return a failing status code if all gems are up to date " \
-                          "and gem definitions do not need a tapioca update."
       flag   "--dir=",
              description: "Typecheck all files in a specific directory."
       flag   "--file=",
@@ -44,15 +36,15 @@ module Homebrew
   end
 
   sig { void }
-  def typecheck
+  def self.typecheck
     args = typecheck_args.parse
 
-    Homebrew.install_bundler_gems!(groups: ["sorbet"])
+    update = args.update? || args.update_all?
+    groups = update ? Homebrew.valid_gem_groups : ["sorbet"]
+    Homebrew.install_bundler_gems!(groups: groups)
 
     HOMEBREW_LIBRARY_PATH.cd do
-      if args.update? || args.update_all?
-        odeprecated "brew typecheck --update --fail-if-not-changed" if args.fail_if_not_changed?
-
+      if update
         excluded_gems = [
           "did_you_mean", # RBI file is already provided by Sorbet
           "webrobots", # RBI file is bugged
@@ -63,6 +55,10 @@ module Homebrew
         ]
         tapioca_args = ["--exclude", *excluded_gems, "--typed-overrides", *typed_overrides]
         tapioca_args << "--all" if args.update_all?
+
+        ohai "Updating homegrown RBI files..."
+        safe_system "bundle", "exec", "ruby", "sorbet/custom_generators/tty.rb"
+        safe_system "bundle", "exec", "ruby", "sorbet/custom_generators/env_config.rb"
 
         ohai "Updating Tapioca RBI files..."
         safe_system "bundle", "exec", "tapioca", "gem", *tapioca_args
@@ -91,9 +87,10 @@ module Homebrew
 
       srb_exec += ["--ignore", args.ignore] if args.ignore.present?
       if args.file.present? || args.dir.present?
-        cd("sorbet")
-        srb_exec += ["--file", "../#{args.file}"] if args.file
-        srb_exec += ["--dir", "../#{args.dir}"] if args.dir
+        cd("sorbet") do
+          srb_exec += ["--file", "../#{args.file}"] if args.file
+          srb_exec += ["--dir", "../#{args.dir}"] if args.dir
+        end
       end
       success = system(*srb_exec)
       return if success

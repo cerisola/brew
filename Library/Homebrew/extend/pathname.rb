@@ -6,8 +6,6 @@ require "resource"
 require "metafiles"
 
 module DiskUsageExtension
-  extend T::Sig
-
   sig { returns(Integer) }
   def disk_usage
     return @disk_usage if defined?(@disk_usage)
@@ -78,8 +76,6 @@ end
 # Homebrew extends Ruby's `Pathname` to make our code more readable.
 # @see https://ruby-doc.org/stdlib-2.6.3/libdoc/pathname/rdoc/Pathname.html Ruby's Pathname API
 class Pathname
-  extend T::Sig
-
   include DiskUsageExtension
 
   # Moves a file from the original location to the {Pathname}'s.
@@ -275,7 +271,7 @@ class Pathname
   # @private
   sig { returns(T::Boolean) }
   def text_executable?
-    /^#!\s*\S+/.match?(open("r") { |f| f.read(1024) })
+    /\A#!\s*\S+/.match?(open("r") { |f| f.read(1024) })
   end
 
   sig { returns(String) }
@@ -289,7 +285,7 @@ class Pathname
     raise ChecksumMissingError if expected.blank?
 
     actual = Checksum.new(sha256.downcase)
-    raise ChecksumMismatchError.new(self, expected, actual) unless expected == actual
+    raise ChecksumMismatchError.new(self, expected, actual) if expected != actual
   end
 
   alias to_str to_s
@@ -344,13 +340,23 @@ class Pathname
   end
 
   # @private
+  def which_install_info
+    @which_install_info ||=
+      if File.executable?("/usr/bin/install-info")
+        "/usr/bin/install-info"
+      elsif Formula["texinfo"].any_version_installed?
+        Formula["texinfo"].opt_bin/"install-info"
+      end
+  end
+
+  # @private
   def install_info
-    quiet_system "/usr/bin/install-info", "--quiet", to_s, "#{dirname}/dir"
+    quiet_system(which_install_info, "--quiet", to_s, "#{dirname}/dir")
   end
 
   # @private
   def uninstall_info
-    quiet_system "/usr/bin/install-info", "--delete", "--quiet", to_s, "#{dirname}/dir"
+    quiet_system(which_install_info, "--delete", "--quiet", to_s, "#{dirname}/dir")
   end
 
   # Writes an exec script in this folder for each target pathname.
@@ -418,7 +424,7 @@ class Pathname
   def install_metafiles(from = Pathname.pwd)
     Pathname(from).children.each do |p|
       next if p.directory?
-      next if File.zero?(p)
+      next if File.empty?(p)
       next unless Metafiles.copy?(p.basename.to_s)
 
       # Some software symlinks these files (see help2man.rb)
@@ -456,17 +462,39 @@ class Pathname
   def rpaths
     []
   end
+
+  sig { returns(String) }
+  def magic_number
+    @magic_number ||= if directory?
+      ""
+    else
+      # Length of the longest regex (currently Tar).
+      max_magic_number_length = 262
+      # FIXME: The `T.let` is a workaround until we have https://github.com/sorbet/sorbet/pull/6865
+      T.let(binread(max_magic_number_length), T.nilable(String)) || ""
+    end
+  end
+
+  sig { returns(String) }
+  def file_type
+    @file_type ||= system_command("file", args: ["-b", self], print_stderr: false)
+                   .stdout.chomp
+  end
+
+  sig { returns(T::Array[String]) }
+  def zipinfo
+    @zipinfo ||= system_command("zipinfo", args: ["-1", self], print_stderr: false)
+                 .stdout
+                 .encode(Encoding::UTF_8, invalid: :replace)
+                 .split("\n")
+  end
 end
 
 require "extend/os/pathname"
 
 # @private
 module ObserverPathnameExtension
-  extend T::Sig
-
   class << self
-    extend T::Sig
-
     include Context
 
     sig { returns(Integer) }
@@ -484,7 +512,6 @@ module ObserverPathnameExtension
     end
 
     sig { returns([Integer, Integer]) }
-
     def counts
       [n, d]
     end

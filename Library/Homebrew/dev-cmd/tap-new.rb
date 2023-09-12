@@ -1,16 +1,12 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "tap"
 require "cli/parser"
 
 module Homebrew
-  extend T::Sig
-
-  module_function
-
   sig { returns(CLI::Parser) }
-  def tap_new_args
+  def self.tap_new_args
     Homebrew::CLI::Parser.new do
       usage_banner "`tap-new` [<options>] <user>`/`<repo>"
       description <<~EOS
@@ -31,7 +27,7 @@ module Homebrew
     end
   end
 
-  def tap_new
+  def self.tap_new
     args = tap_new_args.parse
 
     label = args.pull_label || "pr-pull"
@@ -74,7 +70,7 @@ module Homebrew
         test-bot:
           strategy:
             matrix:
-              os: [ubuntu-22.04, macos-12]
+              os: [ubuntu-22.04, macos-13]
           runs-on: ${{ matrix.os }}
           steps:
             - name: Set up Homebrew
@@ -83,7 +79,7 @@ module Homebrew
 
             - name: Cache Homebrew Bundler RubyGems
               id: cache
-              uses: actions/cache@v1
+              uses: actions/cache@v3
               with:
                 path: ${{ steps.set-up-homebrew.outputs.gems-path }}
                 key: ${{ runner.os }}-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
@@ -176,7 +172,7 @@ module Homebrew
     EOS
   end
 
-  def write_path(tap, filename, content)
+  def self.write_path(tap, filename, content)
     path = tap.path/filename
     tap.path.mkpath
     odie "#{path} already exists" if path.exist?

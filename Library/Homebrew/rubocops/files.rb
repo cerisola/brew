@@ -1,7 +1,7 @@
 # typed: true
 # frozen_string_literal: true
 
-require "rubocops/extend/formula"
+require "rubocops/extend/formula_cop"
 
 module RuboCop
   module Cop
@@ -12,6 +12,9 @@ module RuboCop
       class Files < FormulaCop
         def audit_formula(node, _class_node, _parent_class_node, _body_node)
           return unless file_path
+
+          # Codespaces routinely screws up all permissions so don't complain there.
+          return if ENV["CODESPACES"] || ENV["HOMEBREW_CODESPACES"]
 
           offending_node(node)
           actual_mode = File.stat(file_path).mode

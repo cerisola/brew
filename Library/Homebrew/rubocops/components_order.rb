@@ -1,8 +1,8 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "ast_constants"
-require "rubocops/extend/formula"
+require "rubocops/extend/formula_cop"
 
 module RuboCop
   module Cop
@@ -27,6 +27,11 @@ module RuboCop
             [{ name: :patch, type: :method_call }, { name: :patch, type: :block_call }],
           ]
 
+          head_blocks = find_blocks(body_node, :head)
+          head_blocks.each do |head_block|
+            check_block_component_order(FORMULA_COMPONENT_PRECEDENCE_LIST, head_block)
+          end
+
           on_system_methods.each do |on_method|
             on_method_blocks = find_blocks(body_node, on_method)
             next if on_method_blocks.empty?
@@ -41,6 +46,8 @@ module RuboCop
 
           resource_blocks = find_blocks(body_node, :resource)
           resource_blocks.each do |resource_block|
+            check_block_component_order(FORMULA_COMPONENT_PRECEDENCE_LIST, resource_block)
+
             on_system_blocks = {}
 
             on_system_methods.each do |on_method|
@@ -58,7 +65,7 @@ module RuboCop
 
             @offensive_node = resource_block
 
-            on_system_bodies = []
+            on_system_bodies = T.let([], T::Array[[RuboCop::AST::BlockNode, RuboCop::AST::Node]])
 
             on_system_blocks.each_value do |blocks|
               blocks.each do |on_system_block|
@@ -68,7 +75,7 @@ module RuboCop
               end
             end
 
-            message = nil
+            message = T.let(nil, T.nilable(String))
             allowed_methods = [
               [:url, :sha256],
               [:url, :mirror, :sha256],
@@ -97,7 +104,7 @@ module RuboCop
               break
             end
 
-            if message.present?
+            if message
               problem message
               next
             end
@@ -109,6 +116,11 @@ module RuboCop
               end
             end
           end
+        end
+
+        def check_block_component_order(component_precedence_list, block)
+          @present_components, offensive_node = check_order(component_precedence_list, block.body)
+          component_problem(*offensive_node) if offensive_node
         end
 
         def check_on_system_block_content(component_precedence_list, on_system_block)
@@ -131,7 +143,6 @@ module RuboCop
             fails_with
             resource
             patch
-            ignore_missing_libraries
           ]
           on_system_allowed_methods += on_system_methods.map(&:to_s)
           _, offensive_node = check_order(component_precedence_list, on_system_block.body)
@@ -200,7 +211,7 @@ module RuboCop
           end
 
           # Check if each present_components is above rest of the present_components
-          offensive_nodes = nil
+          offensive_nodes = T.let(nil, T.nilable(T::Array[RuboCop::AST::Node]))
           present_components.take(present_components.size - 1).each_with_index do |preceding_component, p_idx|
             next if preceding_component.empty?
 
@@ -215,13 +226,13 @@ module RuboCop
         end
 
         # Method to report and correct component precedence violations.
-        def component_problem(c1, c2)
+        def component_problem(component1, component2)
           return if tap_style_exception? :components_order_exceptions
 
-          problem "`#{format_component(c1)}` (line #{line_number(c1)}) " \
-                  "should be put before `#{format_component(c2)}` " \
-                  "(line #{line_number(c2)})" do |corrector|
-            reorder_components(corrector, c1, c2)
+          problem "`#{format_component(component1)}` (line #{line_number(component1)}) " \
+                  "should be put before `#{format_component(component2)}` " \
+                  "(line #{line_number(component2)})" do |corrector|
+            reorder_components(corrector, component1, component2)
           end
         end
 

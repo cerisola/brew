@@ -1,9 +1,7 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 module Superenv
-  extend T::Sig
-
   class << self
     # The location of Homebrew's shims on macOS.
     def shims_path
@@ -29,7 +27,7 @@ module Superenv
 
   # @private
   def homebrew_extra_pkg_config_paths
-    ["/usr/lib/pkgconfig", "#{HOMEBREW_LIBRARY}/Homebrew/os/mac/pkgconfig/#{MacOS.version}"]
+    [Pathname("/usr/lib/pkgconfig"), Pathname("#{HOMEBREW_LIBRARY}/Homebrew/os/mac/pkgconfig/#{MacOS.version}")]
   end
 
   # @private
@@ -68,7 +66,7 @@ module Superenv
   end
 
   def homebrew_extra_cmake_library_paths
-    ["#{self["HOMEBREW_SDKROOT"]}/System/Library/Frameworks/OpenGL.framework/Versions/Current/Libraries"]
+    [Pathname("#{self["HOMEBREW_SDKROOT"]}/System/Library/Frameworks/OpenGL.framework/Versions/Current/Libraries")]
   end
 
   def homebrew_extra_cmake_frameworks_paths
@@ -90,13 +88,13 @@ module Superenv
     sdk = formula ? MacOS.sdk_for_formula(formula) : MacOS.sdk
     is_xcode_sdk = sdk&.source == :xcode
 
-    self["HOMEBREW_SDKROOT"] = if is_xcode_sdk || MacOS.sdk_root_needed?
+    if is_xcode_sdk || MacOS.sdk_root_needed?
       Homebrew::Diagnostic.checks(:fatal_setup_build_environment_checks)
-      sdk.path
+      self["HOMEBREW_SDKROOT"] = sdk.path if sdk
     end
 
     self["HOMEBREW_DEVELOPER_DIR"] = if is_xcode_sdk
-      MacOS::Xcode.prefix
+      MacOS::Xcode.prefix.to_s
     else
       MacOS::CLT::PKG_PATH
     end
@@ -131,9 +129,18 @@ module Superenv
     # Notably, Xcode 10.2 fixes issues where ZERO_AR_DATE affected file mtimes.
     # Xcode 11.0 contains fixes for lldb reading things built with ZERO_AR_DATE.
     self["ZERO_AR_DATE"] = "1" if MacOS::Xcode.version >= "11.0" || MacOS::CLT.version >= "11.0"
+
+    # Pass `-no_fixup_chains` whenever the linker is invoked with `-undefined dynamic_lookup`.
+    # See: https://github.com/python/cpython/issues/97524
+    #      https://github.com/pybind/pybind11/pull/4301
+    no_fixup_chains
   end
 
   def no_weak_imports
     append_to_cccfg "w" if no_weak_imports_support?
+  end
+
+  def no_fixup_chains
+    append_to_cccfg "f" if no_fixup_chains_support?
   end
 end

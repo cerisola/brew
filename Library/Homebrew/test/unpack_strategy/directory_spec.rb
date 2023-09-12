@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require_relative "shared_examples"
@@ -6,14 +5,14 @@ require_relative "shared_examples"
 describe UnpackStrategy::Directory do
   subject(:strategy) { described_class.new(path) }
 
-  let(:path) {
+  let(:path) do
     mktmpdir.tap do |path|
       FileUtils.touch path/"file"
       FileUtils.ln_s "file", path/"symlink"
       FileUtils.mkdir path/"folder"
       FileUtils.ln_s "folder", path/"folderSymlink"
     end
-  }
+  end
 
   let(:unpack_dir) { mktmpdir }
 

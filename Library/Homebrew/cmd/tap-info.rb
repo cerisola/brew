@@ -1,11 +1,9 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "cli/parser"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -13,7 +11,6 @@ module Homebrew
     Homebrew::CLI::Parser.new do
       description <<~EOS
         Show detailed information about one or more <tap>s.
-
         If no <tap> names are provided, display brief statistics for all installed taps.
       EOS
       switch "--installed",
@@ -50,23 +47,21 @@ module Homebrew
       tap_count = 0
       formula_count = 0
       command_count = 0
-      pinned_count = 0
       private_count = 0
       Tap.each do |tap|
         tap_count += 1
         formula_count += tap.formula_files.size
         command_count += tap.command_files.size
-        pinned_count += 1 if tap.pinned?
         private_count += 1 if tap.private?
       end
-      info = "#{tap_count} #{"tap".pluralize(tap_count)}"
-      info += ", #{pinned_count} pinned"
+      info = Utils.pluralize("tap", tap_count, include_count: true)
       info += ", #{private_count} private"
-      info += ", #{formula_count} #{"formula".pluralize(formula_count)}"
-      info += ", #{command_count} #{"command".pluralize(command_count)}"
+      info += ", #{Utils.pluralize("formula", formula_count, plural: "e", include_count: true)}"
+      info += ", #{Utils.pluralize("command", command_count, include_count: true)}"
       info += ", #{Tap::TAP_DIRECTORY.dup.abv}" if Tap::TAP_DIRECTORY.directory?
       puts info
     else
+      info = ""
       taps.each_with_index do |tap, i|
         puts unless i.zero?
         info = "#{tap}: "

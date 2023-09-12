@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "locale"
@@ -11,7 +11,6 @@ require "cask/artifact_set"
 require "cask/caskroom"
 require "cask/exceptions"
 
-require "cask/dsl/appcast"
 require "cask/dsl/base"
 require "cask/dsl/caveats"
 require "cask/dsl/conflicts_with"
@@ -44,6 +43,7 @@ module Cask
       Artifact::Font,
       Artifact::InputMethod,
       Artifact::InternetPlugin,
+      Artifact::KeyboardLayout,
       Artifact::Manpage,
       Artifact::Pkg,
       Artifact::Prefpane,
@@ -68,6 +68,7 @@ module Cask
 
     DSL_METHODS = Set.new([
       :appcast,
+      :arch,
       :artifacts,
       :auto_updates,
       :caveats,
@@ -77,7 +78,6 @@ module Cask
       :depends_on,
       :homepage,
       :language,
-      :languages,
       :name,
       :sha256,
       :staged_path,
@@ -197,7 +197,7 @@ module Cask
 
     # @api public
     def url(*args, **options, &block)
-      caller_location = caller_locations[0]
+      caller_location = T.must(caller_locations).fetch(0)
 
       set_unique_stanza(:url, args.empty? && options.empty? && !block) do
         if block
@@ -210,7 +210,10 @@ module Cask
 
     # @api public
     def appcast(*args, **kwargs)
-      set_unique_stanza(:appcast, args.empty? && kwargs.empty?) { DSL::Appcast.new(*args, **kwargs) }
+      set_unique_stanza(:appcast, args.empty? && kwargs.empty?) do
+        odeprecated "the `appcast` stanza", "the `livecheck` stanza"
+        true
+      end
     end
 
     # @api public
@@ -238,14 +241,14 @@ module Cask
       set_unique_stanza(:sha256, should_return) do
         @on_system_blocks_exist = true if arm.present? || intel.present?
 
-        arg ||= on_arch_conditional(arm: arm, intel: intel)
-        case arg
+        val = arg || on_arch_conditional(arm: arm, intel: intel)
+        case val
         when :no_check
-          arg
+          val
         when String
-          Checksum.new(arg)
+          Checksum.new(val)
         else
-          raise CaskInvalidError.new(cask, "invalid 'sha256' value: #{arg.inspect}")
+          raise CaskInvalidError.new(cask, "invalid 'sha256' value: #{val.inspect}")
         end
       end
     end
@@ -323,7 +326,7 @@ module Cask
 
     # @api public
     def livecheck(&block)
-      @livecheck ||= Livecheck.new(self)
+      @livecheck ||= Livecheck.new(cask)
       return @livecheck unless block
 
       if !@cask.allow_reassignment && @livecheckable
@@ -340,6 +343,7 @@ module Cask
 
     ORDINARY_ARTIFACT_CLASSES.each do |klass|
       define_method(klass.dsl_key) do |*args, **kwargs|
+        T.bind(self, DSL)
         if [*artifacts.map(&:class), klass].include?(Artifact::StageOnly) &&
            (artifacts.map(&:class) & ACTIVATABLE_ARTIFACT_CLASSES).any?
           raise CaskInvalidError.new(cask, "'stage_only' must be the only activatable artifact.")
@@ -356,6 +360,7 @@ module Cask
     ARTIFACT_BLOCK_CLASSES.each do |klass|
       [klass.dsl_key, klass.uninstall_dsl_key].each do |dsl_key|
         define_method(dsl_key) do |&block|
+          T.bind(self, DSL)
           artifacts.add(klass.new(cask, dsl_key => block))
         end
       end
@@ -376,6 +381,8 @@ module Cask
 
     # @api public
     def appdir
+      return HOMEBREW_CASK_APPDIR_PLACEHOLDER if Cask.generating_hash?
+
       cask.config.appdir
     end
   end

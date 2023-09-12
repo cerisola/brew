@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require "utils/spdx"
@@ -33,17 +32,12 @@ describe SPDX do
   end
 
   describe ".download_latest_license_data!", :needs_network do
-    let(:tmp_json_path) { Pathname.new(TEST_TMPDIR) }
-
-    after do
-      FileUtils.rm_f tmp_json_path/"spdx_licenses.json"
-      FileUtils.rm_f tmp_json_path/"spdx_exceptions.json"
-    end
+    let(:download_dir) { mktmpdir }
 
     it "downloads latest license data" do
-      described_class.download_latest_license_data! to: tmp_json_path
-      expect(tmp_json_path/"spdx_licenses.json").to exist
-      expect(tmp_json_path/"spdx_exceptions.json").to exist
+      described_class.download_latest_license_data! to: download_dir
+      expect(download_dir/"spdx_licenses.json").to exist
+      expect(download_dir/"spdx_exceptions.json").to exist
     end
   end
 
@@ -81,7 +75,7 @@ describe SPDX do
       license_expression = { any_of: [
         "MIT",
         :public_domain,
-        all_of: ["0BSD", "Zlib"],
+        all_of: ["0BSD", "Zlib"], # rubocop:disable Style/HashAsLastArrayItem
         "curl" => { with: "LLVM-exception" },
       ] }
       result = [["MIT", :public_domain, "curl", "0BSD", "Zlib"], ["LLVM-exception"]]
@@ -201,7 +195,7 @@ describe SPDX do
       license_expression = { any_of: [
         "MIT",
         :public_domain,
-        all_of: ["0BSD", "Zlib"],
+        all_of: ["0BSD", "Zlib"], # rubocop:disable Style/HashAsLastArrayItem
         "curl" => { with: "LLVM-exception" },
       ] }
       result = "MIT or Public Domain or (0BSD and Zlib) or (curl with LLVM-exception)"
@@ -215,6 +209,33 @@ describe SPDX do
     it "returns :cannot_represent" do
       expect(described_class.license_expression_to_string(:cannot_represent)).to eq "Cannot Represent"
     end
+  end
+
+  describe ".string_to_license_expression" do
+    it "returns the correct result for 'and', 'or' and 'with'" do
+      expr_string = "Apache-2.0 and (Apache-2.0 with LLVM-exception) and (MIT or NCSA)"
+      expect(described_class.string_to_license_expression(expr_string)).to eq({
+        all_of: [
+          "Apache-2.0",
+          { "Apache-2.0" => { with: "LLVM-exception" } },
+          { any_of: ["MIT", "NCSA"] },
+        ],
+      })
+    end
+
+    # rubocop:disable Style/HashAsLastArrayItem
+    it "handles nested brackets" do
+      expect(described_class.string_to_license_expression("A and (B or (C and D))")).to eq({
+        all_of: [
+          "A",
+          any_of: [
+            "B",
+            all_of: ["C", "D"],
+          ],
+        ],
+      })
+    end
+    # rubocop:enable Style/HashAsLastArrayItem
   end
 
   describe ".license_version_info" do
@@ -255,15 +276,15 @@ describe SPDX do
     let(:mit_forbidden) { { "MIT" => described_class.license_version_info("MIT") } }
     let(:epl_1_forbidden) { { "EPL-1.0" => described_class.license_version_info("EPL-1.0") } }
     let(:epl_1_plus_forbidden) { { "EPL-1.0+" => described_class.license_version_info("EPL-1.0+") } }
-    let(:multiple_forbidden) {
+    let(:multiple_forbidden) do
       {
         "MIT"  => described_class.license_version_info("MIT"),
         "0BSD" => described_class.license_version_info("0BSD"),
       }
-    }
+    end
     let(:any_of_license) { { any_of: ["MIT", "0BSD"] } }
     let(:all_of_license) { { all_of: ["MIT", "0BSD"] } }
-    let(:nested_licenses) {
+    let(:nested_licenses) do
       {
         any_of: [
           "MIT",
@@ -271,7 +292,7 @@ describe SPDX do
           { any_of: ["MIT", "0BSD"] },
         ],
       }
-    }
+    end
     let(:license_exception) { { "MIT" => { with: "LLVM-exception" } } }
 
     it "allows installation with no forbidden licenses" do

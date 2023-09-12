@@ -6,8 +6,6 @@ require "ostruct"
 module Homebrew
   module CLI
     class Args < OpenStruct
-      extend T::Sig
-
       attr_reader :options_only, :flags_only
 
       # undefine tap to allow --tap argument
@@ -34,14 +32,17 @@ module Homebrew
         self[:remaining] = remaining_args.freeze
       end
 
-      def freeze_named_args!(named_args, cask_options:)
+      def freeze_named_args!(named_args, cask_options:, without_api:)
+        options = {}
+        options[:force_bottle] = true if self[:force_bottle?]
+        options[:override_spec] = :head if self[:HEAD?]
+        options[:flags] = flags_only unless flags_only.empty?
         self[:named] = NamedArgs.new(
           *named_args.freeze,
-          override_spec: spec(nil),
-          force_bottle:  self[:force_bottle?],
-          flags:         flags_only,
-          cask_options:  cask_options,
-          parent:        self,
+          parent:       self,
+          cask_options: cask_options,
+          without_api:  without_api,
+          **options,
         )
       end
 
@@ -100,6 +101,44 @@ module Homebrew
         return :cask if cask? && !formula?
       end
 
+      sig { returns(T::Array[[Symbol, Symbol]]) }
+      def os_arch_combinations
+        skip_invalid_combinations = false
+
+        oses = case (os_sym = os&.to_sym)
+        when nil
+          [SimulateSystem.current_os]
+        when :all
+          skip_invalid_combinations = true
+
+          [
+            *MacOSVersion::SYMBOLS.keys,
+            :linux,
+          ]
+        else
+          [os_sym]
+        end
+
+        arches = case (arch_sym = arch&.to_sym)
+        when nil
+          [SimulateSystem.current_arch]
+        when :all
+          skip_invalid_combinations = true
+          OnSystem::ARCH_OPTIONS
+        else
+          [arch_sym]
+        end
+
+        oses.product(arches).select do |os, arch|
+          if skip_invalid_combinations
+            bottle_tag = Utils::Bottles::Tag.new(system: os, arch: arch)
+            bottle_tag.valid_combination?
+          else
+            true
+          end
+        end
+      end
+
       private
 
       def option_to_name(option)
@@ -124,14 +163,6 @@ module Homebrew
           end
         end
         @cli_args.freeze
-      end
-
-      def spec(default = :stable)
-        if self[:HEAD?]
-          :head
-        else
-          default
-        end
       end
 
       def respond_to_missing?(method_name, *)

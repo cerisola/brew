@@ -9,32 +9,38 @@ module Utils
   # @api private
   module Bottles
     class << self
-      extend T::Sig
-
       # Gets the tag for the running OS.
-      def tag(symbol = nil)
-        return Tag.from_symbol(symbol) if symbol.present?
-
-        @tag ||= Tag.new(system: HOMEBREW_SYSTEM.downcase.to_sym,
-                         arch:   HOMEBREW_PROCESSOR.downcase.to_sym)
+      sig { params(tag: T.nilable(T.any(Symbol, Tag))).returns(Tag) }
+      def tag(tag = nil)
+        case tag
+        when Symbol
+          Tag.from_symbol(tag)
+        when Tag
+          tag
+        else
+          @tag ||= Tag.new(
+            system: HOMEBREW_SYSTEM.downcase.to_sym,
+            arch:   HOMEBREW_PROCESSOR.downcase.to_sym,
+          )
+        end
       end
 
-      def built_as?(f)
-        return false unless f.latest_version_installed?
+      def built_as?(formula)
+        return false unless formula.latest_version_installed?
 
-        tab = Tab.for_keg(f.latest_installed_prefix)
+        tab = Tab.for_keg(formula.latest_installed_prefix)
         tab.built_as_bottle
       end
 
-      def file_outdated?(f, file)
+      def file_outdated?(formula, file)
         filename = file.basename.to_s
-        return false if f.bottle.blank?
+        return false if formula.bottle.blank?
 
         bottle_ext, bottle_tag, = extname_tag_rebuild(filename)
         return false if bottle_ext.blank?
         return false if bottle_tag != tag.to_s
 
-        bottle_url_ext, = extname_tag_rebuild(f.bottle.url)
+        bottle_url_ext, = extname_tag_rebuild(formula.bottle.url)
 
         bottle_ext && bottle_url_ext && bottle_ext != bottle_url_ext
       end
@@ -124,8 +130,6 @@ module Utils
 
     # Denotes the arch and OS of a bottle.
     class Tag
-      extend T::Sig
-
       attr_reader :system, :arch
 
       sig { params(value: Symbol).returns(T.attached_class) }
@@ -157,7 +161,7 @@ module Utils
         if other.is_a?(Symbol)
           to_sym == other
         else
-          self.class == other.class && system == other.system && arch == other.arch
+          self.class == other.class && system == other.system && standardized_arch == other.standardized_arch
         end
       end
 
@@ -166,7 +170,7 @@ module Utils
       end
 
       def hash
-        [system, arch].hash
+        [system, standardized_arch].hash
       end
 
       sig { returns(Symbol) }
@@ -193,9 +197,9 @@ module Utils
         to_sym.to_s
       end
 
-      sig { returns(OS::Mac::Version) }
+      sig { returns(MacOSVersion) }
       def to_macos_version
-        @to_macos_version ||= OS::Mac::Version.from_symbol(system)
+        @to_macos_version ||= MacOSVersion.from_symbol(system)
       end
 
       sig { returns(T::Boolean) }
@@ -207,7 +211,7 @@ module Utils
       def macos?
         to_macos_version
         true
-      rescue MacOSVersionError
+      rescue MacOSVersion::Error
         false
       end
 
@@ -245,8 +249,6 @@ module Utils
 
     # The specification for a specific tag
     class TagSpecification
-      extend T::Sig
-
       sig { returns(Utils::Bottles::Tag) }
       attr_reader :tag
 
@@ -265,8 +267,6 @@ module Utils
 
     # Collector for bottle specifications.
     class Collector
-      extend T::Sig
-
       sig { void }
       def initialize
         @tag_specs = T.let({}, T::Hash[Utils::Bottles::Tag, Utils::Bottles::TagSpecification])

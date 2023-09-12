@@ -1,4 +1,4 @@
-# typed: false
+# typed: strict
 # frozen_string_literal: true
 
 require "extend/ENV"
@@ -7,8 +7,6 @@ require "utils/shell"
 require "cli/parser"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -49,7 +47,7 @@ module Homebrew
     end
 
     if shell.nil?
-      BuildEnvironment.dump ENV
+      BuildEnvironment.dump ENV.to_h
     else
       BuildEnvironment.keys(ENV.to_h).each do |key|
         puts Utils::Shell.export_value(key, ENV.fetch(key), shell)

@@ -2,7 +2,9 @@
 
 Instructions for a supported install of Homebrew are on the [homepage](https://brew.sh).
 
-This script installs Homebrew to its default, supported, best prefix (`/usr/local` for macOS Intel, `/opt/homebrew` for Apple Silicon and `/home/linuxbrew/.linuxbrew` for Linux) so that [you don’t need *sudo* after Homebrew's initial installation](FAQ.md#why-does-homebrew-say-sudo-is-bad) when you `brew install`. This prefix is required for most bottles (binary packages) to be used. It is a careful script; it can be run even if you have stuff installed in the preferred prefix already. It tells you exactly what it will do before it does it too. You have to confirm everything it will do before it starts.
+The script installs Homebrew to its default, supported, best prefix (`/opt/homebrew` for Apple Silicon, `/usr/local` for macOS Intel and `/home/linuxbrew/.linuxbrew` for Linux) so that [you don’t need *sudo* after Homebrew's initial installation](FAQ.md#why-does-homebrew-say-sudo-is-bad) when you `brew install`. This prefix is required for most bottles (binary packages) to be used. It is a careful script; it can be run even if you have stuff installed in the preferred prefix already. It tells you exactly what it will do before it does it too. You have to confirm everything it will do before it starts.
+
+The macOS `.pkg` installer also installs Homebrew to its default prefix (`/opt/homebrew` for Apple Silicon and `/usr/local` for macOS Intel) for the same reasons as above. It's available on [Homebrew/brew's latest GitHub release](https://github.com/Homebrew/brew/releases/latest).
 
 ## macOS Requirements
 
@@ -25,16 +27,16 @@ export HOMEBREW_CORE_GIT_REMOTE="..."  # put your Git mirror of Homebrew/homebre
 
 The default Git remote will be used if the corresponding environment variable is unset.
 
-## Skip Tap Cloning (beta)
+## Default Tap Cloning
 
-You can instruct Homebrew to skip cloning the Homebrew/homebrew-core tap during installation by setting the beta `HOMEBREW_INSTALL_FROM_API` environment variable with the following:
+You can instruct Homebrew to return to pre-4.0.0 behaviour by cloning the Homebrew/homebrew-core tap during installation by setting the `HOMEBREW_NO_INSTALL_FROM_API` environment variable with the following:
 
 ```bash
-export HOMEBREW_INSTALL_FROM_API=1
+export HOMEBREW_NO_INSTALL_FROM_API=1
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
 ```
 
-This will make Homebrew install formulae and casks from the `homebrew/core` and `homebrew/cask` taps using Homebrew’s API instead of local checkouts of these repositories.
+This will make Homebrew install formulae and casks from the `homebrew/core` and `homebrew/cask` taps using local checkouts of these repositories instead of Homebrew’s API.
 
 ## Unattended installation
 
@@ -82,12 +84,12 @@ Create a Homebrew installation wherever you extract the tarball. Whichever `brew
 
 ## Uninstallation
 
-Uninstallation is documented in the [FAQ](FAQ.md).
+Uninstallation is documented in the [FAQ](FAQ.md#how-do-i-uninstall-homebrew).
 
-<a name="1"><sup>1</sup></a> For 32-bit or PPC support see [Tigerbrew](https://github.com/mistydemeo/tigerbrew).
+<a data-proofer-ignore name="1"><sup>1</sup></a> For 32-bit or PPC support see [Tigerbrew](https://github.com/mistydemeo/tigerbrew).
 
-<a name="2"><sup>2</sup></a> macOS 11 (Big Sur) or higher is best and supported, 10.11 (El Capitan) – 10.15 (Catalina) are unsupported but may work and 10.10 (Yosemite) and older will not run Homebrew at all. For 10.4 (Tiger) – 10.6 (Snow Leopard) see [Tigerbrew](https://github.com/mistydemeo/tigerbrew).
+<a data-proofer-ignore name="2"><sup>2</sup></a> macOS 11 (Big Sur) or higher is best and supported, 10.11 (El Capitan) – 10.15 (Catalina) are unsupported but may work and 10.10 (Yosemite) and older will not run Homebrew at all. For 10.4 (Tiger) – 10.6 (Snow Leopard) see [Tigerbrew](https://github.com/mistydemeo/tigerbrew).
 
-<a name="3"><sup>3</sup></a> You may need to install Xcode, the CLT, or both depending on the formula, to install a bottle (binary package) which is the only supported configuration. Downloading Xcode may require an Apple Developer account on older versions of Mac OS X. Sign up for free at [Apple's website](https://developer.apple.com/register/index.action).
+<a data-proofer-ignore name="3"><sup>3</sup></a> You may need to install Xcode, the CLT, or both depending on the formula, to install a bottle (binary package) which is the only supported configuration. Downloading Xcode may require an Apple Developer account on older versions of Mac OS X. Sign up for free at [Apple's website](https://developer.apple.com/account/).
 
-<a name="4"><sup>4</sup></a> The one-liner installation method found on [brew.sh](https://brew.sh) uses the Bourne-again shell at `/bin/bash`. Notably, `zsh`, `fish`, `tcsh` and `csh` will not work.
+<a data-proofer-ignore name="4"><sup>4</sup></a> The one-liner installation method found on [brew.sh](https://brew.sh) uses the Bourne-again shell at `/bin/bash`. Notably, `zsh`, `fish`, `tcsh` and `csh` will not work.

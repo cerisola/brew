@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require "patch"
@@ -42,13 +41,13 @@ describe Patch do
     end
 
     it "raises an error for unknown values" do
-      expect {
+      expect do
         described_class.create(Object.new)
-      }.to raise_error(ArgumentError)
+      end.to raise_error(ArgumentError)
 
-      expect {
+      expect do
         described_class.create(Object.new, Object.new)
-      }.to raise_error(ArgumentError)
+      end.to raise_error(ArgumentError)
     end
   end
 

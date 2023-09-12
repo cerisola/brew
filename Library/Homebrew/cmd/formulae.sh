@@ -8,17 +8,21 @@
 source "${HOMEBREW_LIBRARY}/Homebrew/items.sh"
 
 homebrew-formulae() {
-  local formulae
-  formulae="$(homebrew-items '*\.rb' 'Casks' 's|/Formula/|/|' '^homebrew/core')"
+  local find_include_filter='*\.rb'
+  local sed_filter='s|/Formula/(.+/)?|/|'
+  local grep_filter='^homebrew/core'
 
   # HOMEBREW_CACHE is set by brew.sh
   # shellcheck disable=SC2154
-  if [[ -n "${HOMEBREW_INSTALL_FROM_API}" && -f "${HOMEBREW_CACHE}/api/formula.json" ]]
+  if [[ -z "${HOMEBREW_NO_INSTALL_FROM_API}" &&
+        -f "${HOMEBREW_CACHE}/api/formula_names.txt" ]]
   then
-    local api_formulae
-    api_formulae="$(ruby -e "require 'json'; JSON.parse(File.read('${HOMEBREW_CACHE}/api/formula.json')).each { |f| puts f['name'] }" 2>/dev/null)"
-    formulae="$(echo -e "${formulae}\n${api_formulae}" | sort -uf | grep .)"
+    {
+      cat "${HOMEBREW_CACHE}/api/formula_names.txt"
+      echo
+      homebrew-items "${find_include_filter}" '.*Casks(/.*|$)|.*/homebrew/homebrew-core/.*' "${sed_filter}" "${grep_filter}"
+    } | sort -uf
+  else
+    homebrew-items "${find_include_filter}" '.*Casks(/.*|$)' "${sed_filter}" "${grep_filter}"
   fi
-
-  echo "${formulae}"
 }

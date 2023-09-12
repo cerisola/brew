@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "set"
@@ -9,7 +9,7 @@ module Cask
   # @api private
   class ArtifactSet < ::Set
     def each(&block)
-      return enum_for(__method__) { size } unless block
+      return enum_for(T.must(__method__)) { size } unless block
 
       to_a.each(&block)
       self

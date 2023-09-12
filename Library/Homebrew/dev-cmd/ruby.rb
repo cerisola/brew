@@ -1,11 +1,9 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "cli/parser"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }

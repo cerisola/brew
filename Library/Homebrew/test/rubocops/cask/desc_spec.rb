@@ -1,12 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "rubocops/rubocop-cask"
-require "test/rubocops/cask/shared_examples/cask_cop"
 
-describe RuboCop::Cop::Cask::Desc do
-  subject(:cop) { described_class.new }
-
+describe RuboCop::Cop::Cask::Desc, :config do
   it "does not start with an article" do
     expect_no_offenses <<~RUBY
       cask "foo" do
@@ -111,6 +107,13 @@ describe RuboCop::Cop::Cask::Desc do
       cask 'foo' do
         desc 'Application for managing macOS virtual machines on macOS'
                                                                  ^^^^^ Description shouldn't contain the platform.
+      end
+    RUBY
+
+    expect_offense <<~RUBY
+      cask 'foo' do
+        desc 'Description with a 🍺 symbol'
+                                 ^ Description shouldn't contain Unicode emojis or symbols.
       end
     RUBY
 

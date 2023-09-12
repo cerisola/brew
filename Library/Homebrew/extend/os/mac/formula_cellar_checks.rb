@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "cache_store"
@@ -10,7 +10,7 @@ module FormulaCellarChecks
       formula.name.start_with?(formula_name)
     end
 
-    return if formula.name&.match?(Version.formula_optionally_versioned_regex(:php))
+    return if formula.name.match?(Version.formula_optionally_versioned_regex(:php))
     return if formula.keg_only? || !formula.include.directory?
 
     files  = relative_glob(formula.include, "**/*.h")
@@ -49,7 +49,7 @@ module FormulaCellarChecks
     python_modules = Pathname.glob lib/"python*/site-packages/**/*.so"
     framework_links = python_modules.select do |obj|
       dlls = obj.dynamically_linked_libraries
-      dlls.any? { |dll| /Python\.framework/.match dll }
+      dlls.any? { |dll| dll.include?("Python.framework") }
     end
     return if framework_links.empty?
 
@@ -81,7 +81,7 @@ module FormulaCellarChecks
         output += <<~EOS
           Rebuild this from source with:
             brew reinstall --build-from-source #{formula}
-          If that's successful, file an issue#{formula.tap ? " here:\n  #{formula.tap.issues_url}" : "."}
+          If that's successful, file an issue#{formula.tap ? " here:\n  #{T.must(formula.tap).issues_url}" : "."}
         EOS
       end
       problem_if_output output

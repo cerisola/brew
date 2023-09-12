@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "missing_formula"
@@ -14,8 +14,6 @@ require "deprecate_disable"
 require "api"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   VALID_DAYS = %w[30 90 365].freeze
@@ -27,7 +25,6 @@ module Homebrew
     Homebrew::CLI::Parser.new do
       description <<~EOS
         Display brief statistics for your Homebrew installation.
-
         If a <formula> or <cask> is provided, show summary of information about it.
       EOS
       switch "--analytics",
@@ -44,6 +41,9 @@ module Homebrew
                           "The value for <category> must be `install`, `install-on-request` or `build-error`; " \
                           "`cask-install` or `os-version` may be specified if <formula> is not. " \
                           "The default is `install`."
+      switch "--github-packages-downloads",
+             description: "Scrape GitHub Packages download counts from HTML for a core formula.",
+             hidden:      true
       switch "--github",
              description: "Open the GitHub source page for <formula> and <cask> in a browser. " \
                           "To view the history locally: `brew log -p` <formula> or <cask>"
@@ -51,20 +51,13 @@ module Homebrew
              description: "Print a JSON representation. Currently the default value for <version> is `v1` for " \
                           "<formula>. For <formula> and <cask> use `v2`. See the docs for examples of using the " \
                           "JSON output: <https://docs.brew.sh/Querying-Brew>"
-      switch "--bottle",
-             depends_on:  "--json",
-             description: "Output information about the bottles for <formula> and its dependencies.",
-             hidden:      true
       switch "--installed",
              depends_on:  "--json",
              description: "Print JSON of formulae that are currently installed."
       switch "--eval-all",
              depends_on:  "--json",
              description: "Evaluate all available formulae and casks, whether installed or not, to print their " \
-                          "JSON. Implied if HOMEBREW_EVAL_ALL is set."
-      switch "--all",
-             hidden:     true,
-             depends_on: "--json"
+                          "JSON. Implied if `HOMEBREW_EVAL_ALL` is set."
       switch "--variations",
              depends_on:  "--json",
              description: "Include the variations hash in each formula's JSON output."
@@ -79,10 +72,6 @@ module Homebrew
       conflicts "--installed", "--all"
       conflicts "--formula", "--cask"
 
-      %w[--cask --analytics --github].each do |conflict|
-        conflicts "--bottle", conflict
-      end
-
       named_args [:formula, :cask]
     end
   end
@@ -93,26 +82,23 @@ module Homebrew
 
     if args.analytics?
       if args.days.present? && VALID_DAYS.exclude?(args.days)
-        raise UsageError, "--days must be one of #{VALID_DAYS.join(", ")}"
+        raise UsageError, "`--days` must be one of #{VALID_DAYS.join(", ")}."
       end
 
       if args.category.present?
         if args.named.present? && VALID_FORMULA_CATEGORIES.exclude?(args.category)
-          raise UsageError, "--category must be one of #{VALID_FORMULA_CATEGORIES.join(", ")} when querying formulae"
+          raise UsageError,
+                "`--category` must be one of #{VALID_FORMULA_CATEGORIES.join(", ")} when querying formulae."
         end
 
         unless VALID_CATEGORIES.include?(args.category)
-          raise UsageError, "--category must be one of #{VALID_CATEGORIES.join(", ")}"
+          raise UsageError, "`--category` must be one of #{VALID_CATEGORIES.join(", ")}."
         end
       end
 
       print_analytics(args: args)
     elsif args.json
       all = args.eval_all?
-      if !all && args.all? && !Homebrew::EnvConfig.eval_all?
-        odeprecated "brew info --all", "brew info --eval-all or HOMEBREW_EVAL_ALL"
-        all = true
-      end
 
       print_json(all, args: args)
     elsif args.github?
@@ -131,7 +117,7 @@ module Homebrew
     return unless HOMEBREW_CELLAR.exist?
 
     count = Formula.racks.length
-    puts "#{count} #{"keg".pluralize(count)}, #{HOMEBREW_CELLAR.dup.abv}"
+    puts "#{Utils.pluralize("keg", count, include_count: true)}, #{HOMEBREW_CELLAR.dup.abv}"
   end
 
   sig { params(args: CLI::Args).void }
@@ -198,41 +184,37 @@ module Homebrew
     version_hash[version]
   end
 
-  sig { params(all: T::Boolean, args: CLI::Args).void }
+  sig { params(all: T::Boolean, args: T.untyped).void }
   def print_json(all, args:)
     raise FormulaOrCaskUnspecifiedError if !(all || args.installed?) && args.no_named?
 
     json = case json_version(args.json)
     when :v1, :default
-      raise UsageError, "cannot specify --cask with --json=v1!" if args.cask?
+      raise UsageError, "Cannot specify `--cask` when using `--json=v1`!" if args.cask?
 
       formulae = if all
-        Formula.all.sort
+        Formula.all(eval_all: args.eval_all?).sort
       elsif args.installed?
         Formula.installed.sort
       else
         args.named.to_formulae
       end
 
-      if args.bottle?
-        formulae.map(&:to_recursive_bottle_hash)
-      elsif args.variations?
+      if args.variations?
         formulae.map(&:to_hash_with_variations)
       else
         formulae.map(&:to_hash)
       end
     when :v2
       formulae, casks = if all
-        [Formula.all.sort, Cask::Cask.all.sort_by(&:full_name)]
+        [Formula.all(eval_all: args.eval_all?).sort, Cask::Cask.all.sort_by(&:full_name)]
       elsif args.installed?
         [Formula.installed.sort, Cask::Caskroom.casks.sort_by(&:full_name)]
       else
         args.named.to_formulae_to_casks
       end
 
-      if args.bottle?
-        { "formulae" => formulae.map(&:to_recursive_bottle_hash) }
-      elsif args.variations?
+      if args.variations?
         {
           "formulae" => formulae.map(&:to_hash_with_variations),
           "casks"    => casks.map(&:to_hash_with_variations),
@@ -258,38 +240,45 @@ module Homebrew
     end
   end
 
-  def github_info(f)
-    return f.path if f.tap.blank? || f.tap.remote.blank?
+  def github_info(formula_or_cask)
+    return formula_or_cask.path if formula_or_cask.tap.blank? || formula_or_cask.tap.remote.blank?
 
-    path = case f
+    path = case formula_or_cask
     when Formula
-      f.path.relative_path_from(f.tap.path)
+      formula = formula_or_cask
+      formula.path.relative_path_from(T.must(formula.tap).path)
     when Cask::Cask
-      f.sourcefile_path.relative_path_from(f.tap.path)
+      cask = formula_or_cask
+      if cask.sourcefile_path.blank?
+        return "#{cask.tap.default_remote}/blob/HEAD/#{cask.tap.relative_cask_path(cask.token)}"
+      end
+
+      cask.sourcefile_path.relative_path_from(cask.tap.path)
     end
-    github_remote_path(f.tap.remote, path)
+
+    github_remote_path(formula_or_cask.tap.remote, path)
   end
 
-  def info_formula(f, args:)
+  def info_formula(formula, args:)
     specs = []
 
-    if (stable = f.stable)
-      s = "stable #{stable.version}"
-      s += " (bottled)" if stable.bottled? && f.pour_bottle?
-      specs << s
+    if (stable = formula.stable)
+      string = "stable #{stable.version}"
+      string += " (bottled)" if stable.bottled? && formula.pour_bottle?
+      specs << string
     end
 
-    specs << "HEAD" if f.head
+    specs << "HEAD" if formula.head
 
     attrs = []
-    attrs << "pinned at #{f.pinned_version}" if f.pinned?
-    attrs << "keg-only" if f.keg_only?
+    attrs << "pinned at #{formula.pinned_version}" if formula.pinned?
+    attrs << "keg-only" if formula.keg_only?
 
-    puts "#{oh1_title(f.full_name)}: #{specs * ", "}#{" [#{attrs * ", "}]" unless attrs.empty?}"
-    puts f.desc if f.desc
-    puts Formatter.url(f.homepage) if f.homepage
+    puts "#{oh1_title(formula.full_name)}: #{specs * ", "}#{" [#{attrs * ", "}]" unless attrs.empty?}"
+    puts formula.desc if formula.desc
+    puts Formatter.url(formula.homepage) if formula.homepage
 
-    deprecate_disable_type, deprecate_disable_reason = DeprecateDisable.deprecate_disable_info f
+    deprecate_disable_type, deprecate_disable_reason = DeprecateDisable.deprecate_disable_info formula
     if deprecate_disable_type.present?
       if deprecate_disable_reason.present?
         puts "#{deprecate_disable_type.capitalize} because it #{deprecate_disable_reason}!"
@@ -298,9 +287,9 @@ module Homebrew
       end
     end
 
-    conflicts = f.conflicts.map do |c|
-      reason = " (because #{c.reason})" if c.reason
-      "#{c.name}#{reason}"
+    conflicts = formula.conflicts.map do |conflict|
+      reason = " (because #{conflict.reason})" if conflict.reason
+      "#{conflict.name}#{reason}"
     end.sort!
     unless conflicts.empty?
       puts <<~EOS
@@ -309,7 +298,7 @@ module Homebrew
       EOS
     end
 
-    kegs = f.installed_kegs
+    kegs = formula.installed_kegs
     heads, versioned = kegs.partition { |k| k.version.head? }
     kegs = [
       *heads.sort_by { |k| -Tab.for_keg(k).time.to_i },
@@ -325,37 +314,37 @@ module Homebrew
       end
     end
 
-    puts "From: #{Formatter.url(github_info(f))}"
+    puts "From: #{Formatter.url(github_info(formula))}"
 
-    puts "License: #{SPDX.license_expression_to_string f.license}" if f.license.present?
+    puts "License: #{SPDX.license_expression_to_string formula.license}" if formula.license.present?
 
-    unless f.deps.empty?
+    unless formula.deps.empty?
       ohai "Dependencies"
       %w[build required recommended optional].map do |type|
-        deps = f.deps.send(type).uniq
+        deps = formula.deps.send(type).uniq
         puts "#{type.capitalize}: #{decorate_dependencies deps}" unless deps.empty?
       end
     end
 
-    unless f.requirements.to_a.empty?
+    unless formula.requirements.to_a.empty?
       ohai "Requirements"
       %w[build required recommended optional].map do |type|
-        reqs = f.requirements.select(&:"#{type}?")
+        reqs = formula.requirements.select(&:"#{type}?")
         next if reqs.to_a.empty?
 
         puts "#{type.capitalize}: #{decorate_requirements(reqs)}"
       end
     end
 
-    if !f.options.empty? || f.head
+    if !formula.options.empty? || formula.head
       ohai "Options"
-      Options.dump_for_formula f
+      Options.dump_for_formula formula
     end
 
-    caveats = Caveats.new(f)
+    caveats = Caveats.new(formula)
     ohai "Caveats", caveats.to_s unless caveats.empty?
 
-    Utils::Analytics.formula_output(f, args: args)
+    Utils::Analytics.formula_output(formula, args: args)
   end
 
   def decorate_dependencies(dependencies)
@@ -384,9 +373,8 @@ module Homebrew
   end
 
   def info_cask(cask, args:)
-    require "cask/cmd"
-    require "cask/cmd/info"
+    require "cask/info"
 
-    Cask::Cmd::Info.info(cask)
+    Cask::Info.info(cask)
   end
 end

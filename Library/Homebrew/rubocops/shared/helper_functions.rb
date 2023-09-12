@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "rubocop"
@@ -49,6 +49,7 @@ module RuboCop
       end
 
       # Returns the line number of the node.
+      sig { params(node: RuboCop::AST::Node).returns(Integer) }
       def line_number(node)
         node.loc.line
       end
@@ -108,7 +109,7 @@ module RuboCop
         return if node.nil?
 
         node.each_child_node(:send) do |method_node|
-          next unless method_node.method_name == method_name
+          next if method_node.method_name != method_name
 
           @offensive_node = method_node
           return method_node
@@ -166,7 +167,7 @@ module RuboCop
       def find_method_with_args(node, method_name, *args)
         methods = find_every_method_call_by_name(node, method_name)
         methods.each do |method|
-          next unless parameters_passed?(method, *args)
+          next unless parameters_passed?(method, args)
           return true unless block_given?
 
           yield method
@@ -216,7 +217,7 @@ module RuboCop
         return if node.nil?
 
         node.each_descendant(:const) do |const_node|
-          next unless const_node.const_name == const_name
+          next if const_node.const_name != const_name
 
           @offensive_node = const_node
           yield const_node if block_given?
@@ -289,7 +290,7 @@ module RuboCop
       def block_method_called_in_block?(node, method_name)
         node.body.each_child_node do |call_node|
           next if !call_node.block_type? && !call_node.send_type?
-          next unless call_node.method_name == method_name
+          next if call_node.method_name != method_name
 
           @offensive_node = call_node
           return true
@@ -305,7 +306,7 @@ module RuboCop
           return true
         end
         node.each_child_node(:send) do |call_node|
-          next unless call_node.method_name == method_name
+          next if call_node.method_name != method_name
 
           offending_node(call_node)
           return true
@@ -316,7 +317,7 @@ module RuboCop
       # Check if method_name is called among every descendant node of given node.
       def method_called_ever?(node, method_name)
         node.each_descendant(:send) do |call_node|
-          next unless call_node.method_name == method_name
+          next if call_node.method_name != method_name
 
           @offensive_node = call_node
           return true
@@ -358,7 +359,7 @@ module RuboCop
       # Returns true if the given parameters are present in method call
       # and sets the method call as the offending node.
       # Params can be string, symbol, array, hash, matching regex.
-      def parameters_passed?(method_node, *params)
+      def parameters_passed?(method_node, params)
         method_params = parameters(method_node)
         @offensive_node = method_node
         params.all? do |given_param|

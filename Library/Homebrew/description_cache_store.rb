@@ -3,15 +3,12 @@
 
 require "set"
 require "cache_store"
-require "searchable"
 
 #
 # {DescriptionCacheStore} provides methods to fetch and mutate formula descriptions used
 # by the `brew desc` and `brew search` commands.
 #
 class DescriptionCacheStore < CacheStore
-  include Searchable
-
   # Inserts a formula description into the cache if it does not exist or
   # updates the formula description if it does exist.
   #
@@ -84,8 +81,6 @@ class DescriptionCacheStore < CacheStore
     formula_names.each(&method(:delete!))
   end
   alias delete_from_cask_tokens! delete_from_formula_names!
-
-  private
 
   # `select` from the underlying database.
   def select(&block)

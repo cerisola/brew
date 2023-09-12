@@ -1,4 +1,3 @@
-# typed: false
 # frozen_string_literal: true
 
 require "formula"
@@ -49,24 +48,26 @@ describe FormulaInstaller do
     expect(formula).not_to be_latest_version_installed
   end
 
-  def test_basic_formula_setup(f)
+  def test_basic_formula_setup(formula)
     # Test that things made it into the Keg
-    expect(f.bin).to be_a_directory
+    expect(formula.bin).to be_a_directory
 
-    expect(f.libexec).to be_a_directory
+    expect(formula.libexec).to be_a_directory
 
-    expect(f.prefix/"main.c").not_to exist
+    expect(formula.prefix/"main.c").not_to exist
 
     # Test that things made it into the Cellar
-    keg = Keg.new f.prefix
+    keg = Keg.new formula.prefix
     keg.link
 
     bin = HOMEBREW_PREFIX/"bin"
     expect(bin).to be_a_directory
 
-    expect(f.libexec).to be_a_directory
+    expect(formula.libexec).to be_a_directory
   end
 
+  # This test wraps expect() calls in `test_basic_formula_setup`
+  # rubocop:disable RSpec/NoExpectationExample
   specify "basic bottle install" do
     allow(DevelopmentTools).to receive(:installed?).and_return(false)
     Homebrew.install_args.parse(["testball_bottle"])
@@ -74,6 +75,7 @@ describe FormulaInstaller do
       test_basic_formula_setup(f)
     end
   end
+  # rubocop:enable RSpec/NoExpectationExample
 
   specify "basic bottle install with cellar information on sha256 line" do
     allow(DevelopmentTools).to receive(:installed?).and_return(false)
@@ -98,9 +100,9 @@ describe FormulaInstaller do
     expect(formula).not_to be_latest_version_installed
     expect(formula).not_to be_bottled
 
-    expect {
+    expect do
       described_class.new(formula).install
-    }.to raise_error(UnbottledError)
+    end.to raise_error(UnbottledError)
 
     expect(formula).not_to be_latest_version_installed
   end

@@ -1,9 +1,9 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "cask/config"
-require "cask/cmd"
-require "cask/cmd/install"
+require "cask/installer"
+require "cask_dependent"
 require "missing_formula"
 require "formula_installer"
 require "development_tools"
@@ -13,12 +13,8 @@ require "cli/parser"
 require "upgrade"
 
 module Homebrew
-  extend T::Sig
-
-  module_function
-
   sig { returns(CLI::Parser) }
-  def install_args
+  def self.install_args
     Homebrew::CLI::Parser.new do
       description <<~EOS
         Install a <formula> or <cask>. Additional options specific to a <formula> may be
@@ -30,7 +26,7 @@ module Homebrew
         Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for
         the installed formulae or, every 30 days, for all formulae.
 
-        Unless `HOMEBREW_NO_INSTALL_UPGRADE` is set, `brew install <formula>` will upgrade <formula> if it
+        Unless `HOMEBREW_NO_INSTALL_UPGRADE` is set, `brew install` <formula> will upgrade <formula> if it
         is already installed but outdated.
       EOS
       switch "-d", "--debug",
@@ -41,7 +37,7 @@ module Homebrew
                           "non-migrated versions. When installing casks, overwrite existing files " \
                           "(binaries and symlinks are excluded, unless originally from the same cask)."
       switch "-v", "--verbose",
-             description: "Print the verification and postinstall steps."
+             description: "Print the verification and post-install steps."
       switch "-n", "--dry-run",
              description: "Show what would be installed, but do not actually install anything."
       [
@@ -53,9 +49,9 @@ module Homebrew
           hidden:      true,
         }],
         [:switch, "--ignore-dependencies", {
-          description: "An unsupported Homebrew development flag to skip installing any dependencies of any kind. " \
-                       "If the dependencies are not already present, the formula will have issues. If you're not " \
-                       "developing Homebrew, consider adjusting your PATH rather than using this flag.",
+          description: "An unsupported Homebrew development option to skip installing any dependencies of any " \
+                       "kind. If the dependencies are not already present, the formula will have issues. If you're " \
+                       "not developing Homebrew, consider adjusting your PATH rather than using this option.",
         }],
         [:switch, "--only-dependencies", {
           description: "Install the dependencies with specified options but do not install the " \
@@ -92,11 +88,14 @@ module Homebrew
         }],
         [:switch, "--debug-symbols", {
           depends_on:  "--build-from-source",
-          description: "Generate debug symbols on build. Source will be retained in a cache directory. ",
+          description: "Generate debug symbols on build. Source will be retained in a cache directory.",
         }],
         [:switch, "--build-bottle", {
           description: "Prepare the formula for eventual bottling during installation, skipping any " \
                        "post-install steps.",
+        }],
+        [:switch, "--skip-post-install", {
+          description: "Install but skip any post-install steps.",
         }],
         [:flag, "--bottle-arch=", {
           depends_on:  "--build-bottle",
@@ -126,8 +125,29 @@ module Homebrew
       formula_options
       [
         [:switch, "--cask", "--casks", { description: "Treat all named arguments as casks." }],
-        *Cask::Cmd::AbstractCommand::OPTIONS.map(&:dup),
-        *Cask::Cmd::Install::OPTIONS.map(&:dup),
+        [:switch, "--[no-]binaries", {
+          description: "Disable/enable linking of helper executables (default: enabled).",
+          env:         :cask_opts_binaries,
+        }],
+        [:switch, "--require-sha",  {
+          description: "Require all casks to have a checksum.",
+          env:         :cask_opts_require_sha,
+        }],
+        [:switch, "--[no-]quarantine", {
+          description: "Disable/enable quarantining of downloads (default: enabled).",
+          env:         :cask_opts_quarantine,
+        }],
+        [:switch, "--adopt", {
+          description: "Adopt existing artifacts in the destination that are identical to those being installed. " \
+                       "Cannot be combined with --force.",
+        }],
+        [:switch, "--skip-cask-deps", {
+          description: "Skip installing cask dependencies.",
+        }],
+        [:switch, "--zap", {
+          description: "For use with `brew reinstall --cask`. Remove all files associated with a cask. " \
+                       "*May remove files which are shared between applications.*",
+        }],
       ].each do |args|
         options = args.pop
         send(*args, **options)
@@ -143,17 +163,14 @@ module Homebrew
     end
   end
 
-  def install
+  def self.install
     args = install_args.parse
-
-    if args.build_from_source? && Homebrew::EnvConfig.install_from_api?
-      raise UsageError, "--build-from-source is not supported when using HOMEBREW_INSTALL_FROM_API."
-    end
 
     if args.env.present?
       # Can't use `replacement: false` because `install_args` are used by
       # `build.rb`. Instead, `hide_from_man_page` and don't do anything with
       # this argument here.
+      # This odisabled should stick around indefinitely.
       odisabled "brew install --env", "`env :std` in specific formula files"
     end
 
@@ -162,16 +179,14 @@ module Homebrew
       next unless name =~ HOMEBREW_TAP_FORMULA_REGEX
 
       tap = Tap.fetch(Regexp.last_match(1), Regexp.last_match(2))
-      next if (tap.core_tap? || tap == "homebrew/cask") && EnvConfig.install_from_api?
-
-      tap.install unless tap.installed?
+      tap.ensure_installed!
     end
 
     if args.ignore_dependencies?
       opoo <<~EOS
-        #{Tty.bold}`--ignore-dependencies` is an unsupported Homebrew developer flag!#{Tty.reset}
+        #{Tty.bold}`--ignore-dependencies` is an unsupported Homebrew developer option!#{Tty.reset}
         Adjust your PATH to put any preferred versions of applications earlier in the
-        PATH rather than using this unsupported flag!
+        PATH rather than using this unsupported option!
 
       EOS
     end
@@ -179,37 +194,87 @@ module Homebrew
     begin
       formulae, casks = args.named.to_formulae_and_casks
                             .partition { |formula_or_cask| formula_or_cask.is_a?(Formula) }
-    rescue FormulaOrCaskUnavailableError, Cask::CaskUnavailableError => e
-      retry if Tap.install_default_cask_tap_if_necessary(force: args.cask?)
+    rescue FormulaOrCaskUnavailableError, Cask::CaskUnavailableError
+      cask_tap = CoreCaskTap.instance
+      if !cask_tap.installed? && (args.cask? || Tap.untapped_official_taps.exclude?(cask_tap.name))
+        cask_tap.ensure_installed!
+        retry if cask_tap.installed?
+      end
 
-      raise e
+      raise
     end
 
     if casks.any?
-      Cask::Cmd::Install.install_casks(
-        *casks,
-        binaries:       args.binaries?,
-        verbose:        args.verbose?,
-        force:          args.force?,
-        adopt:          args.adopt?,
-        require_sha:    args.require_sha?,
-        skip_cask_deps: args.skip_cask_deps?,
-        quarantine:     args.quarantine?,
-        quiet:          args.quiet?,
-        dry_run:        args.dry_run?,
-      )
+
+      if args.dry_run?
+        if (casks_to_install = casks.reject(&:installed?).presence)
+          ohai "Would install #{::Utils.pluralize("cask", casks_to_install.count, include_count: true)}:"
+          puts casks_to_install.map(&:full_name).join(" ")
+        end
+        casks.each do |cask|
+          dep_names = CaskDependent.new(cask)
+                                   .runtime_dependencies
+                                   .reject(&:installed?)
+                                   .map(&:to_formula)
+                                   .map(&:name)
+          next if dep_names.blank?
+
+          ohai "Would install #{::Utils.pluralize("dependenc", dep_names.count, plural: "ies", singular: "y",
+                                                  include_count: true)} for #{cask.full_name}:"
+          puts dep_names.join(" ")
+        end
+        return
+      end
+
+      require "cask/installer"
+
+      installed_casks, new_casks = casks.partition(&:installed?)
+
+      new_casks.each do |cask|
+        Cask::Installer.new(
+          cask,
+          binaries:       args.binaries?,
+          verbose:        args.verbose?,
+          force:          args.force?,
+          adopt:          args.adopt?,
+          require_sha:    args.require_sha?,
+          skip_cask_deps: args.skip_cask_deps?,
+          quarantine:     args.quarantine?,
+          quiet:          args.quiet?,
+        ).install
+      end
+
+      if !Homebrew::EnvConfig.no_install_upgrade? && installed_casks.any?
+        require "cask/upgrade"
+
+        Cask::Upgrade.upgrade_casks(
+          *installed_casks,
+          force:          args.force?,
+          dry_run:        args.dry_run?,
+          binaries:       args.binaries?,
+          quarantine:     args.quarantine?,
+          require_sha:    args.require_sha?,
+          skip_cask_deps: args.skip_cask_deps?,
+          verbose:        args.verbose?,
+          args:           args,
+        )
+      end
     end
 
     # if the user's flags will prevent bottle only-installations when no
     # developer tools are available, we need to stop them early on
+    build_flags = []
     unless DevelopmentTools.installed?
-      build_flags = []
-
       build_flags << "--HEAD" if args.HEAD?
       build_flags << "--build-bottle" if args.build_bottle?
       build_flags << "--build-from-source" if args.build_from_source?
 
       raise BuildFlagsError.new(build_flags, bottled: formulae.all?(&:bottled?)) if build_flags.present?
+    end
+
+    if build_flags.present? && !Homebrew::EnvConfig.developer?
+      opoo "building from source is not supported!"
+      puts "You're on your own. Failures are expected so don't create any issues, please!"
     end
 
     installed_formulae = formulae.select do |f|
@@ -247,6 +312,7 @@ module Homebrew
       quiet:                      args.quiet?,
       verbose:                    args.verbose?,
       dry_run:                    args.dry_run?,
+      skip_post_install:          args.skip_post_install?,
     )
 
     Upgrade.check_installed_dependents(
@@ -276,8 +342,14 @@ module Homebrew
     $stderr.puts e.backtrace if Homebrew::EnvConfig.developer?
     ofail e.message
   rescue FormulaOrCaskUnavailableError, Cask::CaskUnavailableError => e
+    Homebrew.failed = true
+
     # formula name or cask token
-    name = e.try(:name) || e.token
+    name = case e
+    when FormulaOrCaskUnavailableError then e.name
+    when Cask::CaskUnavailableError then e.token
+    else T.absurd(e)
+    end
 
     if name == "updog"
       ofail "What's updog?"
@@ -297,11 +369,16 @@ module Homebrew
     return if name.include?("/")
 
     require "search"
-    ohai "Searching for similarly named formulae and casks..."
+
+    package_types = []
+    package_types << "formulae" unless args.cask?
+    package_types << "casks" unless args.formula?
+
+    ohai "Searching for similarly named #{package_types.join(" and ")}..."
 
     # Don't treat formula/cask name as a regex
-    query = string_or_regex = name
-    all_formulae, all_casks = Search.search_names(query, string_or_regex, args)
+    string_or_regex = name
+    all_formulae, all_casks = Search.search_names(string_or_regex, args)
 
     if all_formulae.any?
       ohai "Formulae", Formatter.columns(all_formulae)
@@ -324,6 +401,6 @@ module Homebrew
     end
     return if all_formulae.any? || all_casks.any?
 
-    odie "No formulae or casks found for #{name}."
+    odie "No #{package_types.join(" or ")} found for #{name}."
   end
 end

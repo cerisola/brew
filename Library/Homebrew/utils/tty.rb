@@ -9,9 +9,37 @@ require "env_config"
 module Tty
   @stream = $stdout
 
-  class << self
-    extend T::Sig
+  COLOR_CODES = {
+    red:     31,
+    green:   32,
+    yellow:  33,
+    blue:    34,
+    magenta: 35,
+    cyan:    36,
+    default: 39,
+  }.freeze
 
+  STYLE_CODES = {
+    reset:         0,
+    bold:          1,
+    italic:        3,
+    underline:     4,
+    strikethrough: 9,
+    no_underline:  24,
+  }.freeze
+
+  SPECIAL_CODES = {
+    up:         "1A",
+    down:       "1B",
+    right:      "1C",
+    left:       "1D",
+    erase_line: "K",
+    erase_char: "P",
+  }.freeze
+
+  CODES = COLOR_CODES.merge(STYLE_CODES).freeze
+
+  class << self
     sig { params(stream: T.any(IO, StringIO), _block: T.proc.params(arg0: T.any(IO, StringIO)).void).void }
     def with(stream, &_block)
       previous_stream = @stream
@@ -41,36 +69,6 @@ module Tty
     def truncate(string)
       (w = width).zero? ? string.to_s : (string.to_s[0, w - 4] || "")
     end
-
-    COLOR_CODES = {
-      red:     31,
-      green:   32,
-      yellow:  33,
-      blue:    34,
-      magenta: 35,
-      cyan:    36,
-      default: 39,
-    }.freeze
-
-    STYLE_CODES = {
-      reset:         0,
-      bold:          1,
-      italic:        3,
-      underline:     4,
-      strikethrough: 9,
-      no_underline:  24,
-    }.freeze
-
-    SPECIAL_CODES = {
-      up:         "1A",
-      down:       "1B",
-      right:      "1C",
-      left:       "1D",
-      erase_line: "K",
-      erase_char: "P",
-    }.freeze
-
-    CODES = COLOR_CODES.merge(STYLE_CODES).freeze
 
     sig { returns(String) }
     def current_escape_sequence
@@ -118,5 +116,5 @@ module Tty
 
       @stream.tty?
     end
-end
+  end
 end

@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "keg"
@@ -17,9 +17,9 @@ module Homebrew
   #
   # @api private
   module Diagnostic
-    def self.missing_deps(ff, hide = nil)
+    def self.missing_deps(formulae, hide = nil)
       missing = {}
-      ff.each do |f|
+      formulae.each do |f|
         missing_dependencies = f.missing_dependencies(hide: hide)
         next if missing_dependencies.empty?
 
@@ -31,7 +31,7 @@ module Homebrew
 
     def self.checks(type, fatal: true)
       @checks ||= Checks.new
-      failed = false
+      failed = T.let(false, T::Boolean)
       @checks.public_send(type).each do |check|
         out = @checks.public_send(check)
         next if out.nil?
@@ -48,8 +48,6 @@ module Homebrew
 
     # Diagnostic checks.
     class Checks
-      extend T::Sig
-
       def initialize(verbose: true)
         @verbose = verbose
       end
@@ -64,6 +62,7 @@ module Homebrew
         end
       end
 
+      sig { params(list: T::Array[String], string: String).returns(String) }
       def inject_file_list(list, string)
         list.reduce(string.dup) { |acc, elem| acc << "  #{elem}\n" }
             .freeze
@@ -118,17 +117,18 @@ module Homebrew
           Do not create any issues about this on Homebrew's GitHub repositories.
           Do not create any issues even if you think this message is unrelated.
           Any opened issues will be immediately closed without response.
-          Do not ask for help from MacHomebrew on Twitter.
+          Do not ask for help from Homebrew or its maintainers on social media.
           You may ask for help in Homebrew's discussions but are unlikely to receive a response.
           Try to figure out the problem yourself and submit a fix as a pull request.
           We will review it but may or may not accept it.
         EOS
       end
 
+      sig { params(repository_path: GitRepository, desired_origin: String).returns(T.nilable(String)) }
       def examine_git_origin(repository_path, desired_origin)
-        return if !Utils::Git.available? || !repository_path.git?
+        return if !Utils::Git.available? || !repository_path.git_repo?
 
-        current_origin = repository_path.git_origin
+        current_origin = repository_path.origin_url
 
         if current_origin.nil?
           <<~EOS
@@ -154,8 +154,8 @@ module Homebrew
       def broken_tap(tap)
         return unless Utils::Git.available?
 
-        repo = HOMEBREW_REPOSITORY.dup.extend(GitRepositoryExtension)
-        return unless repo.git?
+        repo = GitRepository.new(HOMEBREW_REPOSITORY)
+        return unless repo.git_repo?
 
         message = <<~EOS
           #{tap.full_name} was not tapped properly! Run:
@@ -167,7 +167,7 @@ module Homebrew
 
         tap_head = tap.git_head
         return message if tap_head.blank?
-        return if tap_head != repo.git_head
+        return if tap_head != repo.head_ref
 
         message
       end
@@ -473,7 +473,7 @@ module Homebrew
       def check_git_version
         minimum_version = ENV.fetch("HOMEBREW_MINIMUM_GIT_VERSION")
         return unless Utils::Git.available?
-        return if Version.create(Utils::Git.version) >= Version.create(minimum_version)
+        return if Version.new(Utils::Git.version) >= Version.new(minimum_version)
 
         git = Formula["git"]
         git_upgrade_cmd = git.any_version_installed? ? "upgrade" : "install"
@@ -500,7 +500,7 @@ module Homebrew
         return unless Utils::Git.available?
 
         autocrlf = HOMEBREW_REPOSITORY.cd { `git config --get core.autocrlf`.chomp }
-        return unless autocrlf == "true"
+        return if autocrlf != "true"
 
         <<~EOS
           Suspicious Git newline settings found.
@@ -515,26 +515,26 @@ module Homebrew
       end
 
       def check_brew_git_origin
-        repo = HOMEBREW_REPOSITORY.dup.extend(GitRepositoryExtension)
+        repo = GitRepository.new(HOMEBREW_REPOSITORY)
         examine_git_origin(repo, Homebrew::EnvConfig.brew_git_remote)
       end
 
       def check_coretap_integrity
         coretap = CoreTap.instance
         unless coretap.installed?
-          return if EnvConfig.install_from_api?
+          return unless EnvConfig.no_install_from_api?
 
           CoreTap.ensure_installed!
         end
 
-        broken_tap(coretap) || examine_git_origin(coretap.path, Homebrew::EnvConfig.core_git_remote)
+        broken_tap(coretap) || examine_git_origin(coretap.git_repo, Homebrew::EnvConfig.core_git_remote)
       end
 
       def check_casktap_integrity
-        default_cask_tap = Tap.default_cask_tap
+        default_cask_tap = CoreCaskTap.instance
         return unless default_cask_tap.installed?
 
-        broken_tap(default_cask_tap) || examine_git_origin(default_cask_tap.path, default_cask_tap.remote)
+        broken_tap(default_cask_tap) || examine_git_origin(default_cask_tap.git_repo, default_cask_tap.remote)
       end
 
       sig { returns(T.nilable(String)) }
@@ -543,9 +543,9 @@ module Homebrew
         return unless Utils::Git.available?
 
         commands = Tap.map do |tap|
-          next if tap.path.git_default_origin_branch?
+          next if tap.git_repo.default_origin_branch?
 
-          "git -C $(brew --repo #{tap.name}) checkout #{tap.path.git_origin_branch}"
+          "git -C $(brew --repo #{tap.name}) checkout #{tap.git_repo.origin_branch_name}"
         end.compact
 
         return if commands.blank?
@@ -569,8 +569,8 @@ module Homebrew
         EOS
       end
 
-      def __check_linked_brew(f)
-        f.installed_prefixes.each do |prefix|
+      def __check_linked_brew(formula)
+        formula.installed_prefixes.each do |prefix|
           prefix.find do |src|
             next if src == prefix
 
@@ -642,17 +642,18 @@ module Homebrew
         EOS
       end
 
+      sig { returns(T.nilable(String)) }
       def check_git_status
         return unless Utils::Git.available?
 
-        message = nil
+        message = T.let(nil, T.nilable(String))
 
         repos = {
           "Homebrew/brew"          => HOMEBREW_REPOSITORY,
           "Homebrew/homebrew-core" => CoreTap.instance.path,
         }
 
-        %w[cask cask-drivers cask-fonts cask-versions].each do |tap|
+        OFFICIAL_CASK_TAPS.each do |tap|
           cask_tap = Tap.fetch "homebrew", tap
           repos[cask_tap.full_name] = cask_tap.path if cask_tap.installed?
         end
@@ -785,7 +786,7 @@ module Homebrew
             next unless dir.exist?
 
             dir.children.each do |path|
-              next unless path.extname == ".rb"
+              next if path.extname != ".rb"
 
               bad_tap_files[tap] ||= []
               bad_tap_files[tap] << path
@@ -821,8 +822,8 @@ module Homebrew
         deleted_formulae = kegs.map do |keg|
           next if Formulary.tap_paths(keg.name).any?
 
-          if !CoreTap.instance.installed? && EnvConfig.install_from_api?
-            # Formulae installed with HOMEBREW_INSTALL_FROM_API should not count as deleted formulae
+          unless EnvConfig.no_install_from_api?
+            # Formulae installed from the API should not count as deleted formulae
             # but may not have a tap listed in their tab
             tap = Tab.for_keg(keg).tap
             next if (tap.blank? || tap.core_tap?) && Homebrew::API::Formula.all_formulae.key?(keg.name)
@@ -838,6 +839,36 @@ module Homebrew
           This means they were either deleted or installed manually.
           You should find replacements for the following formulae:
             #{deleted_formulae.join("\n  ")}
+        EOS
+      end
+
+      def check_for_unnecessary_core_tap
+        return if Homebrew::EnvConfig.developer?
+        return if Homebrew::EnvConfig.no_install_from_api?
+        return if Homebrew::Settings.read("devcmdrun") == "true"
+        return unless CoreTap.instance.installed?
+
+        <<~EOS
+          You have an unnecessary local Core tap!
+          This can cause problems installing up-to-date formulae.
+          Please remove it by running:
+           brew untap #{CoreTap.instance.name}
+        EOS
+      end
+
+      def check_for_unnecessary_cask_tap
+        return if Homebrew::EnvConfig.developer?
+        return if Homebrew::EnvConfig.no_install_from_api?
+        return if Homebrew::Settings.read("devcmdrun") == "true"
+
+        cask_tap = CoreCaskTap.instance
+        return unless cask_tap.installed?
+
+        <<~EOS
+          You have an unnecessary local Cask tap.
+          This can cause problems installing up-to-date casks.
+          Please remove it by running:
+            brew untap #{cask_tap.name}
         EOS
       end
 
@@ -890,12 +921,13 @@ module Homebrew
       end
 
       def check_cask_taps
-        default_cask_tap = Tap.default_cask_tap
-        alt_taps = Tap.select { |t| t.cask_dir.exist? && t != default_cask_tap }
+        default_cask_tap = CoreCaskTap.instance
+        taps = Tap.select { |t| t.cask_dir.exist? && t != default_cask_tap }
+        taps.prepend(default_cask_tap) if EnvConfig.no_install_from_api?
 
         error_tap_paths = []
 
-        add_info "Homebrew Cask Taps:", ([default_cask_tap, *alt_taps].map do |tap|
+        add_info "Homebrew Cask Taps:", (taps.map do |tap|
           if tap.path.blank?
             none_string
           else
@@ -906,12 +938,12 @@ module Homebrew
               0
             end
 
-            "#{tap.path} (#{cask_count} #{"cask".pluralize(cask_count)})"
+            "#{tap.path} (#{Utils.pluralize("cask", cask_count, include_count: true)})"
           end
         end)
 
-        taps = "tap".pluralize error_tap_paths.count
-        "Unable to read from cask #{taps}: #{error_tap_paths.to_sentence}" if error_tap_paths.present?
+        taps_string = Utils.pluralize("tap", error_tap_paths.count)
+        "Unable to read from cask #{taps_string}: #{error_tap_paths.to_sentence}" if error_tap_paths.present?
       end
 
       def check_cask_load_path

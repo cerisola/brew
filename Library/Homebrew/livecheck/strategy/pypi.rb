@@ -17,11 +17,9 @@ module Homebrew
       #
       # @api public
       class Pypi
-        extend T::Sig
-
         NICE_NAME = "PyPI"
 
-        # The `Regexp` used to extract the package name and suffix (e.g., file
+        # The `Regexp` used to extract the package name and suffix (e.g. file
         # extension) from the URL basename.
         FILENAME_REGEX = /
           (?<package_name>.+)- # The package name followed by a hyphen
@@ -87,13 +85,13 @@ module Homebrew
             url:    String,
             regex:  T.nilable(Regexp),
             unused: T.nilable(T::Hash[Symbol, T.untyped]),
-            block:  T.untyped,
+            block:  T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }
         def self.find_versions(url:, regex: nil, **unused, &block)
           generated = generate_input_values(url)
 
-          T.unsafe(PageMatch).find_versions(url: generated[:url], regex: regex || generated[:regex], **unused, &block)
+          PageMatch.find_versions(url: generated[:url], regex: regex || generated[:regex], **unused, &block)
         end
       end
     end

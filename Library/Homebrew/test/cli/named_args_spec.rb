@@ -1,11 +1,10 @@
-# typed: false
 # frozen_string_literal: true
 
 require "cli/named_args"
 
 def setup_unredable_formula(name)
   error = FormulaUnreadableError.new(name, RuntimeError.new("testing"))
-  allow(Formulary).to receive(:factory).with(name, force_bottle: false, flags: []).and_raise(error)
+  allow(Formulary).to receive(:factory).with(name, {}).and_raise(error)
 end
 
 def setup_unredable_cask(name)

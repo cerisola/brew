@@ -6,6 +6,8 @@ module Homebrew
   #
   # @api private
   class ResourceAuditor
+    include Utils::Curl
+
     attr_reader :name, :version, :checksum, :url, :mirrors, :using, :specs, :owner, :spec_name, :problems
 
     def initialize(resource, spec_name, options = {})
@@ -44,6 +46,10 @@ module Homebrew
     def audit_version
       if version.nil?
         problem "missing version"
+      elsif owner.is_a?(Formula) && !version.to_s.match?(GitHubPackages::VALID_OCI_TAG_REGEX) &&
+            (owner.core_formula? ||
+            (owner.bottle_defined? && GitHubPackages::URL_REGEX.match?(owner.bottle_specification.root_url)))
+        problem "version #{version} does not match #{GitHubPackages::VALID_OCI_TAG_REGEX.source}"
       elsif !version.detected_from_url?
         version_text = version
         version_url = Version.detect(url, **specs)
@@ -78,14 +84,16 @@ module Homebrew
         end
       end
 
-      return unless url_strategy == DownloadStrategyDetector.detect("", using)
+      return if url_strategy != DownloadStrategyDetector.detect("", using)
 
       problem "Redundant :using value in URL"
     end
 
     def audit_checksum
       return if spec_name == :head
+      # rubocop:disable Style/InvertibleUnlessCondition (non-invertible)
       return unless DownloadStrategyDetector.detect(url, using) <= CurlDownloadStrategy
+      # rubocop:enable Style/InvertibleUnlessCondition
 
       problem "Checksum is missing" if checksum.blank?
     end
@@ -121,10 +129,12 @@ module Homebrew
           raise HomebrewCurlDownloadStrategyError, url if
             strategy <= HomebrewCurlDownloadStrategy && !Formula["curl"].any_version_installed?
 
-          if (http_content_problem = curl_check_http_content(url,
-                                                             "source URL",
-                                                             specs:             specs,
-                                                             use_homebrew_curl: @use_homebrew_curl))
+          if (http_content_problem = curl_check_http_content(
+            url,
+            "source URL",
+            specs:             specs,
+            use_homebrew_curl: @use_homebrew_curl,
+          ))
             problem http_content_problem
           end
         elsif strategy <= GitDownloadStrategy

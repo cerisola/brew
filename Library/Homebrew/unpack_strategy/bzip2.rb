@@ -4,11 +4,7 @@
 module UnpackStrategy
   # Strategy for unpacking bzip2 archives.
   class Bzip2
-    extend T::Sig
-
     include UnpackStrategy
-
-    using Magic
 
     sig { returns(T::Array[String]) }
     def self.extensions

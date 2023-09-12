@@ -9,8 +9,6 @@ require "utils/pypi"
 require "cask/cask_loader"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -96,14 +94,14 @@ module Homebrew
     token = Cask::Utils.token_from(name)
 
     cask_tap = Tap.fetch(args.tap || "homebrew/cask")
-    raise TapUnavailableError, args.tap unless cask_tap.installed?
+    raise TapUnavailableError, cask_tap.name unless cask_tap.installed?
 
-    cask_path = Cask::CaskLoader.path("#{cask_tap}/#{token}")
+    cask_path = cask_tap.new_cask_path(token)
     cask_path.dirname.mkpath unless cask_path.dirname.exist?
     raise Cask::CaskAlreadyCreatedError, token if cask_path.exist?
 
     version = if args.set_version
-      Version.create(args.set_version)
+      Version.new(args.set_version)
     else
       Version.detect(url.gsub(token, "").gsub(/x86(_64)?/, ""))
     end
@@ -153,7 +151,7 @@ module Homebrew
     fc.version = args.set_version
     fc.license = args.set_license
     fc.tap = Tap.fetch(args.tap || "homebrew/core")
-    raise TapUnavailableError, args.tap unless fc.tap.installed?
+    raise TapUnavailableError, fc.tap.name unless fc.tap.installed?
 
     fc.url = args.named.first
 
@@ -190,19 +188,24 @@ module Homebrew
         EOS
       end
 
-      if Formula.aliases.include? fc.name
-        realname = Formulary.canonical_name(fc.name)
-        odie <<~EOS
-          The formula '#{realname}' is already aliased to '#{fc.name}'.
-          Please check that you are not creating a duplicate.
-          To force creation use `--force`.
-        EOS
+      Homebrew.with_no_api_env do
+        if Formula.aliases.include? fc.name
+          realname = Formulary.canonical_name(fc.name)
+          odie <<~EOS
+            The formula '#{realname}' is already aliased to '#{fc.name}'.
+            Please check that you are not creating a duplicate.
+            To force creation use `--force`.
+          EOS
+        end
       end
     end
 
     fc.generate!
 
-    PyPI.update_python_resources! Formula[fc.name], ignore_non_pypi_packages: true if args.python?
+    formula = Homebrew.with_no_api_env do
+      Formula[fc.name]
+    end
+    PyPI.update_python_resources! formula, ignore_non_pypi_packages: true if args.python?
 
     puts "Please run `brew audit --new #{fc.name}` before submitting, thanks."
     fc.path

@@ -1,12 +1,10 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "cli/parser"
 require "fileutils"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -19,8 +17,6 @@ module Homebrew
              description: "Generate code coverage reports."
       switch "--generic",
              description: "Run only OS-agnostic tests."
-      switch "--no-compat",
-             description: "Do not load the compatibility layer when running tests."
       switch "--online",
              description: "Include tests that use the GitHub API and tests that use any of the taps for " \
                           "official external commands."
@@ -28,6 +24,8 @@ module Homebrew
              description: "Enable debugging using byebug."
       switch "--changed",
              description: "Only runs tests on files that were changed from the master branch."
+      switch "--fail-fast",
+             description: "Exit early on the first failing test."
       flag   "--only=",
              description: "Run only <test_script>`_spec.rb`. Appending `:`<line_number> will start at a " \
                           "specific line."
@@ -62,10 +60,12 @@ module Homebrew
 
     ohai "Sending test results to BuildPulse"
 
-    safe_system Formula["buildpulse-test-reporter"].opt_bin/"buildpulse-test-reporter",
-                "submit", "#{HOMEBREW_LIBRARY_PATH}/test/junit",
-                "--account-id", ENV.fetch("HOMEBREW_BUILDPULSE_ACCOUNT_ID"),
-                "--repository-id", ENV.fetch("HOMEBREW_BUILDPULSE_REPOSITORY_ID")
+    system_command Formula["buildpulse-test-reporter"].opt_bin/"buildpulse-test-reporter",
+                   args: [
+                     "submit", "#{HOMEBREW_LIBRARY_PATH}/test/junit",
+                     "--account-id", ENV.fetch("HOMEBREW_BUILDPULSE_ACCOUNT_ID"),
+                     "--repository-id", ENV.fetch("HOMEBREW_BUILDPULSE_REPOSITORY_ID")
+                   ]
   end
 
   def changed_test_files
@@ -88,7 +88,7 @@ module Homebrew
   def tests
     args = tests_args.parse
 
-    Homebrew.install_bundler_gems!
+    Homebrew.install_bundler_gems!(groups: ["prof"])
 
     require "byebug" if args.byebug?
 
@@ -113,7 +113,7 @@ module Homebrew
       end
 
       if files.blank?
-        raise UsageError, "The --only= argument requires a valid file or folder name!" if args.only
+        raise UsageError, "The `--only` argument requires a valid file or folder name!" if args.only
 
         if args.changed?
           opoo "No tests are directly associated with the changed files!"
@@ -122,7 +122,6 @@ module Homebrew
       end
 
       parallel_rspec_log_name = "parallel_runtime_rspec"
-      parallel_rspec_log_name = "#{parallel_rspec_log_name}.no_compat" if args.no_compat?
       parallel_rspec_log_name = "#{parallel_rspec_log_name}.generic" if args.generic?
       parallel_rspec_log_name = "#{parallel_rspec_log_name}.online" if args.online?
       parallel_rspec_log_name = "#{parallel_rspec_log_name}.log"
@@ -156,6 +155,7 @@ module Homebrew
         --color
         --require spec_helper
       ]
+      bundle_args << "--fail-fast" if args.fail_fast?
 
       # TODO: Refactor and move to extend/os
       # rubocop:disable Homebrew/MoveToExtendOS
@@ -169,6 +169,12 @@ module Homebrew
         files = files.grep_v(%r{^test/os/linux(/.*|_spec\.rb)$})
       end
       # rubocop:enable Homebrew/MoveToExtendOS
+
+      bundle_args << "--tag" << "~needs_network" unless args.online?
+      unless ENV["CI"]
+        bundle_args << "--tag" << "~needs_ci" \
+                    << "--tag" << "~needs_svn"
+      end
 
       puts "Randomized with seed #{seed}"
 
@@ -184,10 +190,11 @@ module Homebrew
       else
         system "bundle", "exec", "rspec", *bundle_args, "--", *files
       end
+      success = $CHILD_STATUS.success?
 
       run_buildpulse if use_buildpulse?
 
-      return if $CHILD_STATUS.success?
+      return if success
 
       Homebrew.failed = true
     end
@@ -220,10 +227,12 @@ module Homebrew
     ENV["HOMEBREW_TESTS"] = "1"
     ENV["HOMEBREW_NO_AUTO_UPDATE"] = "1"
     ENV["HOMEBREW_NO_ANALYTICS_THIS_RUN"] = "1"
-    ENV["HOMEBREW_NO_COMPAT"] = "1" if args.no_compat?
     ENV["HOMEBREW_TEST_GENERIC_OS"] = "1" if args.generic?
     ENV["HOMEBREW_TEST_ONLINE"] = "1" if args.online?
     ENV["HOMEBREW_SORBET_RUNTIME"] = "1"
+
+    # TODO: remove this and fix tests when possible.
+    ENV["HOMEBREW_NO_INSTALL_FROM_API"] = "1"
 
     ENV["USER"] ||= system_command!("id", args: ["-nu"]).stdout.chomp
 

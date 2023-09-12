@@ -1,12 +1,9 @@
-# typed: false
 # frozen_string_literal: true
 
 require "test/support/fixtures/testball"
 require "cleanup"
 require "cask/cache"
 require "fileutils"
-
-using Homebrew::Cleanup::CleanupRefinement
 
 describe Homebrew::Cleanup do
   subject(:cleanup) { described_class.new }
@@ -27,9 +24,7 @@ describe Homebrew::Cleanup do
     FileUtils.rm_rf HOMEBREW_LIBRARY/"Homebrew"
   end
 
-  describe "::CleanupRefinement::prune?" do
-    alias_matcher :be_pruned, :be_prune
-
+  describe "::prune?" do
     subject(:path) { HOMEBREW_CACHE/"foo" }
 
     before do
@@ -37,13 +32,13 @@ describe Homebrew::Cleanup do
     end
 
     it "returns true when ctime and mtime < days_default" do
-      allow_any_instance_of(Pathname).to receive(:ctime).and_return(2.days.ago)
-      allow_any_instance_of(Pathname).to receive(:mtime).and_return(2.days.ago)
-      expect(path.prune?(1)).to be true
+      allow_any_instance_of(Pathname).to receive(:ctime).and_return((DateTime.now - 2).to_time)
+      allow_any_instance_of(Pathname).to receive(:mtime).and_return((DateTime.now - 2).to_time)
+      expect(described_class.prune?(path, 1)).to be true
     end
 
     it "returns false when ctime and mtime >= days_default" do
-      expect(path.prune?(2)).to be false
+      expect(described_class.prune?(path, 2)).to be false
     end
   end
 
@@ -71,11 +66,11 @@ describe Homebrew::Cleanup do
     end
 
     context "when it can't remove a keg" do
-      let(:f1) { Class.new(Testball) { version "0.1" }.new }
-      let(:f2) { Class.new(Testball) { version "0.2" }.new }
+      let(:formula_zero_dot_one) { Class.new(Testball) { version "0.1" }.new }
+      let(:formula_zero_dot_two) { Class.new(Testball) { version "0.2" }.new }
 
       before do
-        [f1, f2].each do |f|
+        [formula_zero_dot_one, formula_zero_dot_two].each do |f|
           f.brew do
             f.install
           end
@@ -89,13 +84,13 @@ describe Homebrew::Cleanup do
       end
 
       it "doesn't remove any kegs" do
-        cleanup.cleanup_formula f2
-        expect(f1.installed_kegs.size).to eq(2)
+        cleanup.cleanup_formula formula_zero_dot_one
+        expect(formula_zero_dot_one.installed_kegs.size).to eq(2)
       end
 
       it "lists the unremovable kegs" do
-        cleanup.cleanup_formula f2
-        expect(cleanup.unremovable_kegs).to contain_exactly(f1.installed_kegs[0])
+        cleanup.cleanup_formula formula_zero_dot_two
+        expect(cleanup.unremovable_kegs).to contain_exactly(formula_zero_dot_one.installed_kegs[0])
       end
     end
   end
@@ -171,7 +166,7 @@ describe Homebrew::Cleanup do
     end
 
     context "when given a `:latest` cask" do
-      let(:cask) { Cask::CaskLoader.load("latest-with-appcast") }
+      let(:cask) { Cask::CaskLoader.load("latest") }
 
       it "does not remove the download for the latest version" do
         download = Cask::Cache.path/"#{cask.token}--#{cask.version}"
@@ -186,8 +181,8 @@ describe Homebrew::Cleanup do
       it "removes the download for the latest version after 30 days" do
         download = Cask::Cache.path/"#{cask.token}--#{cask.version}"
 
-        allow(download).to receive(:ctime).and_return(30.days.ago - 1.hour)
-        allow(download).to receive(:mtime).and_return(30.days.ago - 1.hour)
+        allow(download).to receive(:ctime).and_return((DateTime.now - 30).to_time - (60 * 60))
+        allow(download).to receive(:mtime).and_return((DateTime.now - 30).to_time - (60 * 60))
 
         cleanup.cleanup_cask(cask)
 
@@ -209,15 +204,15 @@ describe Homebrew::Cleanup do
     end
 
     it "cleans up logs if older than 30 days" do
-      allow_any_instance_of(Pathname).to receive(:ctime).and_return(31.days.ago)
-      allow_any_instance_of(Pathname).to receive(:mtime).and_return(31.days.ago)
+      allow_any_instance_of(Pathname).to receive(:ctime).and_return((DateTime.now - 31).to_time)
+      allow_any_instance_of(Pathname).to receive(:mtime).and_return((DateTime.now - 31).to_time)
       cleanup.cleanup_logs
       expect(path).not_to exist
     end
 
     it "does not clean up logs less than 30 days old" do
-      allow_any_instance_of(Pathname).to receive(:ctime).and_return(15.days.ago)
-      allow_any_instance_of(Pathname).to receive(:mtime).and_return(15.days.ago)
+      allow_any_instance_of(Pathname).to receive(:ctime).and_return((DateTime.now - 15).to_time)
+      allow_any_instance_of(Pathname).to receive(:mtime).and_return((DateTime.now - 15).to_time)
       cleanup.cleanup_logs
       expect(path).to exist
     end
@@ -338,7 +333,7 @@ describe Homebrew::Cleanup do
         FileUtils.touch testball
         FileUtils.touch testball_resource
         (HOMEBREW_CELLAR/"testball"/"0.0.1").mkpath
-        FileUtils.touch(CoreTap.instance.formula_dir/"testball.rb")
+        FileUtils.touch(CoreTap.instance.new_formula_path("testball"))
       end
 
       it "cleans up file if outdated" do

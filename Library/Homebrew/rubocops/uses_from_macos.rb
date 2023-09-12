@@ -1,7 +1,7 @@
 # typed: true
 # frozen_string_literal: true
 
-require "rubocops/extend/formula"
+require "rubocops/extend/formula_cop"
 
 module RuboCop
   module Cop
@@ -52,7 +52,6 @@ module RuboCop
           ssh-copy-id
           swift
           tcl-tk
-          texinfo
           unifdef
           unzip
           whois

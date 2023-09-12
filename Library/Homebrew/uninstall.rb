@@ -8,9 +8,7 @@ module Homebrew
   #
   # @api private
   module Uninstall
-    module_function
-
-    def uninstall_kegs(kegs_by_rack, casks: [], force: false, ignore_dependencies: false, named_args: [])
+    def self.uninstall_kegs(kegs_by_rack, casks: [], force: false, ignore_dependencies: false, named_args: [])
       handle_unsatisfied_dependents(kegs_by_rack,
                                     casks:               casks,
                                     ignore_dependencies: ignore_dependencies,
@@ -52,7 +50,7 @@ module Homebrew
               if rack.directory?
                 versions = rack.subdirs.map(&:basename)
                 puts <<~EOS
-                  #{keg.name} #{versions.to_sentence} #{"is".pluralize(versions.count)} still installed.
+                  #{keg.name} #{versions.to_sentence} #{(versions.count == 1) ? "is" : "are"} still installed.
                   To remove all versions, run:
                     brew uninstall --force #{keg.name}
                 EOS
@@ -97,7 +95,7 @@ module Homebrew
       end
     end
 
-    def handle_unsatisfied_dependents(kegs_by_rack, casks: [], ignore_dependencies: false, named_args: [])
+    def self.handle_unsatisfied_dependents(kegs_by_rack, casks: [], ignore_dependencies: false, named_args: [])
       return if ignore_dependencies
 
       all_kegs = kegs_by_rack.values.flatten(1)
@@ -107,7 +105,7 @@ module Homebrew
       nil
     end
 
-    def check_for_dependents(kegs, casks: [], named_args: [])
+    def self.check_for_dependents(kegs, casks: [], named_args: [])
       return false unless (result = InstalledDependents.find_some_installed_dependents(kegs, casks: casks))
 
       if Homebrew::EnvConfig.developer?
@@ -136,8 +134,8 @@ module Homebrew
       end
 
       def are_required_by_deps
-        "#{"is".pluralize(reqs.count)} required by #{deps.to_sentence}, " \
-          "which #{"is".pluralize(deps.count)} currently installed"
+        "#{(reqs.count == 1) ? "is" : "are"} required by #{deps.to_sentence}, " \
+          "which #{(deps.count == 1) ? "is" : "are"} currently installed"
       end
     end
 
@@ -157,14 +155,14 @@ module Homebrew
       def output
         ofail <<~EOS
           Refusing to uninstall #{reqs.to_sentence}
-          because #{"it".pluralize(reqs.count)} #{are_required_by_deps}.
+          because #{(reqs.count == 1) ? "it" : "they"} #{are_required_by_deps}.
           You can override this and force removal with:
             #{sample_command}
         EOS
       end
     end
 
-    def rm_pin(rack)
+    def self.rm_pin(rack)
       Formulary.from_rack(rack).unpin
     rescue
       nil

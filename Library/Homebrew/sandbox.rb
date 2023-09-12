@@ -10,8 +10,6 @@ require "tempfile"
 #
 # @api private
 class Sandbox
-  extend T::Sig
-
   SANDBOX_EXEC = "/usr/bin/sandbox-exec"
   private_constant :SANDBOX_EXEC
 
@@ -101,7 +99,7 @@ class Sandbox
     begin
       command = [SANDBOX_EXEC, "-f", seatbelt.path, *args]
       # Start sandbox in a pseudoterminal to prevent access of the parent terminal.
-      T.unsafe(PTY).spawn(*command) do |r, w, pid|
+      PTY.spawn(*command) do |r, w, pid|
         # Set the PTY's window size to match the parent terminal.
         # Some formula tests are sensitive to the terminal size and fail if this is not set.
         winch = proc do |_sig|
@@ -210,8 +208,6 @@ class Sandbox
 
   # Configuration profile for a sandbox.
   class SandboxProfile
-    extend T::Sig
-
     SEATBELT_ERB = <<~ERB
       (version 1)
       (debug deny) ; log all denied operations to /var/log/system.log

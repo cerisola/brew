@@ -6,13 +6,13 @@ require "formula"
 require "diagnostic"
 require "migrator"
 require "cli/parser"
-require "cask/cmd"
 require "cask/cask_loader"
+require "cask/exceptions"
+require "cask/installer"
+require "cask/uninstall"
 require "uninstall"
 
 module Homebrew
-  extend T::Sig
-
   module_function
 
   sig { returns(CLI::Parser) }
@@ -66,13 +66,15 @@ module Homebrew
     )
 
     if args.zap?
-      T.unsafe(Cask::Cmd::Zap).zap_casks(
-        *casks,
-        verbose: args.verbose?,
-        force:   args.force?,
-      )
+      casks.each do |cask|
+        odebug "Zapping Cask #{cask}"
+
+        raise Cask::CaskNotInstalledError, cask if !cask.installed? && !args.force?
+
+        Cask::Installer.new(cask, verbose: args.verbose?, force: args.force?).zap
+      end
     else
-      T.unsafe(Cask::Cmd::Uninstall).uninstall_casks(
+      Cask::Uninstall.uninstall_casks(
         *casks,
         verbose: args.verbose?,
         force:   args.force?,

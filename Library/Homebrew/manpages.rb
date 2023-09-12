@@ -12,57 +12,60 @@ module Homebrew
   #
   # @api private
   module Manpages
-    extend T::Sig
+    Variables = Struct.new(
+      :alumni,
+      :commands,
+      :developer_commands,
+      :environment_variables,
+      :global_cask_options,
+      :global_options,
+      :lead,
+      :maintainers,
+      :official_external_commands,
+      :plc,
+      :tsc,
+      keyword_init: true,
+    )
 
-    module_function
-
-    def regenerate_man_pages(quiet:)
+    def self.regenerate_man_pages(quiet:)
       Homebrew.install_bundler_gems!
 
       markup = build_man_page(quiet: quiet)
       convert_man_page(markup, TARGET_DOC_PATH/"Manpage.md")
-      markup = I18n.transliterate(markup, locale: :en)
       convert_man_page(markup, TARGET_MAN_PATH/"brew.1")
     end
 
-    def build_man_page(quiet:)
+    def self.build_man_page(quiet:)
       template = (SOURCE_PATH/"brew.1.md.erb").read
-      variables = OpenStruct.new
-
-      variables[:commands] = generate_cmd_manpages(Commands.internal_commands_paths)
-      variables[:developer_commands] = generate_cmd_manpages(Commands.internal_developer_commands_paths)
-      variables[:official_external_commands] =
-        generate_cmd_manpages(Commands.official_external_commands_paths(quiet: quiet))
-      variables[:global_cask_options] = global_cask_options_manpage
-      variables[:global_options] = global_options_manpage
-      variables[:environment_variables] = env_vars_manpage
-
       readme = HOMEBREW_REPOSITORY/"README.md"
-      variables[:lead] =
-        readme.read[/(Homebrew's \[Project Leader.*\.)/, 1]
-              .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1')
-      variables[:plc] =
-        readme.read[/(Homebrew's \[Project Leadership Committee.*\.)/, 1]
-              .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1')
-      variables[:tsc] =
-        readme.read[/(Homebrew's \[Technical Steering Committee.*\.)/, 1]
-              .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1')
-      variables[:maintainers] =
-        readme.read[/(Homebrew's other current maintainers .*\.)/, 1]
-              .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1')
-      variables[:alumni] =
-        readme.read[/(Former maintainers .*\.)/, 1]
-              .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1')
+      variables = Variables.new(
+        commands:                   generate_cmd_manpages(Commands.internal_commands_paths),
+        developer_commands:         generate_cmd_manpages(Commands.internal_developer_commands_paths),
+        official_external_commands: generate_cmd_manpages(Commands.official_external_commands_paths(quiet: quiet)),
+        global_cask_options:        global_cask_options_manpage,
+        global_options:             global_options_manpage,
+        environment_variables:      env_vars_manpage,
+        lead:                       readme.read[/(Homebrew's \[Project Leader.*\.)/, 1]
+                                      .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1'),
+        plc:                        readme.read[/(Homebrew's \[Project Leadership Committee.*\.)/, 1]
+                                      .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1'),
+        tsc:                        readme.read[/(Homebrew's \[Technical Steering Committee.*\.)/, 1]
+                                      .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1'),
+        maintainers:                readme.read[/(Homebrew's maintainers .*\.)/, 1]
+                                      .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1'),
+        alumni:                     readme.read[/(Former maintainers .*\.)/, 1]
+                                      .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1'),
+      )
 
       ERB.new(template, trim_mode: ">").result(variables.instance_eval { binding })
     end
 
-    def sort_key_for_path(path)
+    def self.sort_key_for_path(path)
       # Options after regular commands (`~` comes after `z` in ASCII table).
       path.basename.to_s.sub(/\.(rb|sh)$/, "").sub(/^--/, "~~")
     end
 
-    def convert_man_page(markup, target)
+    def self.convert_man_page(markup, target)
       manual = target.basename(".1")
       organisation = "Homebrew"
 
@@ -106,7 +109,7 @@ module Homebrew
       end
     end
 
-    def target_path_to_format(target)
+    def self.target_path_to_format(target)
       case target.basename
       when /\.md$/    then ["--markdown", "markdown"]
       when /\.\d$/    then ["--roff", "man page"]
@@ -115,7 +118,7 @@ module Homebrew
       end
     end
 
-    def generate_cmd_manpages(cmd_paths)
+    def self.generate_cmd_manpages(cmd_paths)
       man_page_lines = []
 
       # preserve existing manpage order
@@ -135,7 +138,7 @@ module Homebrew
       man_page_lines.compact.join("\n")
     end
 
-    def cmd_parser_manpage_lines(cmd_parser)
+    def self.cmd_parser_manpage_lines(cmd_parser)
       lines = [format_usage_banner(cmd_parser.usage_banner_text)]
       lines += cmd_parser.processed_options.map do |short, long, _, desc, hidden|
         next if hidden
@@ -152,7 +155,7 @@ module Homebrew
       lines
     end
 
-    def cmd_comment_manpage_lines(cmd_path)
+    def self.cmd_comment_manpage_lines(cmd_path)
       comment_lines = cmd_path.read.lines.grep(/^#:/)
       return if comment_lines.empty?
       return if comment_lines.first.include?("@hide_from_man_page")
@@ -178,9 +181,9 @@ module Homebrew
     end
 
     sig { returns(String) }
-    def global_cask_options_manpage
+    def self.global_cask_options_manpage
       lines = ["These options are applicable to the `install`, `reinstall`, and `upgrade` " \
-               "subcommands with the `--cask` flag.\n"]
+               "subcommands with the `--cask` switch.\n"]
       lines += Homebrew::CLI::Parser.global_cask_options.map do |_, long, description:, **|
         generate_option_doc(nil, long.chomp("="), description)
       end
@@ -188,7 +191,7 @@ module Homebrew
     end
 
     sig { returns(String) }
-    def global_options_manpage
+    def self.global_options_manpage
       lines = ["These options are applicable across multiple subcommands.\n"]
       lines += Homebrew::CLI::Parser.global_options.map do |short, long, desc|
         generate_option_doc(short, long, desc)
@@ -197,7 +200,7 @@ module Homebrew
     end
 
     sig { returns(String) }
-    def env_vars_manpage
+    def self.env_vars_manpage
       lines = Homebrew::EnvConfig::ENVS.flat_map do |env, hash|
         entry = "- `#{env}`:\n  <br>#{hash[:description]}\n"
         default = hash[:default_text]
@@ -209,11 +212,11 @@ module Homebrew
       lines.join("\n")
     end
 
-    def format_opt(opt)
+    def self.format_opt(opt)
       "`#{opt}`" unless opt.nil?
     end
 
-    def generate_option_doc(short, long, desc)
+    def self.generate_option_doc(short, long, desc)
       comma = (short && long) ? ", " : ""
       <<~EOS
         * #{format_opt(short)}#{comma}#{format_opt(long)}:
@@ -221,7 +224,7 @@ module Homebrew
       EOS
     end
 
-    def format_usage_banner(usage_banner)
+    def self.format_usage_banner(usage_banner)
       usage_banner&.sub(/^(#: *\* )?/, "### ")
     end
   end

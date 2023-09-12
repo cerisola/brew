@@ -1,26 +1,28 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "formula"
-require "ostruct"
 require "cli/parser"
 require "cask/caskroom"
 require "dependencies_helpers"
 
 module Homebrew
-  extend T::Sig
-
   extend DependenciesHelpers
 
-  module_function
-
   sig { returns(CLI::Parser) }
-  def deps_args
+  def self.deps_args
     Homebrew::CLI::Parser.new do
       description <<~EOS
-        Show dependencies for <formula>. Additional options specific to <formula>
-        may be appended to the command. When given multiple formula arguments,
-        show the intersection of dependencies for each formula.
+        Show dependencies for <formula>. When given multiple formula arguments,
+        show the intersection of dependencies for each formula. By default, `deps`
+        shows all required and recommended dependencies.
+
+        If any version of each formula argument is installed and no other options
+        are passed, this command displays their actual runtime dependencies (similar
+        to `brew linkage`), which may differ from the current versons' stated
+        dependencies if the installed versions are outdated.
+
+        *Note:* `--missing` and `--skip-recommended` have precedence over `--include-*`.
       EOS
       switch "-n", "--topological",
              description: "Sort dependencies in topological order."
@@ -54,11 +56,11 @@ module Homebrew
       switch "--installed",
              description: "List dependencies for formulae that are currently installed. If <formula> is " \
                           "specified, list only its dependencies that are currently installed."
+      switch "--missing",
+             description: "Show only missing dependencies."
       switch "--eval-all",
              description: "Evaluate all available formulae and casks, whether installed or not, to list " \
                           "their dependencies."
-      switch "--all",
-             hidden:      true
       switch "--for-each",
              description: "Switch into the mode used by the `--all` option, but only list dependencies " \
                           "for each provided <formula>, one formula per line. This is used for " \
@@ -69,6 +71,7 @@ module Homebrew
              description: "Treat all named arguments as casks."
 
       conflicts "--tree", "--graph"
+      conflicts "--installed", "--missing"
       conflicts "--installed", "--eval-all"
       conflicts "--installed", "--all"
       conflicts "--formula", "--cask"
@@ -78,17 +81,10 @@ module Homebrew
     end
   end
 
-  def deps
+  def self.deps
     args = deps_args.parse
 
     all = args.eval_all?
-    if args.all?
-      unless all
-        odeprecated "brew deps --all",
-                    "brew deps --eval-all or HOMEBREW_EVAL_ALL"
-      end
-      all = true
-    end
 
     Formulary.enable_factory_cache!
 
@@ -101,7 +97,8 @@ module Homebrew
                                 !args.include_build? &&
                                 !args.include_test? &&
                                 !args.include_optional? &&
-                                !args.skip_recommended?
+                                !args.skip_recommended? &&
+                                !args.missing?
 
     if args.tree? || args.graph?
       dependents = if args.named.present?
@@ -132,7 +129,8 @@ module Homebrew
       puts_deps_tree dependents, recursive: recursive, args: args
       return
     elsif all
-      puts_deps sorted_dependents(Formula.all + Cask::Cask.all), recursive: recursive, args: args
+      puts_deps sorted_dependents(Formula.all(eval_all: args.eval_all?) + Cask::Cask.all), recursive: recursive,
+                                                                                           args:      args
       return
     elsif !args.no_named? && args.for_each?
       puts_deps sorted_dependents(args.named.to_formulae_and_casks), recursive: recursive, args: args
@@ -164,16 +162,16 @@ module Homebrew
     puts all_deps
   end
 
-  def sorted_dependents(formulae_or_casks)
+  def self.sorted_dependents(formulae_or_casks)
     dependents(formulae_or_casks).sort_by(&:name)
   end
 
-  def condense_requirements(deps, args:)
+  def self.condense_requirements(deps, args:)
     deps.select! { |dep| dep.is_a?(Dependency) } unless args.include_requirements?
     deps.select! { |dep| dep.is_a?(Requirement) || dep.installed? } if args.installed?
   end
 
-  def dep_display_name(dep, args:)
+  def self.dep_display_name(dep, args:)
     str = if dep.is_a? Requirement
       if args.include_requirements?
         ":#{dep.display_s}"
@@ -193,32 +191,33 @@ module Homebrew
       str = "#{str} [test]" if dep.test?
       str = "#{str} [optional]" if dep.optional?
       str = "#{str} [recommended]" if dep.recommended?
+      str = "#{str} [implicit]" if dep.implicit?
     end
 
     str
   end
 
-  def deps_for_dependent(d, args:, recursive: false)
+  def self.deps_for_dependent(dependency, args:, recursive: false)
     includes, ignores = args_includes_ignores(args)
 
-    deps = d.runtime_dependencies if @use_runtime_dependencies
+    deps = dependency.runtime_dependencies if @use_runtime_dependencies
 
     if recursive
-      deps ||= recursive_includes(Dependency, d, includes, ignores)
-      reqs   = recursive_includes(Requirement, d, includes, ignores)
+      deps ||= recursive_includes(Dependency, dependency, includes, ignores)
+      reqs   = recursive_includes(Requirement, dependency, includes, ignores)
     else
-      deps ||= reject_ignores(d.deps, ignores, includes)
-      reqs   = reject_ignores(d.requirements, ignores, includes)
+      deps ||= select_includes(dependency.deps, ignores, includes)
+      reqs   = select_includes(dependency.requirements, ignores, includes)
     end
 
     deps + reqs.to_a
   end
 
-  def deps_for_dependents(dependents, args:, recursive: false, &block)
+  def self.deps_for_dependents(dependents, args:, recursive: false, &block)
     dependents.map { |d| deps_for_dependent(d, recursive: recursive, args: args) }.reduce(&block)
   end
 
-  def puts_deps(dependents, args:, recursive: false)
+  def self.puts_deps(dependents, args:, recursive: false)
     dependents.each do |dependent|
       deps = deps_for_dependent(dependent, recursive: recursive, args: args)
       condense_requirements(deps, args: args)
@@ -228,7 +227,7 @@ module Homebrew
     end
   end
 
-  def dot_code(dependents, recursive:, args:)
+  def self.dot_code(dependents, recursive:, args:)
     dep_graph = {}
     dependents.each do |d|
       graph_deps(d, dep_graph: dep_graph, recursive: recursive, args: args)
@@ -251,11 +250,11 @@ module Homebrew
     "digraph {\n#{dot_code}\n}"
   end
 
-  def graph_deps(f, dep_graph:, recursive:, args:)
-    return if dep_graph.key?(f)
+  def self.graph_deps(formula, dep_graph:, recursive:, args:)
+    return if dep_graph.key?(formula)
 
-    dependables = dependables(f, args: args)
-    dep_graph[f] = dependables
+    dependables = dependables(formula, args: args)
+    dep_graph[formula] = dependables
     return unless recursive
 
     dependables.each do |dep|
@@ -268,7 +267,7 @@ module Homebrew
     end
   end
 
-  def puts_deps_tree(dependents, args:, recursive: false)
+  def self.puts_deps_tree(dependents, args:, recursive: false)
     dependents.each do |d|
       puts d.full_name
       recursive_deps_tree(d, dep_stack: [], prefix: "", recursive: recursive, args: args)
@@ -276,19 +275,19 @@ module Homebrew
     end
   end
 
-  def dependables(f, args:)
+  def self.dependables(formula, args:)
     includes, ignores = args_includes_ignores(args)
-    deps = @use_runtime_dependencies ? f.runtime_dependencies : f.deps
-    deps = reject_ignores(deps, ignores, includes)
-    reqs = reject_ignores(f.requirements, ignores, includes) if args.include_requirements?
+    deps = @use_runtime_dependencies ? formula.runtime_dependencies : formula.deps
+    deps = select_includes(deps, ignores, includes)
+    reqs = select_includes(formula.requirements, ignores, includes) if args.include_requirements?
     reqs ||= []
     reqs + deps
   end
 
-  def recursive_deps_tree(f, dep_stack:, prefix:, recursive:, args:)
-    dependables = dependables(f, args: args)
+  def self.recursive_deps_tree(formula, dep_stack:, prefix:, recursive:, args:)
+    dependables = dependables(formula, args: args)
     max = dependables.length - 1
-    dep_stack.push f.name
+    dep_stack.push formula.name
     dependables.each_with_index do |dep, i|
       tree_lines = if i == max
         "└──"

@@ -240,6 +240,9 @@ module Homebrew
       sig { returns(T.nilable(T::Array[String])) }
       def only; end
 
+      sig { returns(T.nilable(String)) }
+      def os; end
+
       sig { returns(T.nilable(T::Array[String])) }
       def except; end
 
@@ -271,7 +274,13 @@ module Homebrew
       def s?; end
 
       sig { returns(T.nilable(String)) }
+      def arch; end
+
+      sig { returns(T.nilable(String)) }
       def appdir; end
+
+      sig { returns(T.nilable(String)) }
+      def keyboard_layoutdir; end
 
       sig { returns(T.nilable(String)) }
       def fontdir; end
@@ -335,6 +344,12 @@ module Homebrew
 
       sig { returns(T.nilable(T::Boolean)) }
       def force_auto_update?; end
+
+      sig { returns(T::Boolean) }
+      def csv?; end
+
+      sig { returns(T.nilable(String)) }
+      def user; end
     end
   end
 end

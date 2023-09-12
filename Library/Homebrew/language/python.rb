@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 module Language
@@ -7,10 +7,10 @@ module Language
   # @api public
   module Python
     def self.major_minor_version(python)
-      version = /\d\.\d+/.match `#{python} --version 2>&1`
+      version = `#{python} --version 2>&1`.chomp[/(\d\.\d+)/, 1]
       return unless version
 
-      Version.create(version.to_s)
+      Version.new(version)
     end
 
     def self.homebrew_site_packages(python = "python3.7")
@@ -94,21 +94,28 @@ module Language
     module Shebang
       module_function
 
+      # A regex to match potential shebang permutations.
+      PYTHON_SHEBANG_REGEX = %r{^#! ?/usr/bin/(?:env )?python(?:[23](?:\.\d{1,2})?)?( |$)}.freeze
+
+      # The length of the longest shebang matching `SHEBANG_REGEX`.
+      PYTHON_SHEBANG_MAX_LENGTH = "#! /usr/bin/env pythonx.yyy ".length
+
       # @private
+      sig { params(python_path: T.any(String, Pathname)).returns(Utils::Shebang::RewriteInfo) }
       def python_shebang_rewrite_info(python_path)
         Utils::Shebang::RewriteInfo.new(
-          %r{^#! ?/usr/bin/(?:env )?python(?:[23](?:\.\d{1,2})?)?( |$)},
-          28, # the length of "#! /usr/bin/env pythonx.yyy "
+          PYTHON_SHEBANG_REGEX,
+          PYTHON_SHEBANG_MAX_LENGTH,
           "#{python_path}\\1",
         )
       end
 
+      sig { params(formula: T.untyped, use_python_from_path: T::Boolean).returns(Utils::Shebang::RewriteInfo) }
       def detected_python_shebang(formula = self, use_python_from_path: false)
         python_path = if use_python_from_path
           "/usr/bin/env python3"
         else
-          python_deps = formula.deps.map(&:name).grep(/^python(@.*)?$/)
-
+          python_deps = formula.deps.map(&:name).grep(/^python(@.+)?$/)
           raise ShebangDetectionError.new("Python", "formula does not depend on Python") if python_deps.empty?
           if python_deps.length > 1
             raise ShebangDetectionError.new("Python", "formula has multiple Python dependencies")
@@ -124,8 +131,6 @@ module Language
 
     # Mixin module for {Formula} adding virtualenv support features.
     module Virtualenv
-      extend T::Sig
-
       # Instantiates, creates, and yields a {Virtualenv} object for use from
       # {Formula#install}, which provides helper methods for instantiating and
       # installing packages into a Python virtualenv.
@@ -136,10 +141,12 @@ module Language
       #   or "python3.x")
       # @param formula [Formula] the active {Formula}
       # @return [Virtualenv] a {Virtualenv} instance
-      def virtualenv_create(venv_root, python = "python", formula = self, system_site_packages: true)
+      def virtualenv_create(venv_root, python = "python", formula = self, system_site_packages: true,
+                            without_pip: true)
+        # odeprecated "Language::Python::Virtualenv.virtualenv_create's without_pip" unless without_pip
         ENV.refurbish_args
         venv = Virtualenv.new formula, venv_root, python
-        venv.create(system_site_packages: system_site_packages)
+        venv.create(system_site_packages: system_site_packages, without_pip: without_pip)
 
         # Find any Python bindings provided by recursive dependencies
         formula_deps = formula.recursive_dependencies
@@ -182,7 +189,8 @@ module Language
       # formula preference for python or python@x.y, or to resolve an ambiguous
       # case where it's not clear whether python or python@x.y should be the
       # default guess.
-      def virtualenv_install_with_resources(using: nil, system_site_packages: true, link_manpages: false)
+      def virtualenv_install_with_resources(using: nil, system_site_packages: true, without_pip: true,
+                                            link_manpages: false)
         python = using
         if python.nil?
           wanted = python_names.select { |py| needs_python?(py) }
@@ -192,7 +200,8 @@ module Language
           python = wanted.first
           python = "python3" if python == "python"
         end
-        venv = virtualenv_create(libexec, python.delete("@"), system_site_packages: system_site_packages)
+        venv = virtualenv_create(libexec, python.delete("@"), system_site_packages: system_site_packages,
+                                                              without_pip:          without_pip)
         venv.pip_install resources
         venv.pip_install_and_link(buildpath, link_manpages: link_manpages)
         venv
@@ -223,11 +232,12 @@ module Language
         # Obtains a copy of the virtualenv library and creates a new virtualenv on disk.
         #
         # @return [void]
-        def create(system_site_packages: true)
+        def create(system_site_packages: true, without_pip: true)
           return if (@venv_root/"bin/python").exist?
 
           args = ["-m", "venv"]
           args << "--system-site-packages" if system_site_packages
+          args << "--without-pip" if without_pip
           @formula.system @python, *args, @venv_root
 
           # Robustify symlinks to survive python patch upgrades
@@ -252,6 +262,9 @@ module Language
             prefix_path.sub! %r{^#{HOMEBREW_CELLAR}/python#{version}/[^/]+}, Formula["python#{version}"].opt_prefix
             prefix_file.atomic_write prefix_path
           end
+
+          # Remove unnecessary activate scripts
+          (@venv_root/"bin").glob("[Aa]ctivate*").map(&:unlink)
         end
 
         # Installs packages represented by `targets` into the virtualenv.
@@ -264,14 +277,14 @@ module Language
         #   Multiline strings are allowed and treated as though they represent
         #   the contents of a `requirements.txt`.
         # @return [void]
-        def pip_install(targets)
+        def pip_install(targets, build_isolation: true)
           targets = Array(targets)
           targets.each do |t|
             if t.respond_to? :stage
-              t.stage { do_install Pathname.pwd }
+              t.stage { do_install(Pathname.pwd, build_isolation: build_isolation) }
             else
               t = t.lines.map(&:strip) if t.respond_to?(:lines) && t.include?("\n")
-              do_install t
+              do_install(t, build_isolation: build_isolation)
             end
           end
         end
@@ -281,11 +294,11 @@ module Language
         #
         # @param (see #pip_install)
         # @return (see #pip_install)
-        def pip_install_and_link(targets, link_manpages: false)
+        def pip_install_and_link(targets, link_manpages: false, build_isolation: true)
           bin_before = Dir[@venv_root/"bin/*"].to_set
           man_before = Dir[@venv_root/"share/man/man*/*"].to_set if link_manpages
 
-          pip_install(targets)
+          pip_install(targets, build_isolation: build_isolation)
 
           bin_after = Dir[@venv_root/"bin/*"].to_set
           bin_to_link = (bin_after - bin_before).to_a
@@ -301,12 +314,10 @@ module Language
 
         private
 
-        def do_install(targets)
+        def do_install(targets, build_isolation: true)
           targets = Array(targets)
-          @formula.system @venv_root/"bin/pip", "install",
-                          "-v", "--no-deps", "--no-binary", ":all:",
-                          "--use-feature=no-binary-enable-wheel-cache",
-                          "--ignore-installed", *targets
+          args = @formula.std_pip_args(prefix: false, build_isolation: build_isolation)
+          @formula.system @python, "-m", "pip", "--python=#{@venv_root}/bin/python", "install", *args, *targets
         end
       end
     end

@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "diagnostic"
@@ -6,19 +6,16 @@ require "cli/parser"
 require "cask/caskroom"
 
 module Homebrew
-  extend T::Sig
-
-  module_function
-
   sig { returns(CLI::Parser) }
-  def doctor_args
+  def self.doctor_args
     Homebrew::CLI::Parser.new do
       description <<~EOS
         Check your system for potential problems. Will exit with a non-zero status
-        if any potential problems are found. Please note that these warnings are just
-        used to help the Homebrew maintainers with debugging if you file an issue. If
-        everything you use Homebrew for is working fine: please don't worry or file
-        an issue; just ignore this.
+        if any potential problems are found.
+
+        Please note that these warnings are just used to help the Homebrew maintainers
+        with debugging if you file an issue. If everything you use Homebrew for
+        is working fine: please don't worry or file an issue; just ignore this.
       EOS
       switch "--list-checks",
              description: "List all audit methods, which can be run individually " \
@@ -30,7 +27,7 @@ module Homebrew
     end
   end
 
-  def doctor
+  def self.doctor
     args = doctor_args.parse
 
     inject_dump_stats!(Diagnostic::Checks, /^check_*/) if args.audit_debug?
@@ -53,7 +50,7 @@ module Homebrew
       methods = args.named
     end
 
-    first_warning = true
+    first_warning = T.let(true, T::Boolean)
     methods.each do |method|
       $stderr.puts Formatter.headline("Checking #{method}", color: :magenta) if args.debug?
       unless checks.respond_to?(method)
@@ -78,6 +75,6 @@ module Homebrew
       first_warning = false
     end
 
-    puts "Your system is ready to brew." unless Homebrew.failed?
+    puts "Your system is ready to brew." if !Homebrew.failed? && !args.quiet?
   end
 end

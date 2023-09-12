@@ -8,19 +8,17 @@ SimpleCov.enable_for_subprocesses true
 SimpleCov.start do
   coverage_dir File.expand_path("../test/coverage", File.realpath(__FILE__))
   root File.expand_path("..", File.realpath(__FILE__))
+  command_name "brew"
 
   # enables branch coverage as well as, the default, line coverage
   enable_coverage :branch
 
   # We manage the result cache ourselves and the default of 10 minutes can be
-  # too low (particularly on Travis CI), causing results from some integration
-  # tests to be dropped. This causes random fluctuations in test coverage.
+  # too low causing results from some integration tests to be dropped. This
+  # causes random fluctuations in test coverage.
   merge_timeout 86400
 
-  at_fork do |pid|
-    # This needs a unique name so it won't be ovewritten
-    command_name "#{SimpleCov.command_name} (#{pid})"
-
+  at_fork do
     # be quiet, the parent process will be in charge of output and checking coverage totals
     SimpleCov.print_error_status = false
   end
@@ -31,8 +29,8 @@ SimpleCov.start do
   files = "#{SimpleCov.root}/{#{subdirs},*.rb}"
 
   if ENV["HOMEBREW_INTEGRATION_TEST"]
-    # This needs a unique name so it won't be ovewritten
-    command_name "#{ENV["HOMEBREW_INTEGRATION_TEST"]} (#{$PROCESS_ID})"
+    # This needs a unique name so it won't be overwritten
+    command_name "brew_i#{ENV.fetch("TEST_ENV_NUMBER", $PROCESS_ID)}"
 
     # be quiet, the parent process will be in charge of output and checking coverage totals
     SimpleCov.print_error_status = false
@@ -53,7 +51,7 @@ SimpleCov.start do
       raise if $ERROR_INFO.is_a?(SystemExit)
     end
   else
-    command_name "#{command_name} (#{$PROCESS_ID})"
+    command_name "brew#{ENV.fetch("TEST_ENV_NUMBER", $PROCESS_ID)}"
 
     # Not using this during integration tests makes the tests 4x times faster
     # without changing the coverage.
@@ -65,15 +63,14 @@ SimpleCov.start do
   add_filter %r{^/constants.rb$}
   add_filter %r{^/postinstall.rb$}
   add_filter %r{^/test.rb$}
-  add_filter %r{^/compat/}
   add_filter %r{^/dev-cmd/tests.rb$}
   add_filter %r{^/test/}
   add_filter %r{^/vendor/}
 
   require "rbconfig"
   host_os = RbConfig::CONFIG["host_os"]
-  add_filter %r{/os/mac} unless /darwin/.match?(host_os)
-  add_filter %r{/os/linux} unless /linux/.match?(host_os)
+  add_filter %r{/os/mac} unless host_os.include?("darwin")
+  add_filter %r{/os/linux} unless host_os.include?("linux")
 
   # Add groups and the proper project name to the output.
   project_name "Homebrew"

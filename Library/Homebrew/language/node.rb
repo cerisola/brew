@@ -6,8 +6,6 @@ module Language
   #
   # @api public
   module Node
-    extend T::Sig
-
     sig { returns(String) }
     def self.npm_cache_config
       "cache=#{HOMEBREW_CACHE}/npm_cache"
@@ -86,6 +84,36 @@ module Language
         --build-from-source
         --#{npm_cache_config}
       ]
+    end
+
+    # Mixin module for {Formula} adding shebang rewrite features.
+    module Shebang
+      module_function
+
+      # A regex to match potential shebang permutations.
+      NODE_SHEBANG_REGEX = %r{^#! ?/usr/bin/(?:env )?node( |$)}.freeze
+
+      # The length of the longest shebang matching `SHEBANG_REGEX`.
+      NODE_SHEBANG_MAX_LENGTH = "#! /usr/bin/env node ".length
+
+      # @private
+      sig { params(node_path: T.any(String, Pathname)).returns(Utils::Shebang::RewriteInfo) }
+      def node_shebang_rewrite_info(node_path)
+        Utils::Shebang::RewriteInfo.new(
+          NODE_SHEBANG_REGEX,
+          NODE_SHEBANG_MAX_LENGTH,
+          "#{node_path}\\1",
+        )
+      end
+
+      sig { params(formula: T.untyped).returns(Utils::Shebang::RewriteInfo) }
+      def detected_node_shebang(formula = self)
+        node_deps = formula.deps.map(&:name).grep(/^node(@.+)?$/)
+        raise ShebangDetectionError.new("Node", "formula does not depend on Node") if node_deps.empty?
+        raise ShebangDetectionError.new("Node", "formula has multiple Node dependencies") if node_deps.length > 1
+
+        node_shebang_rewrite_info(Formula[node_deps.first].opt_bin/"node")
+      end
     end
   end
 end

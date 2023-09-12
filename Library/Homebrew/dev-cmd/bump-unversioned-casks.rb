@@ -1,4 +1,4 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
 require "timeout"
@@ -10,8 +10,6 @@ require "tap"
 require "unversioned_cask_checker"
 
 module Homebrew
-  extend T::Sig
-
   extend SystemCommand::Mixin
 
   sig { returns(CLI::Parser) }
@@ -27,7 +25,7 @@ module Homebrew
       flag   "--state-file=",
              description: "File for caching state."
 
-      named_args [:cask, :tap], min: 1
+      named_args [:cask, :tap], min: 1, without_api: true
     end
   end
 
@@ -46,7 +44,9 @@ module Homebrew
 
     casks = args.named.to_paths(only: :cask, recurse_tap: true).map { |path| Cask::CaskLoader.load(path) }
 
-    unversioned_casks = casks.select { |cask| cask.url&.unversioned? }
+    unversioned_casks = casks.select do |cask|
+      cask.url&.unversioned? && !cask.livecheckable? && !cask.discontinued?
+    end
 
     ohai "Unversioned Casks: #{unversioned_casks.count} (#{state.size} cached)"
 
@@ -65,7 +65,7 @@ module Homebrew
     end
 
     limit = args.limit.presence&.to_i
-    end_time = Time.now + limit.minutes if limit
+    end_time = Time.now + (limit * 60) if limit
 
     until queue.empty? || (end_time && end_time < Time.now)
       cask = queue.deq
@@ -101,7 +101,7 @@ module Homebrew
     last_check_time = state["check_time"]&.then { |t| Time.parse(t) }
 
     check_time = Time.now
-    if last_check_time && check_time < (last_check_time + 1.day)
+    if last_check_time && (check_time - last_check_time) / 3600 < 24
       opoo "Skipping, already checked within the last 24 hours."
       return
     end
@@ -119,7 +119,7 @@ module Homebrew
 
     if last_time != time || last_file_size != file_size
       sha256 = begin
-        Timeout.timeout(5.minutes) do
+        Timeout.timeout(5 * 60) do
           unversioned_cask_checker.installer.download.sha256
         end
       rescue => e
@@ -128,7 +128,7 @@ module Homebrew
 
       if sha256.present? && last_sha256 != sha256
         version = begin
-          Timeout.timeout(1.minute) do
+          Timeout.timeout(60) do
             unversioned_cask_checker.guess_cask_version
           end
         rescue Timeout::Error

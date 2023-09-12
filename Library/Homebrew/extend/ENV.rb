@@ -8,8 +8,6 @@ require "extend/ENV/std"
 require "extend/ENV/super"
 
 module Kernel
-  extend T::Sig
-
   sig { params(env: T.nilable(String)).returns(T::Boolean) }
   def superenv?(env)
     return false if env == "std"
@@ -19,9 +17,11 @@ module Kernel
   private :superenv?
 end
 
+# @!parse
+#  # ENV is not actually a class, but this makes `YARD` happy
+#  # @see https://rubydoc.info/stdlib/core/ENV ENV core documentation
+#  class ENV; end
 module EnvActivation
-  extend T::Sig
-
   sig { params(env: T.nilable(String)).void }
   def activate_extensions!(env: nil)
     if superenv?(env)
