@@ -24,6 +24,8 @@ AllCops:
     - "Homebrew/bin/*"
     - "Homebrew/vendor/**/*"
     - "Taps/*/*/vendor/**/*"
+  SuggestExtensions:
+    rubocop-minitest: false
 
 Cask/Desc:
   Description: "Ensure that the desc stanza conforms to various content and style checks."
@@ -294,6 +296,7 @@ Sorbet/StrictSigil:
 Sorbet/TrueSigil:
   Enabled: true
   Exclude:
+    - "Homebrew/standalone/init.rb" # loaded before sorbet-runtime
     - "Taps/**/*"
     - "/**/{Formula,Casks}/**/*.rb"
     - "**/{Formula,Casks}/**/*.rb"

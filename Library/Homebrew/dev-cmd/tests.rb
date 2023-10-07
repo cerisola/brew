@@ -88,7 +88,8 @@ module Homebrew
   def tests
     args = tests_args.parse
 
-    Homebrew.install_bundler_gems!(groups: ["prof"])
+    # Given we might be testing various commands, we probably want everything (except sorbet-static)
+    Homebrew.install_bundler_gems!(groups: Homebrew.valid_gem_groups - ["sorbet"])
 
     require "byebug" if args.byebug?
 
@@ -207,8 +208,8 @@ module Homebrew
       HOMEBREW_CACHE
       HOMEBREW_LOGS
       HOMEBREW_TEMP
-      HOMEBREW_USE_RUBY_FROM_PATH
     ]
+    allowed_test_env << "HOMEBREW_USE_RUBY_FROM_PATH" if Homebrew::EnvConfig.developer?
     Homebrew::EnvConfig::ENVS.keys.map(&:to_s).each do |env|
       next if allowed_test_env.include?(env)
 

@@ -45,7 +45,7 @@ GEM
       parser
       rainbow (~> 3.0)
       sorbet-runtime (>= 0.5)
-    parser (3.2.2.3)
+    parser (3.2.2.4)
       ast (~> 2.4.1)
       racc
     patchelf (1.4.0)
@@ -118,7 +118,7 @@ GEM
     rubocop-rspec (2.20.0)
       rubocop (~> 1.33)
       rubocop-capybara (~> 2.17)
-    rubocop-sorbet (0.7.0)
+    rubocop-sorbet (0.7.4)
       rubocop (>= 0.90.0)
     ruby-macho (4.0.0)
     ruby-prof (1.4.3)
@@ -170,7 +170,7 @@ GEM
     unf (0.1.4)
       unf_ext
     unf_ext (0.0.8.2)
-    unicode-display_width (2.4.2)
+    unicode-display_width (2.5.0)
     unparser (0.6.4)
       diff-lcs (~> 1.3)
       parser (>= 3.1.0)
@@ -179,7 +179,7 @@ GEM
     yard-sorbet (0.6.1)
       sorbet-runtime (>= 0.5)
       yard (>= 0.9)
-    zeitwerk (2.6.11)
+    zeitwerk (2.6.12)
 
 PLATFORMS
   aarch64-linux
@@ -193,7 +193,6 @@ DEPENDENCIES
   addressable
   bootsnap
   byebug
-  concurrent-ruby
   did_you_mean
   json_schemer
   minitest
@@ -217,6 +216,7 @@ DEPENDENCIES
   rubocop-sorbet
   ruby-macho
   ruby-prof (= 1.4.3)
+  ruby-progressbar
   simplecov
   simplecov-cobertura
   sorbet-runtime

@@ -944,7 +944,7 @@ Search for \fItext\fR in the given database\.
 Print export statements\. When run in a shell, this installation of Homebrew will be added to your \fBPATH\fR, \fBMANPATH\fR, and \fBINFOPATH\fR\.
 .
 .P
-The variables \fBHOMEBREW_PREFIX\fR, \fBHOMEBREW_CELLAR\fR and \fBHOMEBREW_REPOSITORY\fR are also exported to avoid querying them multiple times\. To help guarantee idempotence, this command produces no output when Homebrew\'s \fBbin\fR and \fBsbin\fR directories are first and second respectively in your \fBPATH\fR\. Consider adding evaluation of this command\'s output to your dotfiles (e\.g\. \fB~/\.profile\fR, \fB~/\.bash_profile\fR, or \fB~/\.zprofile\fR) with: \fBeval "$(brew shellenv)"\fR
+The variables \fBHOMEBREW_PREFIX\fR, \fBHOMEBREW_CELLAR\fR and \fBHOMEBREW_REPOSITORY\fR are also exported to avoid querying them multiple times\. To help guarantee idempotence, this command produces no output when Homebrew\'s \fBbin\fR and \fBsbin\fR directories are first and second respectively in your \fBPATH\fR\. Consider adding evaluation of this command\'s output to your dotfiles (e\.g\. \fB~/\.bash_profile\fR or \fB~/\.zprofile\fR on macOS and \fB~/\.bashrc\fR or \fB~/\.zshrc\fR on Linux) with: \fBeval "$(brew shellenv)"\fR
 .
 .P
 The shell can be specified explicitly with a supported shell name parameter\. Unknown shells will output POSIX exports\.
@@ -1858,12 +1858,16 @@ Generate API data without writing it to files\.
 .SS "\fBgenerate\-man\-completions\fR"
 Generate Homebrew\'s manpages and shell completions\.
 .
-.SS "\fBinstall\-bundler\-gems\fR [\fB\-\-groups=\fR]"
+.SS "\fBinstall\-bundler\-gems\fR [\fB\-\-groups=\fR] [\fB\-\-add\-groups=\fR]"
 Install Homebrew\'s Bundler gems\.
 .
 .TP
 \fB\-\-groups\fR
-Installs the specified comma\-separated list of gem groups (default: last used)\.
+Installs the specified comma\-separated list of gem groups (default: last used)\. Replaces any previously installed groups\.
+.
+.TP
+\fB\-\-add\-groups\fR
+Installs the specified comma\-separated list of gem groups, in addition to those already installed\.
 .
 .SS "\fBirb\fR [\fB\-\-examples\fR] [\fB\-\-pry\fR]"
 Enter the interactive Homebrew Ruby shell\.
@@ -2618,7 +2622,7 @@ Read the \fBBrewfile\fR from this location\. Use \fB\-\-file=\-\fR to pipe to st
 .
 .TP
 \fB\-\-global\fR
-Read the \fBBrewfile\fR from \fB~/\.Brewfile\fR\.
+Read the \fBBrewfile\fR from \fB~/\.Brewfile\fR or the \fBHOMEBREW_BUNDLE_FILE_GLOBAL\fR environment variable, if set\.
 .
 .TP
 \fB\-v\fR, \fB\-\-verbose\fR
@@ -2630,11 +2634,11 @@ Read the \fBBrewfile\fR from \fB~/\.Brewfile\fR\.
 .
 .TP
 \fB\-f\fR, \fB\-\-force\fR
-\fBdump\fR overwrites an existing \fBBrewfile\fR\. \fBcleanup\fR actually performs its cleanup operations\.
+\fBinstall\fR runs with \fB\-\-force\fR/\fB\-\-overwrite\fR\. \fBdump\fR overwrites an existing \fBBrewfile\fR\. \fBcleanup\fR actually performs its cleanup operations\.
 .
 .TP
 \fB\-\-cleanup\fR
-\fBinstall\fR performs cleanup operation, same as running \fBcleanup \-\-force\fR\.
+\fBinstall\fR performs cleanup operation, same as running \fBcleanup \-\-force\fR\. This is enabled by default if HOMEBREW_BUNDLE_INSTALL_CLEANUP is set and \fB\-\-global\fR is passed\.
 .
 .TP
 \fB\-\-no\-lock\fR
@@ -2670,7 +2674,7 @@ Read the \fBBrewfile\fR from \fB~/\.Brewfile\fR\.
 .
 .TP
 \fB\-\-describe\fR
-\fBdump\fR adds a description comment above each line, unless the dependency does not have a description\.
+\fBdump\fR adds a description comment above each line, unless the dependency does not have a description\. This is enabled by default if HOMEBREW_BUNDLE_DUMP_DESCRIBE is set\.
 .
 .TP
 \fB\-\-no\-restart\fR
@@ -2684,14 +2688,14 @@ Read the \fBBrewfile\fR from \fB~/\.Brewfile\fR\.
 Print instructions for setting up the command\-not\-found hook for your shell\. If the output is not to a tty, print the appropriate handler script for your shell\.
 .
 .SS "\fBservices\fR [\fIsubcommand\fR]"
-Manage background services with macOS\' \fBlaunchctl\fR(1) daemon manager\.
+Manage background services with macOS\' \fBlaunchctl\fR(1) daemon manager or Linux\'s \fBsystemctl\fR(1) service manager\.
 .
 .P
-If \fBsudo\fR is passed, operate on \fB/Library/LaunchDaemons\fR (started at boot)\. Otherwise, operate on \fB~/Library/LaunchAgents\fR (started at login)\.
+If \fBsudo\fR is passed, operate on \fB/Library/LaunchDaemons\fR/\fB/usr/lib/systemd/system\fR (started at boot)\. Otherwise, operate on \fB~/Library/LaunchAgents\fR/\fB~/\.config/systemd/user\fR (started at login)\.
 .
 .P
-[\fBsudo\fR] \fBbrew services\fR [\fBlist\fR] (\fB\-\-json\fR)
-    List information about all managed services for the current user (or root)\.
+[\fBsudo\fR] \fBbrew services\fR [\fBlist\fR] (\fB\-\-json\fR) (\fB\-\-debug\fR)
+    List information about all managed services for the current user (or root)\. Provides more output from Homebrew and \fBlaunchctl\fR(1) or \fBsystemctl\fR(1) if run with \fB\-\-debug\fR\.
 .
 .P
 [\fBsudo\fR] \fBbrew services info\fR (\fIformula\fR|\fB\-\-all\fR|\fB\-\-json\fR)
@@ -2726,12 +2730,20 @@ If \fBsudo\fR is passed, operate on \fB/Library/LaunchDaemons\fR (started at boo
 Use the service file from this location to \fBstart\fR the service\.
 .
 .TP
+\fB\-\-sudo\-service\-user\fR
+When run as root on macOS, run the service(s) as this user\.
+.
+.TP
 \fB\-\-all\fR
 Run \fIsubcommand\fR on all services\.
 .
 .TP
 \fB\-\-json\fR
 Output as JSON\.
+.
+.TP
+\fB\-\-no\-wait\fR
+Don\'t wait for \fBstop\fR to finish stopping the service\.
 .
 .SS "\fBtest\-bot\fR [\fIoptions\fR] [\fIformula\fR]"
 Tests the full lifecycle of a Homebrew change to a tap (Git repository)\. For example, for a GitHub Actions pull request that changes a formula \fBbrew test\-bot\fR will ensure the system is cleaned and set up to test the formula, install the formula, run various tests and checks on it, bottle (package) the binaries and test formulae that depend on it to ensure they aren\'t broken by these changes\.
@@ -2951,6 +2963,9 @@ Note that environment variables must have a value set to be detected\. For examp
 .
 .P
 User\-specific environment files take precedence over prefix\-specific files and prefix\-specific files take precedence over system\-wide files (unless \fBHOMEBREW_SYSTEM_ENV_TAKES_PRIORITY\fR is set, see below)\.
+.
+.P
+Note that these files do not support shell variable expansion e\.g\. \fB$HOME\fR or command execution e\.g\. \fB$(cat file)\fR\.
 .
 .TP
 \fBHOMEBREW_API_DOMAIN\fR
@@ -3470,6 +3485,12 @@ Use this as the \fBsvn\fR(1) binary\.
 .
 .br
 If set in Homebrew\'s system\-wide environment file (\fB/etc/homebrew/brew\.env\fR), the system\-wide environment file will be loaded last to override any prefix or user settings\.
+.
+.TP
+\fBHOMEBREW_SUDO_THROUGH_SUDO_USER\fR
+.
+.br
+If set, Homebrew will use the \fBSUDO_USER\fR environment variable to define the user to \fBsudo\fR(8) through when running \fBsudo\fR(8)\.
 .
 .TP
 \fBHOMEBREW_TEMP\fR

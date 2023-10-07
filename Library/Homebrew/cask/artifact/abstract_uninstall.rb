@@ -28,12 +28,12 @@ module Cask
       ].freeze
 
       def self.from_args(cask, **directives)
-        new(cask, directives)
+        new(cask, **directives)
       end
 
       attr_reader :directives
 
-      def initialize(cask, directives)
+      def initialize(cask, **directives)
         directives.assert_valid_keys(*ORDERED_DIRECTIVES)
 
         super(cask, **directives)
@@ -379,7 +379,7 @@ module Cask
       end
 
       def uninstall_pkgutil(*pkgs, command: nil, **_)
-        ohai "Uninstalling packages; your password may be necessary:"
+        ohai "Uninstalling packages with sudo; the password may be necessary:"
         pkgs.each do |regex|
           ::Cask::Pkg.all_matching(regex, command).each do |pkg|
             puts pkg.package_id

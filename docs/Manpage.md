@@ -667,8 +667,8 @@ Print export statements. When run in a shell, this installation of Homebrew will
 
 The variables `HOMEBREW_PREFIX`, `HOMEBREW_CELLAR` and `HOMEBREW_REPOSITORY` are also exported to avoid querying them multiple times.
 To help guarantee idempotence, this command produces no output when Homebrew's `bin` and `sbin` directories are first and second
-respectively in your `PATH`. Consider adding evaluation of this command's output to your dotfiles (e.g. `~/.profile`,
-`~/.bash_profile`, or `~/.zprofile`) with: `eval "$(brew shellenv)"`
+respectively in your `PATH`. Consider adding evaluation of this command's output to your dotfiles (e.g. `~/.bash_profile` or
+`~/.zprofile` on macOS and `~/.bashrc` or `~/.zshrc` on Linux) with: `eval "$(brew shellenv)"`
 
 The shell can be specified explicitly with a supported shell name parameter. Unknown shells will output POSIX exports.
 
@@ -1300,12 +1300,14 @@ The generated files are written to the current directory.
 
 Generate Homebrew's manpages and shell completions.
 
-### `install-bundler-gems` [`--groups=`]
+### `install-bundler-gems` [`--groups=`] [`--add-groups=`]
 
 Install Homebrew's Bundler gems.
 
 * `--groups`:
-  Installs the specified comma-separated list of gem groups (default: last used).
+  Installs the specified comma-separated list of gem groups (default: last used). Replaces any previously installed groups.
+* `--add-groups`:
+  Installs the specified comma-separated list of gem groups, in addition to those already installed.
 
 ### `irb` [`--examples`] [`--pry`]
 
@@ -1846,15 +1848,15 @@ This sanitized build environment ignores unrequested dependencies, which makes s
 * `--file`:
   Read the `Brewfile` from this location. Use `--file=-` to pipe to stdin/stdout.
 * `--global`:
-  Read the `Brewfile` from `~/.Brewfile`.
+  Read the `Brewfile` from `~/.Brewfile` or the `HOMEBREW_BUNDLE_FILE_GLOBAL` environment variable, if set.
 * `-v`, `--verbose`:
   `install` prints output from commands as they are run. `check` lists all missing dependencies.
 * `--no-upgrade`:
   `install` won't run `brew upgrade` on outdated dependencies. Note they may still be upgraded by `brew install` if needed.
 * `-f`, `--force`:
-  `dump` overwrites an existing `Brewfile`. `cleanup` actually performs its cleanup operations.
+  `install` runs with `--force`/`--overwrite`. `dump` overwrites an existing `Brewfile`. `cleanup` actually performs its cleanup operations.
 * `--cleanup`:
-  `install` performs cleanup operation, same as running `cleanup --force`.
+  `install` performs cleanup operation, same as running `cleanup --force`. This is enabled by default if HOMEBREW_BUNDLE_INSTALL_CLEANUP is set and `--global` is passed.
 * `--no-lock`:
   `install` won't output a `Brewfile.lock.json`.
 * `--all`:
@@ -1872,7 +1874,7 @@ This sanitized build environment ignores unrequested dependencies, which makes s
 * `--vscode`:
   `list` VSCode extensions.
 * `--describe`:
-  `dump` adds a description comment above each line, unless the dependency does not have a description.
+  `dump` adds a description comment above each line, unless the dependency does not have a description. This is enabled by default if HOMEBREW_BUNDLE_DUMP_DESCRIBE is set.
 * `--no-restart`:
   `dump` does not add `restart_service` to formula lines.
 * `--zap`:
@@ -1885,13 +1887,15 @@ If the output is not to a tty, print the appropriate handler script for your she
 
 ### `services` [*`subcommand`*]
 
-Manage background services with macOS' `launchctl`(1) daemon manager.
+Manage background services with macOS' `launchctl`(1) daemon manager or
+Linux's `systemctl`(1) service manager.
 
-If `sudo` is passed, operate on `/Library/LaunchDaemons` (started at boot).
-Otherwise, operate on `~/Library/LaunchAgents` (started at login).
+If `sudo` is passed, operate on `/Library/LaunchDaemons`/`/usr/lib/systemd/system`  (started at boot).
+Otherwise, operate on `~/Library/LaunchAgents`/`~/.config/systemd/user` (started at login).
 
-[`sudo`] `brew services` [`list`] (`--json`)
+[`sudo`] `brew services` [`list`] (`--json`) (`--debug`)
 <br>List information about all managed services for the current user (or root).
+Provides more output from Homebrew and `launchctl`(1) or `systemctl`(1) if run with `--debug`.
 
 [`sudo`] `brew services info` (*`formula`*|`--all`|`--json`)
 <br>List all managed services for the current user (or root).
@@ -1916,10 +1920,14 @@ Otherwise, operate on `~/Library/LaunchAgents` (started at login).
 
 * `--file`:
   Use the service file from this location to `start` the service.
+* `--sudo-service-user`:
+  When run as root on macOS, run the service(s) as this user.
 * `--all`:
   Run *`subcommand`* on all services.
 * `--json`:
   Output as JSON.
+* `--no-wait`:
+  Don't wait for `stop` to finish stopping the service.
 
 ### `test-bot` [*`options`*] [*`formula`*]
 
@@ -2077,6 +2085,9 @@ files:
 User-specific environment files take precedence over prefix-specific files and
 prefix-specific files take precedence over system-wide files (unless
 `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` is set, see below).
+
+Note that these files do not support shell variable expansion e.g. `$HOME` or
+command execution e.g. `$(cat file)`.
 
 - `HOMEBREW_API_DOMAIN`
   <br>Use this URL as the download mirror for Homebrew JSON API. If metadata files at that URL are temporarily unavailable, the default API domain will be used as a fallback mirror.
@@ -2352,6 +2363,9 @@ prefix-specific files take precedence over system-wide files (unless
 
 - `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY`
   <br>If set in Homebrew's system-wide environment file (`/etc/homebrew/brew.env`), the system-wide environment file will be loaded last to override any prefix or user settings.
+
+- `HOMEBREW_SUDO_THROUGH_SUDO_USER`
+  <br>If set, Homebrew will use the `SUDO_USER` environment variable to define the user to `sudo`(8) through when running `sudo`(8).
 
 - `HOMEBREW_TEMP`
   <br>Use this path as the temporary directory for building packages. Changing this may be needed if your system temporary directory and Homebrew prefix are on different volumes, as macOS has trouble moving symlinks across volumes when the target does not yet exist. This issue typically occurs when using FileVault or custom SSD configurations.

@@ -9,6 +9,10 @@ require "cask/cask_loader"
 # @api private
 module Readall
   class << self
+    include Cachable
+
+    private :cache
+
     def valid_ruby_syntax?(ruby_files)
       failed = T.let(false, T::Boolean)
       ruby_files.each do |ruby_file|
@@ -39,19 +43,27 @@ module Readall
       !failed
     end
 
-    def valid_formulae?(formulae, bottle_tag: nil)
+    def valid_formulae?(tap, bottle_tag: nil)
+      cache[:valid_formulae] ||= {}
+
       success = T.let(true, T::Boolean)
-      formulae.each do |file|
-        base = Formulary.factory(file)
-        next if bottle_tag.blank? || !base.path.exist? || !base.class.on_system_blocks_exist?
+      tap.formula_files.each do |file|
+        valid = cache[:valid_formulae][file]
+        next if valid == true || valid&.include?(bottle_tag)
 
-        formula_contents = base.path.read
+        formula_name = file.basename(".rb").to_s
+        formula_contents = file.read(encoding: "UTF-8")
 
-        readall_namespace = Formulary.class_s("Readall#{bottle_tag.to_sym.capitalize}")
-        readall_formula_class = Formulary.load_formula(base.name, base.path, formula_contents, readall_namespace,
-                                                       flags: base.class.build_flags, ignore_errors: true)
-        readall_formula_class.new(base.name, base.path, :stable,
-                                  alias_path: base.alias_path, force_bottle: base.force_bottle)
+        readall_namespace = "ReadallNamespace"
+        readall_formula_class = Formulary.load_formula(formula_name, file, formula_contents, readall_namespace,
+                                                       flags: [], ignore_errors: false)
+        readall_formula = readall_formula_class.new(formula_name, file, :stable, tap: tap)
+        readall_formula.to_hash
+        cache[:valid_formulae][file] = if readall_formula.on_system_blocks_exist?
+          [bottle_tag, *cache[:valid_formulae][file]]
+        else
+          true
+        end
       rescue Interrupt
         raise
       rescue Exception => e # rubocop:disable Lint/RescueException
@@ -62,31 +74,29 @@ module Readall
       success
     end
 
-    def valid_casks?(_casks, os_name: nil, arch: nil)
+    def valid_casks?(_tap, os_name: nil, arch: nil)
       true
     end
 
-    def valid_tap?(tap, aliases: false, no_simulate: false, os_arch_combinations: nil)
+    def valid_tap?(tap, aliases: false, no_simulate: false, os_arch_combinations: OnSystem::ALL_OS_ARCH_COMBINATIONS)
       success = true
 
       if aliases
         valid_aliases = valid_aliases?(tap.alias_dir, tap.formula_dir)
         success = false unless valid_aliases
       end
-      if no_simulate
-        success = false unless valid_formulae?(tap.formula_files)
-        success = false unless valid_casks?(tap.cask_files)
-      else
-        # TODO: Remove this default case once `--os` and `--arch` are passed explicitly to `brew readall` in CI.
-        os_arch_combinations ||= [*MacOSVersion::SYMBOLS.keys, :linux].product(OnSystem::ARCH_OPTIONS)
 
+      if no_simulate
+        success = false unless valid_formulae?(tap)
+        success = false unless valid_casks?(tap)
+      else
         os_arch_combinations.each do |os, arch|
           bottle_tag = Utils::Bottles::Tag.new(system: os, arch: arch)
           next unless bottle_tag.valid_combination?
 
           Homebrew::SimulateSystem.with os: os, arch: arch do
-            success = false unless valid_formulae?(tap.formula_files, bottle_tag: bottle_tag)
-            success = false unless valid_casks?(tap.cask_files, os_name: os, arch: arch)
+            success = false unless valid_formulae?(tap, bottle_tag: bottle_tag)
+            success = false unless valid_casks?(tap, os_name: os, arch: arch)
           end
         end
       end

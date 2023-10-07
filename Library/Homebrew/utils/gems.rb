@@ -12,11 +12,34 @@ module Homebrew
   # After updating this, run `brew vendor-gems --update=--bundler`.
   HOMEBREW_BUNDLER_VERSION = "2.4.18"
 
+  # Bump this whenever a committed vendored gem is later added to gitignore.
+  # This will trigger it to reinstall properly if `brew install-bundler-gems` needs it.
+  VENDOR_VERSION = 1
+  private_constant :VENDOR_VERSION
+
+  RUBY_BUNDLE_VENDOR_DIRECTORY = (HOMEBREW_LIBRARY_PATH/"vendor/bundle/ruby").freeze
+  private_constant :RUBY_BUNDLE_VENDOR_DIRECTORY
+
+  # This is tracked across Ruby versions.
+  GEM_GROUPS_FILE = (RUBY_BUNDLE_VENDOR_DIRECTORY/".homebrew_gem_groups").freeze
+  private_constant :GEM_GROUPS_FILE
+
+  # This is tracked per Ruby version.
+  VENDOR_VERSION_FILE = (
+    RUBY_BUNDLE_VENDOR_DIRECTORY/"#{RbConfig::CONFIG["ruby_version"]}/.homebrew_vendor_version"
+  ).freeze
+  private_constant :VENDOR_VERSION_FILE
+
   module_function
 
   # @api private
   def gemfile
     File.join(ENV.fetch("HOMEBREW_LIBRARY"), "Homebrew", "Gemfile")
+  end
+
+  # @api private
+  def bundler_definition
+    @bundler_definition ||= Bundler::Definition.build(Bundler.default_gemfile, Bundler.default_lockfile, false)
   end
 
   # @api private
@@ -26,7 +49,7 @@ module Homebrew
 
     Bundler.with_unbundled_env do
       ENV["BUNDLE_GEMFILE"] = gemfile
-      groups = Bundler::Definition.build(Bundler.default_gemfile, Bundler.default_lockfile, false).groups
+      groups = bundler_definition.groups
       groups.delete(:default)
       groups.map(&:to_s)
     end
@@ -68,7 +91,7 @@ module Homebrew
     ENV["BUNDLER_NO_OLD_RUBYGEMS_WARNING"] = "1"
 
     # Match where our bundler gems are.
-    gem_home = "#{HOMEBREW_LIBRARY_PATH}/vendor/bundle/ruby/#{RbConfig::CONFIG["ruby_version"]}"
+    gem_home = "#{RUBY_BUNDLE_VENDOR_DIRECTORY}/#{RbConfig::CONFIG["ruby_version"]}"
     Gem.paths = {
       "GEM_HOME" => gem_home,
       "GEM_PATH" => gem_home,
@@ -151,6 +174,45 @@ module Homebrew
     ENV["BUNDLER_VERSION"] = old_bundler_version
   end
 
+  def user_gem_groups
+    @user_gem_groups ||= if GEM_GROUPS_FILE.exist?
+      GEM_GROUPS_FILE.readlines(chomp: true)
+    elsif RUBY_VERSION < "2.7"
+      # Backwards compatibility. This elsif block removed by the end of 2023.
+      # We will not support this in Ruby >=2.7.
+      require "settings"
+      groups = Homebrew::Settings.read(:gemgroups)&.split(";") || []
+      write_user_gem_groups(groups)
+      Homebrew::Settings.delete(:gemgroups)
+      groups
+    else
+      []
+    end
+  end
+
+  def write_user_gem_groups(groups)
+    GEM_GROUPS_FILE.write(groups.join("\n"))
+  end
+
+  def forget_user_gem_groups!
+    if GEM_GROUPS_FILE.exist?
+      GEM_GROUPS_FILE.truncate(0)
+    elsif RUBY_VERSION < "2.7"
+      # Backwards compatibility. This else block can be removed by the end of 2023.
+      # We will not support this in Ruby >=2.7.
+      require "settings"
+      Homebrew::Settings.delete(:gemgroups)
+    end
+  end
+
+  def user_vendor_version
+    @user_vendor_version ||= if VENDOR_VERSION_FILE.exist?
+      VENDOR_VERSION_FILE.read.to_i
+    else
+      0
+    end
+  end
+
   def install_bundler_gems!(only_warn_on_failure: false, setup_path: true, groups: [])
     old_path = ENV.fetch("PATH", nil)
     old_gem_path = ENV.fetch("GEM_PATH", nil)
@@ -171,10 +233,15 @@ module Homebrew
 
     install_bundler!
 
-    require "settings"
+    valid_user_gem_groups = user_gem_groups & valid_gem_groups
+    if RUBY_PLATFORM.end_with?("-darwin23")
+      raise "Sorbet is not currently supported under system Ruby on macOS Sonoma." if groups.include?("sorbet")
+
+      valid_user_gem_groups.delete("sorbet")
+    end
 
     # Combine the passed groups with the ones stored in settings
-    groups |= (Homebrew::Settings.read(:gemgroups)&.split(";") || [])
+    groups |= valid_user_gem_groups
     groups.sort!
 
     ENV["BUNDLE_GEMFILE"] = gemfile
@@ -194,8 +261,50 @@ module Homebrew
       bundle_check_failed = !$CHILD_STATUS.success?
 
       # for some reason sometimes the exit code lies so check the output too.
-      bundle_installed = if bundle_check_failed || bundle_check_output.include?("Install missing gems")
-        if system bundle, "install"
+      bundle_install_required = bundle_check_failed || bundle_check_output.include?("Install missing gems")
+
+      if user_vendor_version != VENDOR_VERSION
+        # Check if the install is intact. This is useful if any gems are added to gitignore.
+        # We intentionally map over everything and then call `any?` so that we remove the spec of each bad gem.
+        specs = bundler_definition.resolve.materialize(bundler_definition.locked_dependencies)
+        vendor_reinstall_required = specs.map do |spec|
+          spec_file = "#{Gem.dir}/specifications/#{spec.full_name}.gemspec"
+          next false unless File.exist?(spec_file)
+
+          cache_file = "#{Gem.dir}/cache/#{spec.full_name}.gem"
+          if File.exist?(cache_file)
+            require "rubygems/package"
+            package = Gem::Package.new(cache_file)
+
+            package_install_intact = begin
+              contents = package.contents
+
+              # If the gem has contents, ensure we have every file installed it contains.
+              contents&.all? do |gem_file|
+                File.exist?("#{Gem.dir}/gems/#{spec.full_name}/#{gem_file}")
+              end
+            rescue Gem::Package::Error, Gem::Security::Exception
+              # Malformed, assume broken
+              File.unlink(cache_file)
+              false
+            end
+
+            next false if package_install_intact
+          end
+
+          # Mark gem for reinstallation
+          File.unlink(spec_file)
+          true
+        end.any?
+
+        VENDOR_VERSION_FILE.dirname.mkpath
+        VENDOR_VERSION_FILE.write(VENDOR_VERSION.to_s)
+
+        bundle_install_required ||= vendor_reinstall_required
+      end
+
+      bundle_installed = if bundle_install_required
+        if system bundle, "install", out: :err
           true
         else
           message = <<~EOS
@@ -208,7 +317,7 @@ module Homebrew
           end
           false
         end
-      elsif system bundle, "clean" # even if we have nothing to install, we may have removed gems
+      elsif system bundle, "clean", out: :err # even if we have nothing to install, we may have removed gems
         true
       else
         message = <<~EOS
@@ -223,7 +332,7 @@ module Homebrew
       end
 
       if bundle_installed
-        Homebrew::Settings.write(:gemgroups, groups.join(";"))
+        write_user_gem_groups(groups)
         @bundle_installed_groups = groups
       end
     end

@@ -4,12 +4,12 @@ Instructions for a supported install of Homebrew are on the [homepage](https://b
 
 The script installs Homebrew to its default, supported, best prefix (`/opt/homebrew` for Apple Silicon, `/usr/local` for macOS Intel and `/home/linuxbrew/.linuxbrew` for Linux) so that [you don’t need *sudo* after Homebrew's initial installation](FAQ.md#why-does-homebrew-say-sudo-is-bad) when you `brew install`. This prefix is required for most bottles (binary packages) to be used. It is a careful script; it can be run even if you have stuff installed in the preferred prefix already. It tells you exactly what it will do before it does it too. You have to confirm everything it will do before it starts.
 
-The macOS `.pkg` installer also installs Homebrew to its default prefix (`/opt/homebrew` for Apple Silicon and `/usr/local` for macOS Intel) for the same reasons as above. It's available on [Homebrew/brew's latest GitHub release](https://github.com/Homebrew/brew/releases/latest).
+The macOS `.pkg` installer also installs Homebrew to its default prefix (`/opt/homebrew` for Apple Silicon and `/usr/local` for macOS Intel) for the same reasons as above. It's available on [Homebrew/brew's latest GitHub release](https://github.com/Homebrew/brew/releases/latest). To specify an alternate install user, like in situations where the package is installed at the login window before a user has logged in, write a property list file to `/var/tmp/.homebrew_pkg_user.plist` with the value `HOMEBREW_PKG_USER`. For example, `defaults write /var/tmp/.homebrew_pkg_user HOMEBREW_PKG_USER penny`. The file and user must exist prior to install.
 
 ## macOS Requirements
 
 * A 64-bit Intel CPU or Apple Silicon CPU <sup>[1](#1)</sup>
-* macOS Big Sur (11) (or higher) <sup>[2](#2)</sup>
+* macOS Monterey (12) (or higher) <sup>[2](#2)</sup>
 * Command Line Tools (CLT) for Xcode (from `xcode-select --install` or
   [https://developer.apple.com/download/all/](https://developer.apple.com/download/all/)) or
   [Xcode](https://itunes.apple.com/us/app/xcode/id497799835) <sup>[3](#3)</sup>
@@ -88,7 +88,7 @@ Uninstallation is documented in the [FAQ](FAQ.md#how-do-i-uninstall-homebrew).
 
 <a data-proofer-ignore name="1"><sup>1</sup></a> For 32-bit or PPC support see [Tigerbrew](https://github.com/mistydemeo/tigerbrew).
 
-<a data-proofer-ignore name="2"><sup>2</sup></a> macOS 11 (Big Sur) or higher is best and supported, 10.11 (El Capitan) – 10.15 (Catalina) are unsupported but may work and 10.10 (Yosemite) and older will not run Homebrew at all. For 10.4 (Tiger) – 10.6 (Snow Leopard) see [Tigerbrew](https://github.com/mistydemeo/tigerbrew).
+<a data-proofer-ignore name="2"><sup>2</sup></a> macOS 12 (Monterey) or higher is best and supported, 10.11 (El Capitan) – 11 (Big Sur) are unsupported but may work and 10.10 (Yosemite) and older will not run Homebrew at all. For 10.4 (Tiger) – 10.6 (Snow Leopard) see [Tigerbrew](https://github.com/mistydemeo/tigerbrew).
 
 <a data-proofer-ignore name="3"><sup>3</sup></a> You may need to install Xcode, the CLT, or both depending on the formula, to install a bottle (binary package) which is the only supported configuration. Downloading Xcode may require an Apple Developer account on older versions of Mac OS X. Sign up for free at [Apple's website](https://developer.apple.com/account/).
 

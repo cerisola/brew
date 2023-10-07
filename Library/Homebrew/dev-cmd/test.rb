@@ -35,7 +35,7 @@ module Homebrew
   def test
     args = test_args.parse
 
-    Homebrew.install_bundler_gems!(setup_path: false)
+    Homebrew.install_bundler_gems!(groups: ["formula_test"], setup_path: false)
 
     require "formula_assertions"
     require "formula_free_port"
@@ -105,7 +105,7 @@ module Homebrew
       rescue Exception => e # rubocop:disable Lint/RescueException
         retry if retry_test?(f, args: args)
         ofail "#{f.full_name}: failed"
-        $stderr.puts e, e.backtrace
+        $stderr.puts e, Utils::Backtrace.clean(e)
       ensure
         ENV.replace(env)
       end

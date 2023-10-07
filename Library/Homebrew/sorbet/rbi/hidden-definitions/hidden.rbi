@@ -5623,6 +5623,8 @@ end
 class Net::HTTPRangeNotSatisfiable
 end
 
+Net::HTTPRedirection::EXCEPTION_TYPE = Net::HTTPRetriableError
+
 Net::HTTPRedirectionCode = Net::HTTPRedirection
 
 Net::HTTPRequestURITooLarge = Net::HTTPURITooLong
@@ -5637,13 +5639,9 @@ Net::HTTPServerErrorCode = Net::HTTPServerError
 
 Net::HTTPSession = Net::HTTP
 
-class Net::HTTPSuccess
-end
+Net::HTTPSuccess::EXCEPTION_TYPE = Net::HTTPError
 
-Net::HTTPSuccessCode::EXCEPTION_TYPE = Net::HTTPError
-
-class Net::HTTPSuccess
-end
+Net::HTTPSuccessCode = Net::HTTPSuccess
 
 class Net::HTTPURITooLong
   HAS_BODY = ::T.let(nil, ::T.untyped)
@@ -7049,6 +7047,14 @@ module RuboCop::AST::CollectionNode
 
   def extract_options!(*args, &block); end
 
+  def fifth(*args, &block); end
+
+  def forty_two(*args, &block); end
+
+  def fourth(*args, &block); end
+
+  def from(*args, &block); end
+
   def including(*args, &block); end
 
   def index_by(*args, &block); end
@@ -7060,6 +7066,16 @@ module RuboCop::AST::CollectionNode
   def pick(*args, &block); end
 
   def pluck(*args, &block); end
+
+  def second(*args, &block); end
+
+  def second_to_last(*args, &block); end
+
+  def third(*args, &block); end
+
+  def third_to_last(*args, &block); end
+
+  def to(*args, &block); end
 
   def to_default_s(*args, &block); end
 
@@ -7102,6 +7118,7 @@ class RuboCop::AST::NodePattern::Parser
 end
 
 module RuboCop::AST::NodePattern::Sets
+  SET_ALL_ANY_CLASS_OF_ETC = ::T.let(nil, ::T.untyped)
   SET_ARM_INTEL = ::T.let(nil, ::T.untyped)
   SET_BASH_COMPLETION_ZSH_COMPLETION_FISH_COMPLETION = ::T.let(nil, ::T.untyped)
   SET_BUILD_RECOMMENDED_TEST_OPTIONAL = ::T.let(nil, ::T.untyped)
@@ -7111,6 +7128,9 @@ module RuboCop::AST::NodePattern::Sets
   SET_ON_ARM_ON_INTEL_ON_SONOMA_ETC = ::T.let(nil, ::T.untyped)
   SET_ON_INTEL_ON_ARM = ::T.let(nil, ::T.untyped)
   SET_OR_NEWER_OR_OLDER = ::T.let(nil, ::T.untyped)
+  SET_SIG_HELPERS = ::T.let(nil, ::T.untyped)
+  SET_STRUCT_IMMUTABLESTRUCT = ::T.let(nil, ::T.untyped)
+  SET_STRUCT_IMMUTABLESTRUCT_INEXACTSTRUCT = ::T.let(nil, ::T.untyped)
   SET_SYSTEM_SHELL_OUTPUT_PIPE_OUTPUT = ::T.let(nil, ::T.untyped)
   SET_WITH_WITHOUT = ::T.let(nil, ::T.untyped)
   SET____ETC_4 = ::T.let(nil, ::T.untyped)
@@ -9229,6 +9249,11 @@ module Utils::Analytics
 end
 
 module Utils::Autoremove
+  extend ::T::Private::Methods::SingletonMethodHooks
+end
+
+module Utils::Backtrace
+  extend ::T::Private::Methods::MethodHooks
   extend ::T::Private::Methods::SingletonMethodHooks
 end
 

@@ -488,7 +488,12 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
     @resolved_info_cache ||= {}
     return @resolved_info_cache[url] if @resolved_info_cache.include?(url)
 
-    parsed_output = curl_headers(url.to_s, wanted_headers: ["content-disposition"], timeout: timeout)
+    begin
+      parsed_output = curl_headers(url.to_s, wanted_headers: ["content-disposition"], timeout: timeout)
+    rescue ErrorDuringExecution
+      return [url, parse_basename(url), nil, nil, false]
+    end
+
     parsed_headers = parsed_output.fetch(:responses).map { |r| r.fetch(:headers) }
 
     final_url = curl_response_follow_redirections(parsed_output.fetch(:responses), url)
@@ -572,9 +577,7 @@ class CurlDownloadStrategy < AbstractFileDownloadStrategy
 
     if meta[:insecure]
       unless @insecure_warning_shown
-        opoo "Using --insecure with curl to download `ca-certificates` " \
-             "because we need it installed to download securely from now on. " \
-             "Checksums will still be verified."
+        opoo DevelopmentTools.insecure_download_warning("an updated certificates file")
         @insecure_warning_shown = true
       end
       args += ["--insecure"]
