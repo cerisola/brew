@@ -57,7 +57,7 @@ module Homebrew
 
           Or `brew tap #{tap}` and then `brew install <formula>`.
 
-          Or, in a [`brew bundle`](https://github.com/Homebrew/homebrew-bundle) `Brewfile`:
+          Or, in a [`brew bundle`](https://github.com/cerisola/homebrew-bundle) `Brewfile`:
 
           ```ruby
           tap "#{tap}"
@@ -89,7 +89,7 @@ module Homebrew
               steps:
                 - name: Set up Homebrew
                   id: set-up-homebrew
-                  uses: Homebrew/actions/setup-homebrew@master
+                  uses: cerisola/actions/setup-homebrew@master
 
                 - name: Cache Homebrew Bundler RubyGems
                   uses: actions/cache@v4
@@ -143,10 +143,10 @@ module Homebrew
           #{pr_pull_permissions.sort.map { |k, v| "      #{k}: #{v}" }.join("\n")}
               steps:
                 - name: Set up Homebrew
-                  uses: Homebrew/actions/setup-homebrew@master
+                  uses: cerisola/actions/setup-homebrew@master
 
                 - name: Set up git
-                  uses: Homebrew/actions/git-user-config@master
+                  uses: cerisola/actions/git-user-config@master
 
                 - name: Pull bottles
                   env:
@@ -155,7 +155,7 @@ module Homebrew
                   run: brew pr-pull --debug --tap="$GITHUB_REPOSITORY" "$PULL_REQUEST"
 
                 - name: Push commits
-                  uses: Homebrew/actions/git-try-push@master
+                  uses: cerisola/actions/git-try-push@master
                   with:
                     token: ${{ github.token }}
                     branch: #{branch}

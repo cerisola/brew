@@ -950,7 +950,7 @@ module Homebrew
       problem <<~EOS
         #{formula.name} seems to be listed in tap_migrations.json!
         Please remove #{formula.name} from present tap & tap_migrations.json
-        before submitting it to Homebrew/homebrew-#{formula.tap.repository}.
+        before submitting it to cerisola/homebrew-#{formula.tap.repository}.
       EOS
     end
 

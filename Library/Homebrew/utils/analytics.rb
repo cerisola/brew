@@ -282,14 +282,14 @@ module Utils
         escaped_formula_name = GitHubPackages.image_formula_name(formula.name)
                                              .gsub("/", "%2F")
         formula_url_suffix = "container/core%2F#{escaped_formula_name}/"
-        formula_url = "https://github.com/Homebrew/homebrew-core/pkgs/#{formula_url_suffix}"
+        formula_url = "https://github.com/cerisola/homebrew-core/pkgs/#{formula_url_suffix}"
         output = Utils::Curl.curl_output("--fail", formula_url)
         return unless output.success?
 
         formula_version_urls = output.stdout
-                                     .scan(%r{/orgs/Homebrew/packages/#{formula_url_suffix}\d+\?tag=[^"]+})
+                                     .scan(%r{/orgs/cerisola/packages/#{formula_url_suffix}\d+\?tag=[^"]+})
                                      .map do |url|
-          url.sub("/orgs/Homebrew/packages/", "/Homebrew/homebrew-core/pkgs/")
+          url.sub("/orgs/cerisola/packages/", "/cerisola/homebrew-core/pkgs/")
         end
         return if formula_version_urls.empty?
 

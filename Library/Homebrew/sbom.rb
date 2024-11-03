@@ -336,10 +336,10 @@ class SBOM
     # Improve reproducibility when bottling.
     if bottling
       created = source_modified_time.iso8601
-      creators = ["Tool: https://github.com/Homebrew/brew"]
+      creators = ["Tool: https://github.com/cerisola/brew"]
     else
       created = Time.at(time).utc.iso8601
-      creators = ["Tool: https://github.com/Homebrew/brew@#{homebrew_version}"]
+      creators = ["Tool: https://github.com/cerisola/brew@#{homebrew_version}"]
     end
 
     packages = generate_packages_json(runtime_full, compiler_info, bottling:)

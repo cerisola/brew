@@ -289,7 +289,7 @@ module Homebrew
 
         puts <<~EOS
           The #{new_tag} changelog can be found at:
-            #{Formatter.url("https://github.com/Homebrew/brew/releases/tag/#{new_tag}")}
+            #{Formatter.url("https://github.com/cerisola/brew/releases/tag/#{new_tag}")}
         EOS
       end
 

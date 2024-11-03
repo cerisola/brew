@@ -238,7 +238,7 @@ RSpec.describe Tap do
     it "returns the remote https repository" do
       setup_git_repo
 
-      expect(homebrew_foo_tap.remote_repository).to eq("Homebrew/homebrew-foo")
+      expect(homebrew_foo_tap.remote_repository).to eq("cerisola/homebrew-foo")
 
       services_tap = described_class.fetch("Homebrew", "services")
       services_tap.path.mkpath
@@ -246,21 +246,21 @@ RSpec.describe Tap do
         system "git", "init"
         system "git", "remote", "add", "origin", "https://github.com/cerisola/homebrew-bar"
       end
-      expect(services_tap.remote_repository).to eq("Homebrew/homebrew-bar")
+      expect(services_tap.remote_repository).to eq("cerisola/homebrew-bar")
     end
 
     it "returns the remote ssh repository" do
       setup_git_repo
 
-      expect(homebrew_foo_tap.remote_repository).to eq("Homebrew/homebrew-foo")
+      expect(homebrew_foo_tap.remote_repository).to eq("cerisola/homebrew-foo")
 
       services_tap = described_class.fetch("Homebrew", "services")
       services_tap.path.mkpath
       services_tap.path.cd do
         system "git", "init"
-        system "git", "remote", "add", "origin", "git@github.com:Homebrew/homebrew-bar"
+        system "git", "remote", "add", "origin", "git@github.com:cerisola/homebrew-bar"
       end
-      expect(services_tap.remote_repository).to eq("Homebrew/homebrew-bar")
+      expect(services_tap.remote_repository).to eq("cerisola/homebrew-bar")
     end
 
     it "returns nil if the Tap is not a Git repository" do
@@ -293,13 +293,13 @@ RSpec.describe Tap do
     end
 
     context "when using the default remote" do
-      let(:remote) { "https://github.com/Homebrew/homebrew-services" }
+      let(:remote) { "https://github.com/cerisola/homebrew-services" }
 
       it(:custom_remote?) { expect(tap.custom_remote?).to be false }
     end
 
     context "when using a non-default remote" do
-      let(:remote) { "git@github.com:Homebrew/homebrew-services" }
+      let(:remote) { "git@github.com:cerisola/homebrew-services" }
 
       it(:custom_remote?) { expect(tap.custom_remote?).to be true }
     end
@@ -343,7 +343,7 @@ RSpec.describe Tap do
       end.to raise_error(TapRemoteMismatchError)
     end
 
-    it "raises an error when the remote for Homebrew/core doesn't match HOMEBREW_CORE_GIT_REMOTE" do
+    it "raises an error when the remote for cerisola/core doesn't match HOMEBREW_CORE_GIT_REMOTE" do
       core_tap = described_class.fetch("Homebrew", "core")
       wrong_remote = "#{Homebrew::EnvConfig.core_git_remote}-oops"
       expect do

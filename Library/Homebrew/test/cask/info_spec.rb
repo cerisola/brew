@@ -32,7 +32,7 @@ RSpec.describe Cask::Info, :cask do
       ==> with-depends-on-cask-multiple: 1.2.3
       https://brew.sh/with-depends-on-cask-multiple
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/w/with-depends-on-cask-multiple.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/w/with-depends-on-cask-multiple.rb
       ==> Name
       None
       ==> Description
@@ -51,7 +51,7 @@ RSpec.describe Cask::Info, :cask do
       ==> with-depends-on-everything: 1.2.3
       https://brew.sh/with-depends-on-everything
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/w/with-depends-on-everything.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/w/with-depends-on-everything.rb
       ==> Name
       None
       ==> Description
@@ -114,7 +114,7 @@ RSpec.describe Cask::Info, :cask do
       ==> with-conditional-caveats: 1.2.3
       https://brew.sh/
       Not installed
-      From: https://github.com/cerisolaHomebrew/homebrew-cask/blob/HEAD/Casks/w/with-conditional-caveats.rb
+      From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/w/with-conditional-caveats.rb
       ==> Name
       None
       ==> Description
@@ -180,7 +180,7 @@ RSpec.describe Cask::Info, :cask do
         Installed
         #{caskroom}/2.61 (0B)
           Installed using the formulae.brew.sh API on #{Time.at(time).strftime("%Y-%m-%d at %H:%M:%S")}
-        From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/l/local-transmission.rb
+        From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/l/local-transmission.rb
         ==> Name
         Transmission
         ==> Description
