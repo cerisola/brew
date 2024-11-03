@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "forwardable"
@@ -8,16 +8,19 @@ module RuboCop
     module Cask
       # This cop audits variables in casks.
       #
-      # @example
-      #   # bad
-      #   cask do
-      #     arch = Hardware::CPU.intel? ? "darwin" : "darwin-arm64"
-      #   end
+      # ### Example
       #
-      #   # good
-      #   cask 'foo' do
-      #     arch arm: "darwin-arm64", intel: "darwin"
-      #   end
+      # ```ruby
+      # # bad
+      # cask do
+      #   arch = Hardware::CPU.intel? ? "darwin" : "darwin-arm64"
+      # end
+      #
+      # # good
+      # cask 'foo' do
+      #   arch arm: "darwin-arm64", intel: "darwin"
+      # end
+      # ```
       class Variables < Base
         extend Forwardable
         extend AutoCorrector

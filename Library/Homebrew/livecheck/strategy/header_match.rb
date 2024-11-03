@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 module Homebrew
@@ -9,8 +9,6 @@ module Homebrew
       #
       # This strategy is not applied automatically and it's necessary to use
       # `strategy :header_match` in a `livecheck` block to apply it.
-      #
-      # @api private
       class HeaderMatch
         NICE_NAME = "Header match"
 
@@ -19,10 +17,10 @@ module Homebrew
         PRIORITY = 0
 
         # The `Regexp` used to determine if the strategy applies to the URL.
-        URL_MATCH_REGEX = %r{^https?://}i.freeze
+        URL_MATCH_REGEX = %r{^https?://}i
 
         # The header fields to check when a `strategy` block isn't provided.
-        DEFAULT_HEADERS_TO_CHECK = ["content-disposition", "location"].freeze
+        DEFAULT_HEADERS_TO_CHECK = T.let(["content-disposition", "location"].freeze, T::Array[String])
 
         # Whether the strategy can be applied to the provided URL.
         #
@@ -51,7 +49,7 @@ module Homebrew
             return Strategy.handle_block_return(block_return_value)
           end
 
-          DEFAULT_HEADERS_TO_CHECK.map do |header_name|
+          DEFAULT_HEADERS_TO_CHECK.filter_map do |header_name|
             header_value = headers[header_name]
             next if header_value.blank?
 
@@ -61,7 +59,7 @@ module Homebrew
               v = Version.parse(header_value, detected_from_url: true)
               v.null? ? nil : v.to_s
             end
-          end.compact.uniq
+          end.uniq
         end
 
         # Checks the final URL for new versions after following all redirections,
@@ -76,14 +74,14 @@ module Homebrew
             url:           String,
             regex:         T.nilable(Regexp),
             homebrew_curl: T::Boolean,
-            _unused:       T.nilable(T::Hash[Symbol, T.untyped]),
+            _unused:       T.untyped,
             block:         T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }
         def self.find_versions(url:, regex: nil, homebrew_curl: false, **_unused, &block)
-          match_data = { matches: {}, regex: regex, url: url }
+          match_data = { matches: {}, regex:, url: }
 
-          headers = Strategy.page_headers(url, homebrew_curl: homebrew_curl)
+          headers = Strategy.page_headers(url, homebrew_curl:)
 
           # Merge the headers from all responses into one hash
           merged_headers = headers.reduce(&:merge)

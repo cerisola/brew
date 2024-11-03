@@ -1,12 +1,10 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 module RuboCop
   module Cop
     module Homebrew
       # This cop ensures that platform specific code ends up in `extend/os`.
-      #
-      # @api private
       class MoveToExtendOS < Base
         MSG = "Move `OS.linux?` and `OS.mac?` calls to `extend/os`."
 

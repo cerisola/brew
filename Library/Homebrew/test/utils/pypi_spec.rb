@@ -2,7 +2,7 @@
 
 require "utils/pypi"
 
-describe PyPI do
+RSpec.describe PyPI do
   let(:pypi_package_url) do
     "https://files.pythonhosted.org/packages/b0/3f/2e1dad67eb172b6443b5eb37eb885a054a55cfd733393071499514140282/" \
       "snakemake-5.29.0.tar.gz"
@@ -141,7 +141,7 @@ describe PyPI do
         expect(package_with_version.pypi_info(new_version: "5.29.0")).to eq expected_result
       end
 
-      it "gets pypi info from a package name, extras, and version" do
+      it "gets pypi info from a package name, extras and version" do
         expected_result = ["snakemake", old_pypi_package_url, old_package_checksum, "5.28.0"]
         expect(package_with_extra_and_version.pypi_info).to eq expected_result
       end

@@ -1,4 +1,4 @@
-# typed: true
+# typed: true  # rubocop:disable Sorbet/StrictSigil
 # frozen_string_literal: true
 
 # Never `require` anything in this file (except English). It needs to be able to
@@ -10,11 +10,11 @@ require "English"
 module Homebrew
   # Keep in sync with the `Gemfile.lock`'s BUNDLED WITH.
   # After updating this, run `brew vendor-gems --update=--bundler`.
-  HOMEBREW_BUNDLER_VERSION = "2.4.18"
+  HOMEBREW_BUNDLER_VERSION = "2.5.20"
 
-  # Bump this whenever a committed vendored gem is later added to gitignore.
+  # Bump this whenever a committed vendored gem is later added to or exclusion removed from gitignore.
   # This will trigger it to reinstall properly if `brew install-bundler-gems` needs it.
-  VENDOR_VERSION = 1
+  VENDOR_VERSION = 7
   private_constant :VENDOR_VERSION
 
   RUBY_BUNDLE_VENDOR_DIRECTORY = (HOMEBREW_LIBRARY_PATH/"vendor/bundle/ruby").freeze
@@ -30,20 +30,17 @@ module Homebrew
   ).freeze
   private_constant :VENDOR_VERSION_FILE
 
-  module_function
-
-  # @api private
-  def gemfile
+  def self.gemfile
     File.join(ENV.fetch("HOMEBREW_LIBRARY"), "Homebrew", "Gemfile")
   end
+  private_class_method :gemfile
 
-  # @api private
-  def bundler_definition
+  def self.bundler_definition
     @bundler_definition ||= Bundler::Definition.build(Bundler.default_gemfile, Bundler.default_lockfile, false)
   end
+  private_class_method :bundler_definition
 
-  # @api private
-  def valid_gem_groups
+  def self.valid_gem_groups
     install_bundler!
     require "bundler"
 
@@ -55,11 +52,11 @@ module Homebrew
     end
   end
 
-  def ruby_bindir
+  def self.ruby_bindir
     "#{RbConfig::CONFIG["prefix"]}/bin"
   end
 
-  def ohai_if_defined(message)
+  def self.ohai_if_defined(message)
     if defined?(ohai)
       $stderr.ohai message
     else
@@ -67,7 +64,7 @@ module Homebrew
     end
   end
 
-  def opoo_if_defined(message)
+  def self.opoo_if_defined(message)
     if defined?(opoo)
       $stderr.opoo message
     else
@@ -75,7 +72,7 @@ module Homebrew
     end
   end
 
-  def odie_if_defined(message)
+  def self.odie_if_defined(message)
     if defined?(odie)
       odie message
     else
@@ -84,7 +81,7 @@ module Homebrew
     end
   end
 
-  def setup_gem_environment!(setup_path: true)
+  def self.setup_gem_environment!(setup_path: true)
     require "rubygems"
     raise "RubyGems too old!" if Gem::Version.new(Gem::VERSION) < Gem::Version.new("2.2.0")
 
@@ -115,7 +112,7 @@ module Homebrew
     ENV["GEM_PATH"] = gem_home
   end
 
-  def install_gem!(name, version: nil, setup_gem_environment: true)
+  def self.install_gem!(name, version: nil, setup_gem_environment: true)
     setup_gem_environment! if setup_gem_environment
 
     specs = Gem::Specification.find_all_by_name(name, version)
@@ -142,8 +139,8 @@ module Homebrew
     odie_if_defined "failed to install the '#{name}' gem."
   end
 
-  def install_gem_setup_path!(name, version: nil, executable: name, setup_gem_environment: true)
-    install_gem!(name, version: version, setup_gem_environment: setup_gem_environment)
+  def self.install_gem_setup_path!(name, version: nil, executable: name, setup_gem_environment: true)
+    install_gem!(name, version:, setup_gem_environment:)
     return if find_in_path(executable)
 
     odie_if_defined <<~EOS
@@ -152,13 +149,14 @@ module Homebrew
     EOS
   end
 
-  def find_in_path(executable)
+  def self.find_in_path(executable)
     ENV.fetch("PATH").split(":").find do |path|
       File.executable?(File.join(path, executable))
     end
   end
+  private_class_method :find_in_path
 
-  def install_bundler!
+  def self.install_bundler!
     old_bundler_version = ENV.fetch("BUNDLER_VERSION", nil)
 
     setup_gem_environment!
@@ -174,58 +172,64 @@ module Homebrew
     ENV["BUNDLER_VERSION"] = old_bundler_version
   end
 
-  def user_gem_groups
+  def self.user_gem_groups
     @user_gem_groups ||= if GEM_GROUPS_FILE.exist?
       GEM_GROUPS_FILE.readlines(chomp: true)
-    elsif RUBY_VERSION < "2.7"
-      # Backwards compatibility. This elsif block removed by the end of 2023.
-      # We will not support this in Ruby >=2.7.
-      require "settings"
-      groups = Homebrew::Settings.read(:gemgroups)&.split(";") || []
-      write_user_gem_groups(groups)
-      Homebrew::Settings.delete(:gemgroups)
-      groups
     else
       []
     end
   end
+  private_class_method :user_gem_groups
 
-  def write_user_gem_groups(groups)
-    GEM_GROUPS_FILE.write(groups.join("\n"))
-  end
+  def self.write_user_gem_groups(groups)
+    return if @user_gem_groups == groups && GEM_GROUPS_FILE.exist?
 
-  def forget_user_gem_groups!
-    if GEM_GROUPS_FILE.exist?
-      GEM_GROUPS_FILE.truncate(0)
-    elsif RUBY_VERSION < "2.7"
-      # Backwards compatibility. This else block can be removed by the end of 2023.
-      # We will not support this in Ruby >=2.7.
-      require "settings"
-      Homebrew::Settings.delete(:gemgroups)
+    # Write the file atomically, in case we're working parallel
+    require "tempfile"
+    tmpfile = Tempfile.new([GEM_GROUPS_FILE.basename.to_s, "~"], GEM_GROUPS_FILE.dirname)
+    path = tmpfile.path
+    return if path.nil?
+
+    require "fileutils"
+    begin
+      FileUtils.chmod("+r", path)
+      tmpfile.write(groups.join("\n"))
+      tmpfile.close
+      File.rename(path, GEM_GROUPS_FILE)
+    ensure
+      tmpfile.unlink
     end
+
+    @user_gem_groups = groups
+  end
+  private_class_method :write_user_gem_groups
+
+  def self.forget_user_gem_groups!
+    GEM_GROUPS_FILE.truncate(0) if GEM_GROUPS_FILE.exist?
+    @user_gem_groups = []
   end
 
-  def user_vendor_version
+  def self.user_vendor_version
     @user_vendor_version ||= if VENDOR_VERSION_FILE.exist?
       VENDOR_VERSION_FILE.read.to_i
     else
       0
     end
   end
+  private_class_method :user_vendor_version
 
-  def install_bundler_gems!(only_warn_on_failure: false, setup_path: true, groups: [])
+  def self.install_bundler_gems!(only_warn_on_failure: false, setup_path: true, groups: [])
     old_path = ENV.fetch("PATH", nil)
     old_gem_path = ENV.fetch("GEM_PATH", nil)
     old_gem_home = ENV.fetch("GEM_HOME", nil)
     old_bundle_gemfile = ENV.fetch("BUNDLE_GEMFILE", nil)
     old_bundle_with = ENV.fetch("BUNDLE_WITH", nil)
     old_bundle_frozen = ENV.fetch("BUNDLE_FROZEN", nil)
-    old_sdkroot = ENV.fetch("SDKROOT", nil)
 
     invalid_groups = groups - valid_gem_groups
     raise ArgumentError, "Invalid gem groups: #{invalid_groups.join(", ")}" unless invalid_groups.empty?
 
-    # tests should not modify the state of the repo
+    # Tests should not modify the state of the repository.
     if ENV["HOMEBREW_TESTS"]
       setup_gem_environment!
       return
@@ -233,27 +237,16 @@ module Homebrew
 
     install_bundler!
 
-    valid_user_gem_groups = user_gem_groups & valid_gem_groups
-    if RUBY_PLATFORM.end_with?("-darwin23")
-      raise "Sorbet is not currently supported under system Ruby on macOS Sonoma." if groups.include?("sorbet")
-
-      valid_user_gem_groups.delete("sorbet")
-    end
-
-    # Combine the passed groups with the ones stored in settings
-    groups |= valid_user_gem_groups
+    # Combine the passed groups with the ones stored in settings.
+    groups |= (user_gem_groups & valid_gem_groups)
     groups.sort!
 
+    if (homebrew_bundle_user_cache = ENV.fetch("HOMEBREW_BUNDLE_USER_CACHE", nil))
+      ENV["BUNDLE_USER_CACHE"] = homebrew_bundle_user_cache
+    end
     ENV["BUNDLE_GEMFILE"] = gemfile
     ENV["BUNDLE_WITH"] = groups.join(" ")
     ENV["BUNDLE_FROZEN"] = "true"
-
-    # System Ruby does not pick up the correct SDK by default.
-    if ENV["HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH"]
-      macos_major = ENV.fetch("HOMEBREW_MACOS_VERSION").partition(".").first
-      sdkroot = "/Library/Developer/CommandLineTools/SDKs/MacOSX#{macos_major}.sdk"
-      ENV["SDKROOT"] = sdkroot if Dir.exist?(sdkroot)
-    end
 
     if @bundle_installed_groups != groups
       bundle = File.join(find_in_path("bundle"), "bundle")
@@ -304,7 +297,12 @@ module Homebrew
       end
 
       bundle_installed = if bundle_install_required
-        if system bundle, "install", out: :err
+        Process.wait(fork do
+          # Native build scripts fail if EUID != UID
+          Process::UID.change_privilege(Process.euid) if Process.euid != Process.uid
+          exec bundle, "install", out: :err
+        end)
+        if $CHILD_STATUS.success?
           true
         else
           message = <<~EOS
@@ -348,6 +346,5 @@ module Homebrew
       ENV["BUNDLE_WITH"] = old_bundle_with
       ENV["BUNDLE_FROZEN"] = old_bundle_frozen
     end
-    ENV["SDKROOT"] = old_sdkroot
   end
 end

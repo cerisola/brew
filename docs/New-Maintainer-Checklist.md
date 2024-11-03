@@ -20,11 +20,14 @@ The Homebrew team and I really appreciate your help on issues, pull requests and
 your contributions to Homebrew.
 
 We would like to invite you to have commit access and be a Homebrew maintainer.
-If you agree to be a maintainer, you should spend a significant proportion of
-the time you are working on Homebrew applying and self-merging widely used
-changes (e.g. version updates), triaging, fixing and debugging user-reported
-issues, or reviewing user pull requests. You should also be making contributions
-to Homebrew at least once per quarter.
+If you agree to be a maintainer, you should spend the majority of the time you
+are working on Homebrew (in descending order of priority):
+
+- reviewing pull requests (from users and other maintainers)
+- triaging, debugging and fixing user-reported issues and applying
+- opening PRs for widely used changes (e.g. version updates)
+
+You should also be making contributions to Homebrew at least once per quarter.
 
 You should watch or regularly check Homebrew/brew and/or Homebrew/homebrew-core
 and/or Homebrew/homebrew-cask. Let us know which so we can grant you commit
@@ -44,10 +47,8 @@ A few requests:
     - Homebrew/brew: https://docs.brew.sh/Homebrew-brew-Maintainer-Guide
     - Homebrew/homebrew-core: https://docs.brew.sh/Homebrew-homebrew-core-Maintainer-Guide
     - Homebrew/homebrew-cask: https://docs.brew.sh/Homebrew-homebrew-cask-Maintainer-Guide
-- Continue to create branches on your fork rather than in the main repository.
-  Note GitHub's UI will create edits and reverts on the main repository if you
-  make edits or click "Revert" on the Homebrew/brew repository rather than your
-  own fork.
+- Create branches in the main repository rather than on your fork to ease collaboration
+  with other maintainers and allow security assumptions to be made based on GitHub access.
 - If still in doubt please ask for help and we'll help you out.
 - Please read:
     - https://docs.brew.sh/Maintainer-Guidelines

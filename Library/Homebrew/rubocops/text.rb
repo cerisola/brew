@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "rubocops/extend/formula_cop"
@@ -7,34 +7,40 @@ module RuboCop
   module Cop
     module FormulaAudit
       # This cop checks for various problems in a formula's source code.
-      #
-      # @api private
       class Text < FormulaCop
         extend AutoCorrector
 
-        def audit_formula(node, _class_node, _parent_class_node, body_node)
+        sig { override.params(formula_nodes: FormulaNodes).void }
+        def audit_formula(formula_nodes)
+          node = formula_nodes.node
           full_source_content = source_buffer(node).source
 
           if (match = full_source_content.match(/^require ['"]formula['"]$/))
             range = source_range(source_buffer(node), match.pre_match.count("\n") + 1, 0, match[0].length)
             add_offense(range, message: "`#{match}` is now unnecessary") do |corrector|
-              corrector.remove(range_with_surrounding_space(range: range))
+              corrector.remove(range_with_surrounding_space(range:))
             end
           end
 
-          return if body_node.nil?
+          return if (body_node = formula_nodes.body_node).nil?
 
-          if !find_node_method_by_name(body_node, :plist_options) &&
-             find_method_def(body_node, :plist)
-            problem "Please set plist_options when using a formula-defined plist."
+          if find_method_def(body_node, :plist)
+            problem "`def plist` is deprecated. Please use services instead: https://docs.brew.sh/Formula-Cookbook#service-files"
           end
 
-          if (depends_on?("openssl") || depends_on?("openssl@1.1")) && depends_on?("libressl")
+          if (depends_on?("openssl") || depends_on?("openssl@3")) && depends_on?("libressl")
             problem "Formulae should not depend on both OpenSSL and LibreSSL (even optionally)."
           end
 
-          if formula_tap == "homebrew-core" && (depends_on?("veclibfort") || depends_on?("lapack"))
-            problem "Formulae in homebrew/core should use OpenBLAS as the default serial linear algebra library."
+          if formula_tap == "homebrew-core"
+            if depends_on?("veclibfort") || depends_on?("lapack")
+              problem "Formulae in homebrew/core should use OpenBLAS as the default serial linear algebra library."
+            end
+
+            if find_node_method_by_name(body_node, :keg_only)&.source&.include?("HOMEBREW_PREFIX")
+              problem "`keg_only` reason should not include `HOMEBREW_PREFIX` " \
+                      "as it creates confusing `brew info` output."
+            end
           end
 
           unless method_called_ever?(body_node, :go_resource)
@@ -54,6 +60,10 @@ module RuboCop
 
           find_method_with_args(body_node, :system, "xcodebuild") do
             problem %q(use "xcodebuild *args" instead of "system 'xcodebuild', *args")
+          end
+
+          if !depends_on?(:xcode) && method_called_ever?(body_node, :xcodebuild)
+            problem "`xcodebuild` needs an Xcode dependency"
           end
 
           if (method_node = find_method_def(body_node, :install))
@@ -108,11 +118,12 @@ module RuboCop
 
     module FormulaAuditStrict
       # This cop contains stricter checks for various problems in a formula's source code.
-      #
-      # @api private
       class Text < FormulaCop
-        def audit_formula(_node, _class_node, _parent_class_node, body_node)
-          return if body_node.nil?
+        extend AutoCorrector
+
+        sig { override.params(formula_nodes: FormulaNodes).void }
+        def audit_formula(formula_nodes)
+          return if (body_node = formula_nodes.body_node).nil?
 
           find_method_with_args(body_node, :go_resource) do
             problem "`go_resource`s are deprecated. Please ask upstream to implement Go vendoring"
@@ -132,6 +143,16 @@ module RuboCop
             problem "Use `\#{pkgshare}` instead of `\#{share}/#{@formula_name}`"
           end
 
+          interpolated_bin_path_starts_with(body_node, "/#{@formula_name}") do |bin_node|
+            next if bin_node.ancestors.any?(&:array_type?)
+
+            offending_node(bin_node)
+            cmd = bin_node.source.match(%r{\#{bin}/(\S+)})[1]&.delete_suffix('"') || @formula_name
+            problem "Use `bin/\"#{cmd}\"` instead of `\"\#{bin}/#{cmd}\"`" do |corrector|
+              corrector.replace(bin_node.loc.expression, "bin/\"#{cmd}\"")
+            end
+          end
+
           return if formula_tap != "homebrew-core"
 
           find_method_with_args(body_node, :env, :std) do
@@ -140,13 +161,26 @@ module RuboCop
         end
 
         # Check whether value starts with the formula name and then a "/", " " or EOS.
-        def path_starts_with?(path, starts_with)
-          path.match?(%r{^#{Regexp.escape(starts_with)}(/| |$)})
+        # If we're checking for "#{bin}", we also check for "-" since similar binaries also don't need interpolation.
+        def path_starts_with?(path, starts_with, bin: false)
+          ending = bin ? "/|-|$" : "/| |$"
+          path.match?(/^#{Regexp.escape(starts_with)}(#{ending})/)
+        end
+
+        def path_starts_with_bin?(path, starts_with)
+          return false if path.include?(" ")
+
+          path_starts_with?(path, starts_with, bin: true)
         end
 
         # Find "#{share}/foo"
         def_node_search :interpolated_share_path_starts_with, <<~EOS
           $(dstr (begin (send nil? :share)) (str #path_starts_with?(%1)))
+        EOS
+
+        # Find "#{bin}/foo" and "#{bin}/foo-bar"
+        def_node_search :interpolated_bin_path_starts_with, <<~EOS
+          $(dstr (begin (send nil? :bin)) (str #path_starts_with_bin?(%1)))
         EOS
 
         # Find share/"foo"

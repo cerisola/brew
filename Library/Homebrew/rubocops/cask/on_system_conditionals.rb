@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "forwardable"
@@ -9,20 +9,23 @@ module RuboCop
     module Cask
       # This cop makes sure that OS conditionals are consistent.
       #
-      # @example
-      #   # bad
-      #   cask 'foo' do
-      #     if MacOS.version == :high_sierra
-      #       sha256 "..."
-      #     end
-      #   end
+      # ### Example
       #
-      #   # good
-      #   cask 'foo' do
-      #     on_high_sierra do
-      #       sha256 "..."
-      #     end
+      # ```ruby
+      # # bad
+      # cask 'foo' do
+      #   if MacOS.version == :high_sierra
+      #     sha256 "..."
       #   end
+      # end
+      #
+      # # good
+      # cask 'foo' do
+      #   on_high_sierra do
+      #     sha256 "..."
+      #   end
+      # end
+      # ```
       class OnSystemConditionals < Base
         extend Forwardable
         extend AutoCorrector
@@ -40,7 +43,7 @@ module RuboCop
             audit_on_system_blocks(stanza.stanza_node, stanza.stanza_name)
           end
 
-          audit_arch_conditionals(cask_body)
+          audit_arch_conditionals(cask_body, allowed_blocks: FLIGHT_STANZA_NAMES)
           audit_macos_version_conditionals(cask_body, recommend_on_system: false)
           simplify_sha256_stanzas
         end
@@ -55,7 +58,7 @@ module RuboCop
           nodes = {}
 
           sha256_on_arch_stanzas(cask_body) do |node, method, value|
-            nodes[method.to_s.delete_prefix("on_").to_sym] = { node: node, value: value }
+            nodes[method.to_s.delete_prefix("on_").to_sym] = { node:, value: }
           end
 
           return if !nodes.key?(:arm) || !nodes.key?(:intel)

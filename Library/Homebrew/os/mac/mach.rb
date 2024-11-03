@@ -1,13 +1,14 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "macho"
 
 # {Pathname} extension for dealing with Mach-O files.
-#
-# @api private
 module MachOShim
   extend Forwardable
+  extend T::Helpers
+
+  requires_ancestor { Pathname }
 
   delegate [:dylib_id] => :macho
 
@@ -40,7 +41,7 @@ module MachOShim
         else :dunno
         end
 
-        mach_data << { arch: arch, type: type }
+        mach_data << { arch:, type: }
       end
 
       mach_data
@@ -88,9 +89,10 @@ module MachOShim
   end
 
   def dynamically_linked_libraries(except: :none, resolve_variable_references: true)
-    lcs = macho.dylib_load_commands.reject { |lc| lc.type == except }
-    names = lcs.map(&:name).map(&:to_s).uniq
-    names.map!(&method(:resolve_variable_name)) if resolve_variable_references
+    lcs = macho.dylib_load_commands
+    lcs.reject! { |lc| lc.flag?(except) } if except != :none
+    names = lcs.map { |lc| lc.name.to_s }.uniq
+    names.map! { resolve_variable_name(_1) } if resolve_variable_references
 
     names
   end

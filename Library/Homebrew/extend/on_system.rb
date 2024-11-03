@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "simulate_system"
@@ -18,7 +18,7 @@ module OnSystem
 
   sig { params(os_name: Symbol, or_condition: T.nilable(Symbol)).returns(T::Boolean) }
   def self.os_condition_met?(os_name, or_condition = nil)
-    return Homebrew::SimulateSystem.send("simulating_or_running_on_#{os_name}?") if BASE_OS_OPTIONS.include?(os_name)
+    return Homebrew::SimulateSystem.send(:"simulating_or_running_on_#{os_name}?") if BASE_OS_OPTIONS.include?(os_name)
 
     raise ArgumentError, "Invalid OS condition: #{os_name.inspect}" unless MacOSVersion::SYMBOLS.key?(os_name)
 
@@ -51,7 +51,7 @@ module OnSystem
   sig { params(base: Class).void }
   def self.setup_arch_methods(base)
     ARCH_OPTIONS.each do |arch|
-      base.define_method("on_#{arch}") do |&block|
+      base.define_method(:"on_#{arch}") do |&block|
         @on_system_blocks_exist = true
 
         return unless OnSystem.arch_condition_met? OnSystem.condition_from_method_name(T.must(__method__))
@@ -67,15 +67,18 @@ module OnSystem
     base.define_method(:on_arch_conditional) do |arm: nil, intel: nil|
       @on_system_blocks_exist = true
 
-      return arm if OnSystem.arch_condition_met? :arm
-      return intel if OnSystem.arch_condition_met? :intel
+      if OnSystem.arch_condition_met? :arm
+        arm
+      elsif OnSystem.arch_condition_met? :intel
+        intel
+      end
     end
   end
 
   sig { params(base: Class).void }
   def self.setup_base_os_methods(base)
     BASE_OS_OPTIONS.each do |base_os|
-      base.define_method("on_#{base_os}") do |&block|
+      base.define_method(:"on_#{base_os}") do |&block|
         @on_system_blocks_exist = true
 
         return unless OnSystem.os_condition_met? OnSystem.condition_from_method_name(T.must(__method__))
@@ -110,20 +113,28 @@ module OnSystem
     base.define_method(:on_system_conditional) do |macos: nil, linux: nil|
       @on_system_blocks_exist = true
 
-      return macos if OnSystem.os_condition_met?(:macos) && macos.present?
-      return linux if OnSystem.os_condition_met?(:linux) && linux.present?
+      if OnSystem.os_condition_met?(:macos) && macos.present?
+        macos
+      elsif OnSystem.os_condition_met?(:linux) && linux.present?
+        linux
+      end
     end
   end
 
   sig { params(base: Class).void }
   def self.setup_macos_methods(base)
     MacOSVersion::SYMBOLS.each_key do |os_name|
-      base.define_method("on_#{os_name}") do |or_condition = nil, &block|
+      base.define_method(:"on_#{os_name}") do |or_condition = nil, &block|
         @on_system_blocks_exist = true
 
         os_condition = OnSystem.condition_from_method_name T.must(__method__)
         return unless OnSystem.os_condition_met? os_condition, or_condition
 
+        @on_system_block_min_os = if or_condition == :or_older
+          @called_in_on_system_block ? @on_system_block_min_os : MacOSVersion.new(HOMEBREW_MACOS_OLDEST_ALLOWED)
+        else
+          MacOSVersion.from_symbol(os_condition)
+        end
         @called_in_on_system_block = true
         result = block.call
         @called_in_on_system_block = false

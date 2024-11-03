@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-describe Cask::Utils do
+RSpec.describe Cask::Utils do
   let(:command) { NeverSudoSystemCommand }
   let(:dir) { mktmpdir }
   let(:path) { dir/"a/b/c" }
@@ -9,9 +9,9 @@ describe Cask::Utils do
   describe "::gain_permissions_mkpath" do
     it "creates a directory" do
       expect(path).not_to exist
-      described_class.gain_permissions_mkpath path, command: command
+      described_class.gain_permissions_mkpath(path, command:)
       expect(path).to be_a_directory
-      described_class.gain_permissions_mkpath path, command: command
+      described_class.gain_permissions_mkpath(path, command:)
       expect(path).to be_a_directory
     end
 
@@ -27,9 +27,9 @@ describe Cask::Utils do
         end
 
         expect(path).not_to exist
-        described_class.gain_permissions_mkpath path, command: command
+        described_class.gain_permissions_mkpath(path, command:)
         expect(path).to be_a_directory
-        described_class.gain_permissions_mkpath path, command: command
+        described_class.gain_permissions_mkpath(path, command:)
         expect(path).to be_a_directory
 
         expect(dir).not_to be_writable
@@ -46,14 +46,14 @@ describe Cask::Utils do
 
       expect(path).to be_a_file
       expect(link).to be_a_symlink
-      expect(link.realpath).to eq path
+      expect(link.readlink).to eq path
 
-      described_class.gain_permissions_remove link, command: command
+      described_class.gain_permissions_remove(link, command:)
 
       expect(path).to be_a_file
       expect(link).not_to exist
 
-      described_class.gain_permissions_remove path, command: command
+      described_class.gain_permissions_remove(path, command:)
 
       expect(path).not_to exist
     end
@@ -64,14 +64,14 @@ describe Cask::Utils do
 
       expect(path).to be_a_directory
       expect(link).to be_a_symlink
-      expect(link.realpath).to eq path
+      expect(link.readlink).to eq path
 
-      described_class.gain_permissions_remove link, command: command
+      described_class.gain_permissions_remove(link, command:)
 
       expect(path).to be_a_directory
       expect(link).not_to exist
 
-      described_class.gain_permissions_remove path, command: command
+      described_class.gain_permissions_remove(path, command:)
 
       expect(path).not_to exist
     end

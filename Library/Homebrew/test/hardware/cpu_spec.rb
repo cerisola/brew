@@ -2,7 +2,7 @@
 
 require "hardware"
 
-describe Hardware::CPU do
+RSpec.describe Hardware::CPU do
   describe "::type" do
     let(:cpu_types) do
       [
@@ -30,8 +30,11 @@ describe Hardware::CPU do
         :arm_blizzard_avalanche,
         :arm_firestorm_icestorm,
         :arm_hurricane_zephyr,
+        :arm_ibiza,
         :arm_lightning_thunder,
+        :arm_lobos,
         :arm_monsoon_mistral,
+        :arm_palma,
         :arm_twister,
         :arm_typhoon,
         :arm_vortex_tempest,
@@ -77,15 +80,13 @@ describe Hardware::CPU do
       end
 
       it "returns :arm_firestorm_icestorm on ARM" do
-        allow(described_class).to receive(:arm?).and_return(true)
-        allow(described_class).to receive(:intel?).and_return(false)
+        allow(described_class).to receive_messages(arm?: true, intel?: false)
 
         expect(described_class.family).to eq(:arm_firestorm_icestorm)
       end
 
       it "returns :westmere on Intel" do
-        allow(described_class).to receive(:arm?).and_return(false)
-        allow(described_class).to receive(:intel?).and_return(true)
+        allow(described_class).to receive_messages(arm?: false, intel?: true)
 
         expect(described_class.family).to eq(:westmere)
       end

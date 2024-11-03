@@ -1,8 +1,9 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 # Contains shorthand Homebrew utility methods like `ohai`, `opoo`, `odisabled`.
 # TODO: move these out of `Kernel`.
+
 module Kernel
   def require?(path)
     return false if path.nil?
@@ -39,8 +40,8 @@ module Kernel
 
     return if !debug && !always_display
 
-    puts Formatter.headline(title, color: :magenta)
-    puts sput unless sput.empty?
+    $stderr.puts Formatter.headline(title, color: :magenta)
+    $stderr.puts sput unless sput.empty?
   end
 
   def oh1_title(title, truncate: :auto)
@@ -55,34 +56,58 @@ module Kernel
   end
 
   def oh1(title, truncate: :auto)
-    puts oh1_title(title, truncate: truncate)
+    puts oh1_title(title, truncate:)
   end
 
-  # Print a message prefixed with "Warning" (do this rarely).
+  # Print a warning message.
+  #
+  # @api public
+  sig { params(message: T.any(String, Exception)).void }
   def opoo(message)
+    require "utils/github/actions"
+    return if GitHub::Actions.puts_annotation_if_env_set(:warning, message.to_s)
+
+    require "utils/formatter"
+
     Tty.with($stderr) do |stderr|
       stderr.puts Formatter.warning(message, label: "Warning")
     end
   end
 
-  # Print a message prefixed with "Error".
+  # Print an error message.
+  #
+  # @api public
+  sig { params(message: T.any(String, Exception)).void }
   def onoe(message)
+    require "utils/github/actions"
+    return if GitHub::Actions.puts_annotation_if_env_set(:error, message.to_s)
+
+    require "utils/formatter"
+
     Tty.with($stderr) do |stderr|
       stderr.puts Formatter.error(message, label: "Error")
     end
   end
 
+  # Print an error message and fail at the end of the program.
+  #
+  # @api public
+  sig { params(error: T.any(String, Exception)).void }
   def ofail(error)
     onoe error
     Homebrew.failed = true
   end
 
+  # Print an error message and fail immediately.
+  #
+  # @api public
   sig { params(error: T.any(String, Exception)).returns(T.noreturn) }
   def odie(error)
     onoe error
     exit 1
   end
 
+  # Output a deprecation warning/error message.
   def odeprecated(method, replacement = nil,
                   disable:                false,
                   disable_on:             nil,
@@ -134,19 +159,26 @@ module Kernel
     backtrace.each do |line|
       next unless (match = line.match(HOMEBREW_TAP_PATH_REGEX))
 
-      tap = Tap.fetch(match[:user], match[:repo])
-      tap_message = +"\nPlease report this issue to the #{tap} tap (not Homebrew/brew or Homebrew/homebrew-core)"
+      require "tap"
+
+      tap = Tap.fetch(match[:user], match[:repository])
+      tap_message = "\nPlease report this issue to the #{tap.full_name} tap"
+      tap_message += " (not Homebrew/brew or Homebrew/homebrew-core)" unless tap.official?
       tap_message += ", or even better, submit a PR to fix it" if replacement
       tap_message << ":\n  #{line.sub(/^(.*:\d+):.*$/, '\1')}\n\n"
       break
     end
+    file, line, = backtrace.first.split(":")
+    line = line.to_i if line.present?
 
-    message = +"Calling #{method} is #{verb}! #{replacement_message}"
+    message = "Calling #{method} is #{verb}! #{replacement_message}"
     message << tap_message if tap_message
     message.freeze
 
     disable = true if disable_for_developers && Homebrew::EnvConfig.developer?
     if disable || Homebrew.raise_deprecation_exceptions?
+      require "utils/github/actions"
+      GitHub::Actions.puts_annotation_if_env_set(:error, message, file:, line:)
       exception = MethodDeprecatedError.new(message)
       exception.set_backtrace(backtrace)
       raise exception
@@ -155,10 +187,10 @@ module Kernel
     end
   end
 
-  def odisabled(method, replacement = nil, options = {})
-    options = { disable: true, caller: caller }.merge(options)
+  def odisabled(method, replacement = nil, **options)
+    options = { disable: true, caller: }.merge(options)
     # This odeprecated should stick around indefinitely.
-    odeprecated(method, replacement, options)
+    odeprecated(method, replacement, **options)
   end
 
   def pretty_installed(formula)
@@ -237,13 +269,19 @@ module Kernel
 
   # Kernel.system but with exceptions.
   def safe_system(cmd, *args, **options)
+    require "utils"
+
     return if Homebrew.system(cmd, *args, **options)
 
     raise ErrorDuringExecution.new([cmd, *args], status: $CHILD_STATUS)
   end
 
-  # Prints no output.
+  # Run a system command without any output.
+  #
+  # @api internal
   def quiet_system(cmd, *args)
+    require "utils"
+
     Homebrew._system(cmd, *args) do
       # Redirect output streams to `/dev/null` instead of closing as some programs
       # will fail to execute if they can't write to an open stream.
@@ -252,6 +290,9 @@ module Kernel
     end
   end
 
+  # Find a command.
+  #
+  # @api public
   def which(cmd, path = ENV.fetch("PATH"))
     PATH.new(path).each do |p|
       begin
@@ -267,7 +308,7 @@ module Kernel
   end
 
   def which_all(cmd, path = ENV.fetch("PATH"))
-    PATH.new(path).map do |p|
+    PATH.new(path).filter_map do |p|
       begin
         pcmd = File.expand_path(cmd, p)
       rescue ArgumentError
@@ -276,7 +317,7 @@ module Kernel
         next
       end
       Pathname.new(pcmd) if File.file?(pcmd) && File.executable?(pcmd)
-    end.compact.uniq
+    end.uniq
   end
 
   def which_editor(silent: false)
@@ -317,36 +358,26 @@ module Kernel
     end
   end
 
-  # GZips the given paths, and returns the gzipped paths.
-  def gzip(*paths)
-    odisabled "Utils.gzip", "Utils::Gzip.compress"
-    Utils::Gzip.compress(*paths)
-  end
+  IGNORE_INTERRUPTS_MUTEX = Thread::Mutex.new.freeze
 
-  def ignore_interrupts(_opt = nil)
-    # rubocop:disable Style/GlobalVars
-    $ignore_interrupts_nesting_level = 0 unless defined?($ignore_interrupts_nesting_level)
-    $ignore_interrupts_nesting_level += 1
+  def ignore_interrupts
+    IGNORE_INTERRUPTS_MUTEX.synchronize do
+      interrupted = T.let(false, T::Boolean)
+      old_sigint_handler = trap(:INT) do
+        interrupted = true
 
-    $ignore_interrupts_interrupted = false unless defined?($ignore_interrupts_interrupted)
-    old_sigint_handler = trap(:INT) do
-      $ignore_interrupts_interrupted = true
-      $stderr.print "\n"
-      $stderr.puts "One sec, cleaning up..."
-    end
+        $stderr.print "\n"
+        $stderr.puts "One sec, cleaning up..."
+      end
 
-    begin
-      yield
-    ensure
-      trap(:INT, old_sigint_handler)
+      begin
+        yield
+      ensure
+        trap(:INT, old_sigint_handler)
 
-      $ignore_interrupts_nesting_level -= 1
-      if $ignore_interrupts_nesting_level == 0 && $ignore_interrupts_interrupted
-        $ignore_interrupts_interrupted = false
-        raise Interrupt
+        raise Interrupt if interrupted
       end
     end
-    # rubocop:enable Style/GlobalVars
   end
 
   def redirect_stdout(file)
@@ -370,8 +401,8 @@ module Kernel
       end
       # Call this method itself with redirected stdout
       redirect_stdout(file) do
-        return ensure_formula_installed!(formula_or_name, latest: latest,
-                                         reason: reason, output_to_stderr: false)
+        return ensure_formula_installed!(formula_or_name, latest:,
+                                         reason:, output_to_stderr: false)
       end
     end
 
@@ -399,17 +430,20 @@ module Kernel
   end
 
   # Ensure the given executable is exist otherwise install the brewed version
-  def ensure_executable!(name, formula_name = nil, reason: "")
+  def ensure_executable!(name, formula_name = nil, reason: "", latest: false)
     formula_name ||= name
 
     executable = [
       which(name),
       which(name, ORIGINAL_PATHS),
+      # We prefer the opt_bin path to a formula's executable over the prefix
+      # path where available, since the former is stable during upgrades.
+      HOMEBREW_PREFIX/"opt/#{formula_name}/bin/#{name}",
       HOMEBREW_PREFIX/"bin/#{name}",
     ].compact.first
     return executable if executable.exist?
 
-    ensure_formula_installed!(formula_name, reason: reason).opt_bin/name
+    ensure_formula_installed!(formula_name, reason:, latest:).opt_bin/name
   end
 
   def paths
@@ -435,7 +469,7 @@ module Kernel
     if ((size * 10).to_i % 10).zero?
       "#{size.to_i}#{unit}"
     else
-      "#{format("%<size>.1f", size: size)}#{unit}"
+      "#{format("%<size>.1f", size:)}#{unit}"
     end
   end
 
@@ -478,14 +512,20 @@ module Kernel
   end
 
   # Calls the given block with the passed environment variables
-  # added to ENV, then restores ENV afterwards.
-  # <pre>with_env(PATH: "/bin") do
-  #   system "echo $PATH"
-  # end</pre>
+  # added to `ENV`, then restores `ENV` afterwards.
   #
-  # @note This method is *not* thread-safe - other threads
-  #   which happen to be scheduled during the block will also
-  #   see these environment variables.
+  # NOTE: This method is **not** thread-safe – other threads
+  #       which happen to be scheduled during the block will also
+  #       see these environment variables.
+  #
+  # ### Example
+  #
+  # ```ruby
+  # with_env(PATH: "/bin") do
+  #   system "echo $PATH"
+  # end
+  # ```
+  #
   # @api public
   def with_env(hash)
     old_values = {}
@@ -500,18 +540,6 @@ module Kernel
     ensure
       ENV.update(old_values)
     end
-  end
-
-  sig { returns(String) }
-  def preferred_shell
-    odisabled "preferred_shell"
-    Utils::Shell.preferred_path(default: "/bin/sh")
-  end
-
-  sig { returns(String) }
-  def shell_profile
-    odisabled "shell_profile"
-    Utils::Shell.profile
   end
 
   def tap_and_name_comparison

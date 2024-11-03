@@ -2,20 +2,20 @@
 
 require "cli/named_args"
 
-def setup_unredable_formula(name)
-  error = FormulaUnreadableError.new(name, RuntimeError.new("testing"))
-  allow(Formulary).to receive(:factory).with(name, any_args).and_raise(error)
-end
+RSpec.describe Homebrew::CLI::NamedArgs do
+  def setup_unredable_formula(name)
+    error = FormulaUnreadableError.new(name, RuntimeError.new("testing"))
+    allow(Formulary).to receive(:factory).with(name, any_args).and_raise(error)
+  end
 
-def setup_unredable_cask(name)
-  error = Cask::CaskUnreadableError.new(name, "testing")
-  allow(Cask::CaskLoader).to receive(:load).with(name, any_args).and_raise(error)
+  def setup_unredable_cask(name)
+    error = Cask::CaskUnreadableError.new(name, "testing")
+    allow(Cask::CaskLoader).to receive(:load).with(name, any_args).and_raise(error)
 
-  config = instance_double(Cask::Config)
-  allow(Cask::Config).to receive(:from_args).and_return(config)
-end
+    config = instance_double(Cask::Config)
+    allow(Cask::Config).to receive(:from_args).and_return(config)
+  end
 
-describe Homebrew::CLI::NamedArgs do
   let(:foo) do
     formula "foo" do
       url "https://brew.sh"
@@ -31,7 +31,7 @@ describe Homebrew::CLI::NamedArgs do
   end
 
   let(:baz) do
-    Cask::CaskLoader.load(+<<~RUBY)
+    Cask::CaskLoader::FromContentLoader.new(+<<~RUBY, tap: CoreCaskTap.instance).load(config: nil)
       cask "baz" do
         version "1.0"
       end
@@ -39,7 +39,7 @@ describe Homebrew::CLI::NamedArgs do
   end
 
   let(:foo_cask) do
-    Cask::CaskLoader.load(+<<~RUBY)
+    Cask::CaskLoader::FromContentLoader.new(+<<~RUBY, tap: CoreCaskTap.instance).load(config: nil)
       cask "foo" do
         version "1.0"
       end
@@ -83,6 +83,32 @@ describe Homebrew::CLI::NamedArgs do
 
       it "returns formula if loading formula only" do
         expect(described_class.new("foo").to_formulae_and_casks(only: :formula)).to eq [foo]
+      end
+
+      it "returns cask if loading cask only" do
+        expect(described_class.new("foo").to_formulae_and_casks(only: :cask)).to eq [foo_cask]
+      end
+    end
+
+    context "when a non-core formula and a core cask are present" do
+      let(:non_core_formula) do
+        formula "foo", tap: Tap.fetch("some/tap") do
+          url "https://brew.sh"
+          version "1.0"
+        end
+      end
+
+      before do
+        stub_formula_loader non_core_formula, "foo"
+        stub_cask_loader foo_cask
+      end
+
+      it "returns the cask by default" do
+        expect(described_class.new("foo").to_formulae_and_casks).to eq [foo_cask]
+      end
+
+      it "returns formula if loading formula only" do
+        expect(described_class.new("foo").to_formulae_and_casks(only: :formula)).to eq [non_core_formula]
       end
 
       it "returns cask if loading cask only" do
@@ -190,6 +216,36 @@ describe Homebrew::CLI::NamedArgs do
 
     it "when there are no matching kegs returns an empty array" do
       expect(described_class.new.to_kegs).to be_empty
+    end
+
+    it "raises an error when a Keg is unavailable" do
+      expect { described_class.new("baz").to_kegs }.to raise_error NoSuchKegError
+    end
+
+    context "when a keg specifies a tap" do
+      let(:tab) { instance_double(Tab, tap: Tap.fetch("user", "repo")) }
+
+      before do
+        allow_any_instance_of(Keg).to receive(:tab).and_return(tab)
+      end
+
+      it "returns kegs if no tap is specified" do
+        stub_formula_loader bar, "user/repo/bar"
+
+        expect(described_class.new("bar").to_kegs.map(&:name)).to eq ["bar"]
+      end
+
+      it "returns kegs if the tap is specified" do
+        stub_formula_loader bar, "user/repo/bar"
+
+        expect(described_class.new("user/repo/bar").to_kegs.map(&:name)).to eq ["bar"]
+      end
+
+      it "raises an error if there is no tap match" do
+        stub_formula_loader bar, "other/tap/bar"
+
+        expect { described_class.new("other/tap/bar").to_kegs }.to raise_error(NoSuchKegError, %r{from tap other/tap})
+      end
     end
   end
 
@@ -312,7 +368,7 @@ describe Homebrew::CLI::NamedArgs do
 
     it "raises an error for invalid tap" do
       taps = described_class.new("homebrew/foo", "barbaz")
-      expect { taps.to_taps }.to raise_error(RuntimeError, /Invalid tap name/)
+      expect { taps.to_taps }.to raise_error(Tap::InvalidNameError, /Invalid tap name/)
     end
   end
 
@@ -333,7 +389,7 @@ describe Homebrew::CLI::NamedArgs do
 
     it "raises an error for invalid tap" do
       taps = described_class.new("homebrew/foo", "barbaz")
-      expect { taps.to_installed_taps }.to raise_error(RuntimeError, /Invalid tap name/)
+      expect { taps.to_installed_taps }.to raise_error(Tap::InvalidNameError, /Invalid tap name/)
     end
   end
 end

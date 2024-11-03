@@ -2,7 +2,7 @@
 
 require "download_strategy"
 
-describe DownloadStrategyDetector do
+RSpec.describe DownloadStrategyDetector do
   describe "::detect" do
     subject(:strategy_detector) { described_class.detect(url, strategy) }
 
@@ -11,6 +11,12 @@ describe DownloadStrategyDetector do
 
     context "when given Git URL" do
       let(:url) { "git://example.com/foo.git" }
+
+      it { is_expected.to eq(GitDownloadStrategy) }
+    end
+
+    context "when given SSH Git URL" do
+      let(:url) { "ssh://git@example.com/foo.git" }
 
       it { is_expected.to eq(GitDownloadStrategy) }
     end

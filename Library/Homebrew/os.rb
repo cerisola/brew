@@ -1,13 +1,11 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 require "version"
 
 # Helper functions for querying operating system information.
-#
-# @api private
 module OS
-  # Check if the operating system is macOS.
+  # Check whether the operating system is macOS.
   #
   # @api public
   sig { returns(T::Boolean) }
@@ -17,7 +15,7 @@ module OS
     RbConfig::CONFIG["host_os"].include? "darwin"
   end
 
-  # Check if the operating system is Linux.
+  # Check whether the operating system is Linux.
   #
   # @api public
   sig { returns(T::Boolean) }
@@ -32,7 +30,8 @@ module OS
   # @api public
   sig { returns(Version) }
   def self.kernel_version
-    @kernel_version ||= Version.new(Utils.safe_popen_read("uname", "-r").chomp)
+    require "etc"
+    @kernel_version ||= T.let(Version.new(Etc.uname.fetch(:release)), T.nilable(Version))
   end
 
   # Get the kernel name.
@@ -40,10 +39,11 @@ module OS
   # @api public
   sig { returns(String) }
   def self.kernel_name
-    @kernel_name ||= Utils.safe_popen_read("uname", "-s").chomp
+    require "etc"
+    @kernel_name ||= T.let(Etc.uname.fetch(:sysname), T.nilable(String))
   end
 
-  ::OS_VERSION = ENV.fetch("HOMEBREW_OS_VERSION").freeze
+  ::OS_VERSION = T.let(ENV.fetch("HOMEBREW_OS_VERSION").freeze, String)
 
   # See Linux-CI.md
   LINUX_CI_OS_VERSION = "Ubuntu 22.04"

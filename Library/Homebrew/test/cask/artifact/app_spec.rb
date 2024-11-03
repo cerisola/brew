@@ -1,17 +1,18 @@
 # frozen_string_literal: true
 
-describe Cask::Artifact::App, :cask do
+RSpec.describe Cask::Artifact::App, :cask do
   let(:cask) { Cask::CaskLoader.load(cask_path("local-caffeine")) }
   let(:command) { NeverSudoSystemCommand }
   let(:adopt) { false }
   let(:force) { false }
+  let(:auto_updates) { false }
   let(:app) { cask.artifacts.find { |a| a.is_a?(described_class) } }
 
   let(:source_path) { cask.staged_path.join("Caffeine.app") }
   let(:target_path) { cask.config.appdir.join("Caffeine.app") }
 
-  let(:install_phase) { app.install_phase(command: command, adopt: adopt, force: force) }
-  let(:uninstall_phase) { app.uninstall_phase(command: command, force: force) }
+  let(:install_phase) { app.install_phase(command:, adopt:, force:, auto_updates:) }
+  let(:uninstall_phase) { app.uninstall_phase(command:, force:) }
 
   before do
     InstallHelper.install_without_artifacts(cask)
@@ -83,24 +84,55 @@ describe Cask::Artifact::App, :cask do
         let(:adopt) { true }
 
         describe "when the target compares different from the source" do
-          it "avoids clobbering the existing app" do
-            stdout = <<~EOS
-              ==> Adopting existing App at '#{target_path}'
-            EOS
+          describe "when the cask does not auto_updates" do
+            it "avoids clobbering the existing app if brew manages updates" do
+              stdout = <<~EOS
+                ==> Adopting existing App at '#{target_path}'
+              EOS
 
-            expect { install_phase }
-              .to output(stdout).to_stdout
-              .and raise_error(
-                Cask::CaskError,
-                "It seems the existing App is different from the one being installed.",
-              )
+              expect { install_phase }
+                .to output(stdout).to_stdout
+                .and raise_error(
+                  Cask::CaskError,
+                  "It seems the existing App is different from the one being installed.",
+                )
 
-            expect(source_path).to be_a_directory
-            expect(target_path).to be_a_directory
-            expect(File.identical?(source_path, target_path)).to be false
+              expect(source_path).to be_a_directory
+              expect(target_path).to be_a_directory
+              expect(File.identical?(source_path, target_path)).to be false
 
-            contents_path = target_path.join("Contents/Info.plist")
-            expect(contents_path).not_to exist
+              contents_path = target_path.join("Contents/Info.plist")
+              expect(contents_path).not_to exist
+            end
+          end
+
+          describe "when the cask auto_updates" do
+            before do
+              target_path.delete
+              FileUtils.cp_r source_path, target_path
+              File.write(target_path.join("Contents/Info.plist"), "different")
+            end
+
+            let(:auto_updates) { true }
+
+            it "adopts the existing app" do
+              stdout = <<~EOS
+                ==> Adopting existing App at '#{target_path}'
+              EOS
+
+              stderr = ""
+
+              expect { install_phase }
+                .to output(stdout).to_stdout
+                .and output(stderr).to_stderr
+
+              expect(source_path).to be_a_symlink
+              expect(target_path).to be_a_directory
+
+              contents_path = target_path.join("Contents/Info.plist")
+              expect(contents_path).to exist
+              expect(File.read(contents_path)).to eq("different")
+            end
           end
         end
 
@@ -171,12 +203,7 @@ describe Cask::Artifact::App, :cask do
           end
 
           it "overwrites the existing app" do
-            expect(command).to receive(:run).with("/usr/bin/chflags",
-                                                  args: ["-R", "--", "000", target_path]).and_call_original
-            expect(command).to receive(:run).with("/bin/chmod",
-                                                  args: ["-R", "--", "u+rwx", target_path]).and_call_original
-            expect(command).to receive(:run).with("/bin/chmod",
-                                                  args: ["-R", "-N", target_path]).and_call_original
+            expect(command).to receive(:run).and_call_original.at_least(:once)
 
             stdout = <<~EOS
               ==> Removing App '#{target_path}'
@@ -244,7 +271,7 @@ describe Cask::Artifact::App, :cask do
     end
 
     it "gives a warning if the source doesn't exist" do
-      source_path.rmtree
+      FileUtils.rm_r(source_path)
 
       message = "It seems the App source '#{source_path}' is not there."
 
@@ -273,7 +300,7 @@ describe Cask::Artifact::App, :cask do
 
       FileUtils.chmod 0544, target_path
 
-      expect { uninstall_phase }.to raise_error(Errno::ENOTEMPTY)
+      uninstall_phase
 
       expect(source_path).to be_a_directory
     end
@@ -315,13 +342,13 @@ describe Cask::Artifact::App, :cask do
       inode = target_path.stat.ino
       expect(contents_path).to exist
 
-      app.uninstall_phase(command: command, force: force, successor: cask)
+      app.uninstall_phase(command:, force:, successor: cask)
 
       expect(target_path).to exist
       expect(target_path.children).to be_empty
       expect(contents_path).not_to exist
 
-      app.install_phase(command: command, adopt: adopt, force: force, predecessor: cask)
+      app.install_phase(command:, adopt:, force:, predecessor: cask)
       expect(target_path).to exist
       expect(target_path.stat.ino).to eq(inode)
 
@@ -335,18 +362,17 @@ describe Cask::Artifact::App, :cask do
         expect(File).to receive(:write).with(target_path / ".homebrew-write-test",
                                              instance_of(String)).and_raise(Errno::EACCES)
 
-        app.uninstall_phase(command: command, force: force, successor: cask)
+        app.uninstall_phase(command:, force:, successor: cask)
         expect(target_path).not_to exist
 
-        app.install_phase(command: command, adopt: adopt, force: force, predecessor: cask)
+        app.install_phase(command:, adopt:, force:, predecessor: cask)
         expect(target_contents_path).to exist
       end
     end
 
     describe "when the directory is owned by root" do
       before do
-        allow(app.target).to receive(:writable?).and_return false
-        allow(app.target).to receive(:owned?).and_return false
+        allow(app.target).to receive_messages(writable?: false, owned?: false)
       end
 
       it "reuses the same directory" do
@@ -361,12 +387,12 @@ describe Cask::Artifact::App, :cask do
           .and_call_original
         expect(FileUtils).not_to receive(:move).with(source_contents_path, an_instance_of(Pathname))
 
-        app.uninstall_phase(command: command, force: force, successor: cask)
+        app.uninstall_phase(command:, force:, successor: cask)
         expect(target_contents_path).not_to exist
         expect(target_path).to exist
         expect(source_contents_path).to exist
 
-        app.install_phase(command: command, adopt: adopt, force: force, predecessor: cask)
+        app.install_phase(command:, adopt:, force:, predecessor: cask)
         expect(target_contents_path).to exist
       end
 
@@ -383,10 +409,10 @@ describe Cask::Artifact::App, :cask do
             .and_raise(ErrorDuringExecution.new([], status: 1,
 output: [[:stderr, "touch: #{target_path}/.homebrew-write-test: Operation not permitted\n"]], secrets: []))
 
-          app.uninstall_phase(command: command, force: force, successor: cask)
+          app.uninstall_phase(command:, force:, successor: cask)
           expect(target_path).not_to exist
 
-          app.install_phase(command: command, adopt: adopt, force: force, predecessor: cask)
+          app.install_phase(command:, adopt:, force:, predecessor: cask)
           expect(target_contents_path).to exist
         end
       end

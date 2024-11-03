@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 require "utils"
@@ -6,6 +6,16 @@ require "utils"
 module OS
   # Helper module for querying system information on Linux.
   module Linux
+    raise "Loaded OS::Linux on generic OS!" if ENV["HOMEBREW_TEST_GENERIC_OS"]
+
+    # This check is the only acceptable or necessary one in this file.
+    # rubocop:disable Homebrew/MoveToExtendOS
+    raise "Loaded OS::Linux on macOS!" if OS.mac?
+    # rubocop:enable Homebrew/MoveToExtendOS
+
+    # Get the OS version.
+    #
+    # @api internal
     sig { returns(String) }
     def self.os_version
       if which("lsb_release")
@@ -47,60 +57,4 @@ module OS
       end
     end
   end
-
-  # rubocop:disable Style/Documentation
-  module Mac
-    ::MacOS = OS::Mac
-
-    raise "Loaded OS::Linux on generic OS!" if ENV["HOMEBREW_TEST_GENERIC_OS"]
-
-    def self.version
-      MacOSVersion::NULL
-    end
-
-    def self.full_version
-      MacOSVersion::NULL
-    end
-
-    def self.languages
-      @languages ||= Array(ENV["LANG"]&.slice(/[a-z]+/)).uniq
-    end
-
-    def self.language
-      languages.first
-    end
-
-    def self.sdk_root_needed?
-      false
-    end
-
-    def self.sdk_path_if_needed(_version = nil)
-      nil
-    end
-
-    def self.sdk_path(_version = nil)
-      nil
-    end
-
-    module Xcode
-      def self.version
-        ::Version::NULL
-      end
-
-      def self.installed?
-        false
-      end
-    end
-
-    module CLT
-      def self.version
-        ::Version::NULL
-      end
-
-      def self.installed?
-        false
-      end
-    end
-  end
-  # rubocop:enable Style/Documentation
 end

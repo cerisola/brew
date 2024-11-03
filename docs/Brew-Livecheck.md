@@ -188,7 +188,7 @@ A `strategy` block for `Git` is a bit different, as the block receives an array 
 livecheck do
   url :stable
   strategy :git do |tags|
-    tags.map { |tag| tag[/^(\d{4}-\d{2}-\d{2})$/i, 1]&.gsub(/\D/, "") }.compact
+    tags.filter_map { |tag| tag[/^(\d{4}-\d{2}-\d{2})$/i, 1]&.gsub(/\D/, "") }
   end
 end
 ```
@@ -239,6 +239,24 @@ end
 
 You can find more information on the response JSON from this API endpoint in the related [GitHub REST API documentation](https://docs.github.com/en/rest/releases/releases?apiVersion=latest#list-releases).
 
+#### `Crate` `strategy` block
+
+A `strategy` block for `Crate` receives parsed JSON data from the registry API's `versions` endpoint and either the provided or default strategy regex. The strategy uses the following logic by default, so this `strategy` block may be a good starting point for a modified approach:
+
+```ruby
+livecheck do
+  url :stable
+  strategy :crate do |json, regex|
+    json["versions"]&.map do |version|
+      next if version["yanked"]
+      next unless (match = version["num"]&.match(regex))
+
+      match[1]
+    end
+  end
+end
+```
+
 #### `ElectronBuilder` `strategy` block
 
 A `strategy` block for `ElectronBuilder` fetches content at a URL and parses it as an electron-builder appcast in YAML format. It's used for casks of macOS applications built using the Electron framework.
@@ -247,6 +265,34 @@ A `strategy` block for `ElectronBuilder` fetches content at a URL and parses it 
 livecheck do
   url "https://example.org/my-app/latest-mac.yml"
   strategy :electron_builder
+end
+```
+
+If you need to modify the version, you can access the YAML hash in the `strategy` block like so:
+
+```ruby
+livecheck do
+  url "https://example.org/my-app/latest-mac.yml"
+  strategy :electron_builder do |yaml|
+    yaml["version"]&.gsub(/\D/, "")
+  end
+end
+```
+
+Similarly, you can work with the `files` array like this:
+
+```ruby
+livecheck do
+  url "https://example.org/my-app/latest-mac.yml"
+  regex(/MyApp[._-]v?(\d+(?:\.\d+)+)-(\h+)\.dmg/i)
+  strategy :electron_builder do |yaml, regex|
+    yaml["files"]&.map do |file|
+      match = file["url"]&.match(regex)
+      next if match.blank?
+
+      "#{match[1]},#{match[2]}"
+    end
+  end
 end
 ```
 
@@ -267,10 +313,10 @@ end
 
 #### `Sparkle` `strategy` block
 
-A `strategy` block for `Sparkle` receives an `item` which has methods for the `version`, `short_version`, `nice_version`, `url`, `channel` and `title`. It expects a URL for an XML feed providing release information to a macOS application that self-updates using the Sparkle framework. This URL can be found within the app bundle as the `SUFeedURL` property in `Contents/Info.plist` or by using the [`find-appcast`](https://github.com/Homebrew/homebrew-cask/blob/HEAD/developer/bin/find-appcast) script. Run it with:
+A `strategy` block for `Sparkle` receives an `item` which has methods for the `version`, `short_version`, `nice_version`, `url`, `channel` and `title`. It expects a URL for an XML feed providing release information to a macOS application that self-updates using the Sparkle framework. This URL can be found within the app bundle as the `SUFeedURL` property in `Contents/Info.plist` or by using the [`find-appcast`](https://github.com/Homebrew/homebrew-cask/blob/HEAD/cmd/find-appcast.rb) command. Run it with:
 
 ```bash
-"$(brew --repository homebrew/cask)/developer/bin/find-appcast" '/path/to/application.app'
+brew find-appcast '/path/to/application.app'
 ```
 
 The default pattern for the `Sparkle` strategy is to generate `"#{item.short_version},#{item.version}"` from `sparkle:shortVersionString` and `sparkle:version` if both are set. In the example below, the `url` also includes a download ID which is needed:
@@ -348,7 +394,7 @@ end
 
 ### `skip`
 
-Livecheck automatically skips some formulae/casks for a number of reasons (deprecated, disabled, discontinued, etc.). However, on rare occasions we need to use a `livecheck` block to do a manual skip. The `skip` method takes a string containing a very brief reason for skipping.
+Livecheck automatically skips some formulae/casks for a number of reasons (deprecated, disabled, etc.). However, on rare occasions we need to use a `livecheck` block to do a manual skip. The `skip` method takes a string containing a very brief reason for skipping.
 
 ```ruby
 livecheck do

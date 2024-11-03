@@ -2,7 +2,7 @@
 
 require "livecheck/strategy"
 
-describe Homebrew::Livecheck::Strategy::ElectronBuilder do
+RSpec.describe Homebrew::Livecheck::Strategy::ElectronBuilder do
   subject(:electron_builder) { described_class }
 
   let(:http_url) { "https://www.example.com/example/latest-mac.yml" }
@@ -66,30 +66,30 @@ describe Homebrew::Livecheck::Strategy::ElectronBuilder do
       expect(electron_builder.find_versions(url: http_url, provided_content: content))
         .to eq(find_versions_cached_return_hash)
 
-      expect(electron_builder.find_versions(url: http_url, regex: regex, provided_content: content) do |yaml, regex|
+      expect(electron_builder.find_versions(url: http_url, regex:, provided_content: content) do |yaml, regex|
         yaml["path"][regex, 1]
-      end).to eq(find_versions_cached_return_hash.merge({ regex: regex }))
+      end).to eq(find_versions_cached_return_hash.merge({ regex: }))
 
       expect(electron_builder.find_versions(
         url:              http_url,
-        regex:            regex,
+        regex:,
         provided_content: content_timestamp,
       ) do |yaml, regex|
         yaml["path"][regex, 1]
-      end).to eq(find_versions_cached_return_hash.merge({ regex: regex }))
+      end).to eq(find_versions_cached_return_hash.merge({ regex: }))
 
       # NOTE: A regex should be provided using the `#regex` method in a
-      # `livecheck` block but we're using a regex literal in the `strategy`
-      # block here simply to ensure this method works as expected when a
-      # regex isn't provided.
+      #       `livecheck` block but we're using a regex literal in the `strategy`
+      #       block here simply to ensure this method works as expected when a
+      #       regex isn't provided.
       expect(electron_builder.find_versions(url: http_url, provided_content: content) do |yaml|
-        regex = /^v?(\d+(?:\.\d+)+)$/i.freeze
+        regex = /^v?(\d+(?:\.\d+)+)$/i
         yaml["version"][regex, 1]
       end).to eq(find_versions_cached_return_hash)
     end
 
     it "errors if a block is not provided" do
-      expect { electron_builder.find_versions(url: http_url, regex: regex, provided_content: content) }
+      expect { electron_builder.find_versions(url: http_url, regex:, provided_content: content) }
         .to raise_error(ArgumentError, "ElectronBuilder only supports a regex when using a `strategy` block")
     end
 

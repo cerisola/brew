@@ -10,7 +10,6 @@ on:
       - .github/workflows/vendor-gems.yml
     branches-ignore:
       - master
-  pull_request_target:
   workflow_dispatch:
     inputs:
       pull_request:
@@ -21,72 +20,14 @@ permissions:
   contents: read
   pull-requests: read
 
+defaults:
+  run:
+    shell: bash -xeuo pipefail {0}
+
 jobs:
-  check-vendor-version:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Set up Homebrew
-        id: set-up-homebrew
-        uses: Homebrew/actions/setup-homebrew@master
-        with:
-          core: false
-          cask: false
-          test-bot: false
-
-      - name: Install Bundler RubyGems
-        run: brew install-bundler-gems --groups=all
-
-      - name: Get Ruby ABI version
-        id: ruby-abi
-        run: echo "version=$(brew ruby -e "puts Gem.ruby_api_version")" >> "${GITHUB_OUTPUT}"
-
-      - name: Get gem info
-        id: gem-info
-        working-directory: ${{ steps.set-up-homebrew.outputs.gems-path }}/${{ steps.ruby-abi.outputs.version }}/gems
-        run: |
-          {
-            echo "vendor-version=$(cat ../.homebrew_vendor_version)"
-            echo "ignored<<EOS"
-            git check-ignore -- *
-            echo "EOS"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Compare to base ref
-        working-directory: ${{ steps.set-up-homebrew.outputs.gems-path }}/${{ steps.ruby-abi.outputs.version }}
-        run: |
-          git checkout "origin/${GITHUB_BASE_REF}"
-          rm .homebrew_vendor_version
-          brew install-bundler-gems --groups=all
-          if [[ "$(cat .homebrew_vendor_version)" == "${{ steps.gem-info.outputs.vendor-version }}" ]]; then
-            ignored_gems="${{ steps.gem-info.outputs.ignored }}"
-            while IFS= read -r gem; do
-              gem_dir="./gems/${gem}"
-              [[ -d "${gem_dir}" ]] || continue
-              exit_code=0
-              git check-ignore --quiet "${gem_dir}" || exit_code=$?
-              if (( exit_code != 0 )); then
-                if (( exit_code == 1 )); then
-                  echo "::error::VENDOR_VERSION needs bumping in utils/gems.rb" >&2
-                else
-                  echo "::error::git check-ignore failed" >&2
-                fi
-                exit "${exit_code}"
-              fi
-            done <<< "${ignored_gems}"
-          fi
-
   vendor-gems:
-    if: >
-      github.repository_owner == 'Homebrew' && (
-        github.event_name == 'workflow_dispatch' ||
-        github.event_name == 'pull_request' ||
-        github.event_name == 'push' || (
-          github.event.pull_request.user.login == 'dependabot[bot]' &&
-          contains(github.event.pull_request.title, '/Library/Homebrew')
-        )
-      )
-    runs-on: macos-13
+    if: github.repository_owner == 'Homebrew'
+    runs-on: macos-15
     steps:
       - name: Set up Homebrew
         id: set-up-homebrew
@@ -97,22 +38,22 @@ jobs:
           test-bot: false
 
       - name: Configure Git user
-        if: github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch'
         uses: Homebrew/actions/git-user-config@master
         with:
           username: BrewTestBot
 
       - name: Set up commit signing
-        if: github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch'
         uses: Homebrew/actions/setup-commit-signing@master
         with:
           signing_key: ${{ secrets.BREWTESTBOT_GPG_SIGNING_SUBKEY }}
 
       - name: Check out pull request
         id: checkout
-        if: github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          gh pr checkout '${{ github.event.pull_request.number || github.event.inputs.pull_request }}'
+          gh pr checkout "${PR}"
 
           branch="$(git branch --show-current)"
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
@@ -120,6 +61,7 @@ jobs:
           gem_name="$(echo "${branch}" | sed -E 's|.*/||;s|(.*)-.*$|\1|')"
           echo "gem_name=${gem_name}" >> "$GITHUB_OUTPUT"
         env:
+          PR: ${{ github.event.pull_request.number || github.event.inputs.pull_request }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         working-directory: ${{ steps.set-up-homebrew.outputs.repository-path }}
 
@@ -127,7 +69,7 @@ jobs:
         env:
           HOMEBREW_GPG_PASSPHRASE: ${{ secrets.BREWTESTBOT_GPG_SIGNING_SUBKEY_PASSPHRASE }}
         run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request_target" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]
           then
             brew vendor-gems --non-bundler-gems
           else
@@ -138,7 +80,7 @@ jobs:
         run: brew typecheck --update
 
       - name: Commit RBI changes
-        if: github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch'
         env:
           GEM_NAME: ${{ steps.checkout.outputs.gem_name }}
           HOMEBREW_GPG_PASSPHRASE: ${{ secrets.BREWTESTBOT_GPG_SIGNING_SUBKEY_PASSPHRASE }}
@@ -151,11 +93,19 @@ jobs:
                        -m "Autogenerated by the [vendor-gems](https://github.com/Homebrew/brew/blob/HEAD/.github/workflows/vendor-gems.yml) workflow."
           fi
 
+      - name: Generate push token
+        uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1
+        id: app-token
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          app-id: ${{ vars.BREW_COMMIT_APP_ID }}
+          private-key: ${{ secrets.BREW_COMMIT_APP_KEY }}
+
       - name: Push to pull request
-        if: github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch'
         uses: Homebrew/actions/git-try-push@master
         with:
-          token: ${{ secrets.HOMEBREW_GITHUB_PUBLIC_REPO_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           directory: ${{ steps.set-up-homebrew.outputs.repository-path }}
           branch: ${{ steps.checkout.outputs.branch }}
           force: true

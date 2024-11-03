@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "rubocops/extend/formula_cop"
@@ -11,6 +11,7 @@ module RuboCop
         PROVIDED_BY_MACOS_FORMULAE = %w[
           apr
           bc
+          bc-gh
           berkeley-db
           bison
           bzip2
@@ -22,7 +23,6 @@ module RuboCop
           expat
           file-formula
           flex
-          gnu-getopt
           gperf
           icu4c
           krb5
@@ -46,7 +46,6 @@ module RuboCop
           pax
           pcsc-lite
           pod2man
-          rpcgen
           ruby
           sqlite
           ssh-copy-id
@@ -59,8 +58,9 @@ module RuboCop
           zlib
         ].freeze
 
-        def audit_formula(_node, _class_node, _parent_class_node, body_node)
-          return if body_node.nil?
+        sig { override.params(formula_nodes: FormulaNodes).void }
+        def audit_formula(formula_nodes)
+          return if (body_node = formula_nodes.body_node).nil?
 
           find_method_with_args(body_node, :keg_only, :provided_by_macos) do
             return if PROVIDED_BY_MACOS_FORMULAE.include? @formula_name
@@ -95,10 +95,16 @@ module RuboCop
           zsh
         ].freeze
 
-        def audit_formula(_node, _class_node, _parent_class_node, body_node)
-          return if body_node.nil?
+        sig { override.params(formula_nodes: FormulaNodes).void }
+        def audit_formula(formula_nodes)
+          return if (body_node = formula_nodes.body_node).nil?
+
+          depends_on_linux = depends_on?(:linux)
 
           find_method_with_args(body_node, :uses_from_macos, /^"(.+)"/).each do |method|
+            @offensive_node = method
+            problem "`uses_from_macos` should not be used when Linux is required." if depends_on_linux
+
             dep = if parameters(method).first.instance_of?(RuboCop::AST::StrNode)
               parameters(method).first
             elsif parameters(method).first.instance_of?(RuboCop::AST::HashNode)

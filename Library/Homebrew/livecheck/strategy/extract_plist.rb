@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 require "bundle_version"
@@ -16,15 +16,13 @@ module Homebrew
       #
       # This strategy is not applied automatically and it's necessary to use
       # `strategy :extract_plist` in a `livecheck` block to apply it.
-      #
-      # @api private
       class ExtractPlist
         # A priority of zero causes livecheck to skip the strategy. We do this
         # for {ExtractPlist} so we can selectively apply it when appropriate.
         PRIORITY = 0
 
         # The `Regexp` used to determine if the strategy applies to the URL.
-        URL_MATCH_REGEX = %r{^https?://}i.freeze
+        URL_MATCH_REGEX = %r{^https?://}i
 
         # Whether the strategy can be applied to the provided URL.
         #
@@ -35,17 +33,17 @@ module Homebrew
           URL_MATCH_REGEX.match?(url)
         end
 
-        # @api private
         Item = Struct.new(
-          # @api private
           :bundle_version,
           keyword_init: true,
         ) do
           extend Forwardable
 
+          # @!attribute [r] version
           # @api public
           delegate version: :bundle_version
 
+          # @!attribute [r] short_version
           # @api public
           delegate short_version: :bundle_version
         end
@@ -69,9 +67,9 @@ module Homebrew
             return Strategy.handle_block_return(block_return_value)
           end
 
-          items.map do |_key, item|
+          items.filter_map do |_key, item|
             item.bundle_version.nice_version
-          end.compact.uniq
+          end.uniq
         end
 
         # Uses {UnversionedCaskChecker} on the provided cask to identify
@@ -87,7 +85,7 @@ module Homebrew
             cask:    Cask::Cask,
             url:     T.nilable(String),
             regex:   T.nilable(Regexp),
-            _unused: T.nilable(T::Hash[Symbol, T.untyped]),
+            _unused: T.untyped,
             block:   T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }
@@ -100,13 +98,13 @@ module Homebrew
             raise ArgumentError, "The #{Utils.demodulize(T.must(name))} strategy only supports casks."
           end
 
-          match_data = { matches: {}, regex: regex, url: url }
+          match_data = { matches: {}, regex:, url: }
 
           unversioned_cask_checker = if url.present? && url != cask.url.to_s
             # Create a copy of the `cask` that uses the `livecheck` block URL
             cask_copy = Cask::CaskLoader.load(cask.sourcefile_path)
             cask_copy.allow_reassignment = true
-            cask_copy.url { url }
+            cask_copy.url url
             UnversionedCaskChecker.new(cask_copy)
           else
             UnversionedCaskChecker.new(cask)

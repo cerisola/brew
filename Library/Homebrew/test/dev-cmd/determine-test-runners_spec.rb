@@ -3,7 +3,15 @@
 require "dev-cmd/determine-test-runners"
 require "cmd/shared_examples/args_parse"
 
-describe "brew determine-test-runners" do
+RSpec.describe Homebrew::DevCmd::DetermineTestRunners do
+  def get_runners(file)
+    runner_line = File.open(file).first
+    json_text = runner_line[/runners=(.*)/, 1]
+    runner_hash = JSON.parse(json_text)
+    runner_hash.map { |item| item["runner"].delete_suffix(ephemeral_suffix) }
+               .sort
+  end
+
   after do
     FileUtils.rm_f github_output
   end
@@ -14,19 +22,22 @@ describe "brew determine-test-runners" do
   let(:ephemeral_suffix) { "-12345" }
   let(:runner_env) do
     {
-      "HOMEBREW_LINUX_RUNNER"  => linux_runner,
-      "HOMEBREW_MACOS_TIMEOUT" => "90",
-      "GITHUB_RUN_ID"          => ephemeral_suffix.split("-").second,
+      "HOMEBREW_LINUX_RUNNER"       => linux_runner,
+      "HOMEBREW_MACOS_LONG_TIMEOUT" => "false",
+      "GITHUB_RUN_ID"               => ephemeral_suffix.split("-").second,
     }.freeze
   end
   let(:all_runners) do
     out = []
     MacOSVersion::SYMBOLS.each_value do |v|
       macos_version = MacOSVersion.new(v)
-      next if macos_version.unsupported_release?
+      next if macos_version < GitHubRunnerMatrix::OLDEST_HOMEBREW_CORE_MACOS_RUNNER
+      next if macos_version > GitHubRunnerMatrix::NEWEST_HOMEBREW_CORE_MACOS_RUNNER
 
-      out << v
       out << "#{v}-arm64"
+      next if macos_version > GitHubRunnerMatrix::NEWEST_HOMEBREW_CORE_INTEL_MACOS_RUNNER
+
+      out << "#{v}-x86_64"
     end
 
     out << linux_runner
@@ -46,14 +57,6 @@ describe "brew determine-test-runners" do
     expect(File.read(github_output)).not_to be_empty
     expect(get_runners(github_output).sort).to eq(all_runners.sort)
   end
-end
-
-def get_runners(file)
-  runner_line = File.open(file).first
-  json_text = runner_line[/runners=(.*)/, 1]
-  runner_hash = JSON.parse(json_text)
-  runner_hash.map { |item| item["runner"].delete_suffix(ephemeral_suffix) }
-             .sort
 end
 
 class DetermineRunnerTestHelper

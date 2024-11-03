@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "forwardable"
@@ -91,7 +91,7 @@ module RuboCop
           line_length = [processed_source[line_index].size, 1].max
           @range = source_range(processed_source.buffer, line_index + 1, 0,
                                 line_length)
-          super(@range, message: message)
+          super(@range, message:)
         end
       end
     end

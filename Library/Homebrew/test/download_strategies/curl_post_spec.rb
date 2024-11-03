@@ -2,7 +2,7 @@
 
 require "download_strategy"
 
-describe CurlPostDownloadStrategy do
+RSpec.describe CurlPostDownloadStrategy do
   subject(:strategy) { described_class.new(url, name, version, **specs) }
 
   let(:name) { "foo" }
@@ -18,6 +18,8 @@ describe CurlPostDownloadStrategy do
 
   describe "#fetch" do
     before do
+      allow(strategy).to receive(:curl_version).and_return(Version.new("8.6.0"))
+
       allow(strategy).to receive(:system_command)
         .with(
           /curl/,

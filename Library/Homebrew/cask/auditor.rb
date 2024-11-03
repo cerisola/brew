@@ -1,12 +1,10 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "cask/audit"
 
 module Cask
   # Helper class for auditing all available languages of a cask.
-  #
-  # @api private
   class Auditor
     def self.audit(cask, **options)
       new(cask, **options).audit
@@ -50,7 +48,8 @@ module Cask
       if !language && language_blocks
         sample_languages = if language_blocks.length > LANGUAGE_BLOCK_LIMIT && !@audit_new_cask
           sample_keys = language_blocks.keys.sample(LANGUAGE_BLOCK_LIMIT)
-          ohai "Auditing a sample of available languages: #{sample_keys.map { |lang| lang[0].to_s }.to_sentence}"
+          ohai "Auditing a sample of available languages for #{cask}: " \
+               "#{sample_keys.map { |lang| lang[0].to_s }.to_sentence}"
           language_blocks.select { |k| sample_keys.include?(k) }
         else
           language_blocks
@@ -85,7 +84,7 @@ module Cask
 
     def audit_languages(languages)
       original_config = cask.config
-      localized_config = original_config.merge(Config.new(explicit: { languages: languages }))
+      localized_config = original_config.merge(Config.new(explicit: { languages: }))
       cask.config = localized_config
 
       audit_cask_instance(cask)

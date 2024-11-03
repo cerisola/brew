@@ -2,7 +2,7 @@
 
 require "installed_dependents"
 
-describe InstalledDependents do
+RSpec.describe InstalledDependents do
   include FileUtils
 
   def stub_formula(name, version = "1.0", &block)
@@ -51,7 +51,7 @@ describe InstalledDependents do
     end
 
     def alter_tab(keg)
-      tab = Tab.for_keg(keg)
+      tab = keg.tab
       yield tab
       tab.write
     end
@@ -61,7 +61,7 @@ describe InstalledDependents do
     def tab_dependencies(keg, deps, homebrew_version: "1.1.6")
       alter_tab(keg) do |tab|
         tab.homebrew_version = homebrew_version
-        tab.tabfile = keg/Tab::FILENAME
+        tab.tabfile = keg/AbstractTab::FILENAME
         tab.runtime_dependencies = deps
       end
     end
@@ -175,7 +175,7 @@ describe InstalledDependents do
     end
 
     def stub_cask_name(name, version, dependency)
-      c = Cask::CaskLoader.load(+<<-RUBY)
+      c = Cask::CaskLoader.load(<<-RUBY)
         cask "#{name}" do
           version "#{version}"
 

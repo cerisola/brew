@@ -3,7 +3,7 @@
 require "formula"
 require "livecheck"
 
-describe Livecheck do
+RSpec.describe Livecheck do
   let(:f) do
     formula do
       homepage "https://brew.sh"
@@ -100,6 +100,17 @@ describe Livecheck do
     end
   end
 
+  describe "#throttle" do
+    it "returns nil if not set" do
+      expect(livecheckable_f.throttle).to be_nil
+    end
+
+    it "returns the Integer if set" do
+      livecheckable_f.throttle(10)
+      expect(livecheckable_f.throttle).to eq(10)
+    end
+  end
+
   describe "#url" do
     let(:url_string) { "https://brew.sh" }
 
@@ -143,6 +154,7 @@ describe Livecheck do
           "skip"     => false,
           "skip_msg" => nil,
           "strategy" => nil,
+          "throttle" => nil,
           "url"      => nil,
         },
       )

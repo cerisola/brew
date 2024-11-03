@@ -133,6 +133,44 @@ xcode-select --install
 brew upgrade
 ```
 
+## Unintentional dual Homebrew installations
+
+When using tools such as Apple's _Migration Assistant_ (MA), it's possible to have two Homebrew installations unintentionally.
+This most commonly results in MA copying `/usr/local` and `/Applications` from an Intel-based Mac to these same paths on an Apple Silicon-based Mac.
+This is problematic because `/Applications` may contain x86_64-only apps.
+Using an x86_64 terminal emulator will cause the shell to use the `/usr/local` installation of Homebrew
+instead of a new installation in `/opt/homebrew`, which is the correct path for an arm64 Homebrew installation on macOS.
+
+Continuing with this setup may eventually cause problems, so it's best to migrate your Homebrew installation.
+Follow these steps to do this.
+
+1. Run `arch -x86_64 /usr/local/bin/brew bundle dump --global` to dump your current installed formulae list to `~/.Brewfile`.
+1. Review the contents of `~/.Brewfile` to remove things you no longer want to have installed.
+1. Verify that your terminal emulator is running in arm64 mode by checking that the output of `arch` is `arm64`.
+
+   If it is not, use a different terminal emulator, such as Apple's Terminal.app, that will run in `arm64` mode.
+
+1. Install Homebrew under the correct prefix (`/opt/homebrew`),
+   which will happen by default when the terminal is running in arm64 mode.
+
+   **Follow the _Next Steps_ instructions** listed at the end of the installation process;
+    failing to adjust your shell configuration accordingly could break your Homebrew installation.
+
+1. Run `/opt/homebrew/bin/brew bundle install --global` to replicate your original formulae installation using your new Homebrew installation in `/opt/homebrew`.
+
+Expect to spend some time [searching Homebrew's formulae and cask list](https://formulae.brew.sh/)
+for replacements for deprecated, disabled, or removed formulae.
+
+Once you are satisfied with the state of your new `/opt/homebrew` Homebrew installation,
+you can uninstall the old `/usr/local` installation.
+Download and run [the uninstaller](https://github.com/Homebrew/install/#uninstall-homebrew) script:
+
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)" -- --path=/usr/local
+```
+
+For more information, see [this discussion](https://github.com/orgs/Homebrew/discussions/4397#discussioncomment-5567441).
+
 ## Homebrew Cask issues
 
 ### Cask - cURL error
@@ -179,7 +217,7 @@ Help us by [submitting a fix](https://github.com/Homebrew/homebrew-cask/blob/HEA
 
 In this case, it’s likely your user account has no admin rights and therefore lacks permissions for writing to `/Applications`, which is the default install location. You can use [`--appdir`](https://github.com/Homebrew/homebrew-cask/blob/HEAD/USAGE.md#options) to choose where to install your applications.
 
-If `--appdir` doesn’t fix the issue or you do have write permissions to `/Applications`, verify you’re the owner of the `Caskroom` directory by running `ls -dl "$(brew --prefix)/Caskroom"` and checking the third field. If you are not the owner, fix it with `sudo chown -R "$(whoami)" "$(brew --prefix)/Caskroom"`. If you are, the problem may lie in the app bundle itself.
+If `--appdir` doesn’t fix the issue or you do have write permissions to `/Applications`, verify you’re the owner of the `Caskroom` directory by running `ls -dl "$(brew --caskroom)"` and checking the third field. If you are not the owner, fix it with `sudo chown -R "$(whoami)" "$(brew --caskroom)"`. If you are, the problem may lie in the app bundle itself.
 
 Some app bundles don’t have certain permissions that are necessary for us to move them to the appropriate location. You may check such permissions with `ls -ls '/path/to/application.app'`. If you see something like `dr-xr-xr-x` at the start of the output, that may be the cause. To fix it, we need to change the app bundle’s permission to allow us to move it, and then set it back to what it was (in case the developer set those permissions deliberately). See [litecoin.rb](https://github.com/Homebrew/homebrew-cask/blob/aa461148bbb5119af26b82cccf5003e2b4e50d95/Casks/l/litecoin.rb#L17-L27) for an example of such a cask.
 

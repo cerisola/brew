@@ -3,10 +3,36 @@
 require "cmd/shared_examples/args_parse"
 require "dev-cmd/bottle"
 
-describe "brew bottle" do
+RSpec.describe Homebrew::DevCmd::Bottle do
+  def stub_hash(parameters)
+    <<~EOS
+      {
+        "#{parameters[:name]}":{
+           "formula":{
+              "pkg_version":"#{parameters[:version]}",
+              "path":"#{parameters[:path]}"
+           },
+           "bottle":{
+              "root_url":"#{parameters[:root_url] || HOMEBREW_BOTTLE_DEFAULT_DOMAIN}",
+              "prefix":"/usr/local",
+              "cellar":"#{parameters[:cellar]}",
+              "rebuild":0,
+              "tags":{
+                 "#{parameters[:os]}":{
+                    "filename":"#{parameters[:filename]}",
+                    "local_filename":"#{parameters[:local_filename]}",
+                    "sha256":"#{parameters[:sha256]}"
+                 }
+              }
+           }
+        }
+      }
+    EOS
+  end
+
   it_behaves_like "parseable arguments"
 
-  it "builds a bottle for the given Formula", :integration_test do
+  it "builds a bottle for the given Formula", :integration_test, :needs_network do
     install_test_formula "testball", build_bottle: true
 
     # `brew bottle` should not fail with dead symlink
@@ -27,7 +53,7 @@ describe "brew bottle" do
   end
 
   describe "--merge", :integration_test do
-    let(:core_tap) { CoreTap.new }
+    let(:core_tap) { CoreTap.instance }
     let(:tarball) do
       if OS.linux?
         TEST_FIXTURE_DIR/"tarballs/testball-0.1-linux.tbz"
@@ -282,8 +308,8 @@ describe "brew bottle" do
     end
   end
 
-  describe Homebrew do
-    subject(:homebrew) { described_class }
+  describe "bottle_cmd" do
+    subject(:homebrew) { described_class.new(["foo"]) }
 
     let(:hello_hash_big_sur) do
       JSON.parse stub_hash(
@@ -511,11 +537,11 @@ describe "brew bottle" do
         bottle.sha256(catalina: "109c0cb581a7b5d84da36d84b221fb9dd0f8a927b3044d82611791c9907e202e")
 
         expect(homebrew.bottle_output(bottle, nil)).to eq(
-          <<~RUBY.indent(2),
-            bottle do
-              root_url "https://example.com"
-              sha256 catalina: "109c0cb581a7b5d84da36d84b221fb9dd0f8a927b3044d82611791c9907e202e"
-            end
+          <<-RUBY,
+  bottle do
+    root_url "https://example.com"
+    sha256 catalina: "109c0cb581a7b5d84da36d84b221fb9dd0f8a927b3044d82611791c9907e202e"
+  end
           RUBY
         )
       end
@@ -526,41 +552,15 @@ describe "brew bottle" do
         bottle.sha256(catalina: "109c0cb581a7b5d84da36d84b221fb9dd0f8a927b3044d82611791c9907e202e")
 
         expect(homebrew.bottle_output(bottle, "ExampleStrategy")).to eq(
-          <<~RUBY.indent(2),
-            bottle do
-              root_url "https://example.com",
-                using: ExampleStrategy
-              sha256 catalina: "109c0cb581a7b5d84da36d84b221fb9dd0f8a927b3044d82611791c9907e202e"
-            end
+          <<-RUBY,
+  bottle do
+    root_url "https://example.com",
+      using: ExampleStrategy
+    sha256 catalina: "109c0cb581a7b5d84da36d84b221fb9dd0f8a927b3044d82611791c9907e202e"
+  end
           RUBY
         )
       end
     end
   end
-end
-
-def stub_hash(parameters)
-  <<~EOS
-    {
-      "#{parameters[:name]}":{
-         "formula":{
-            "pkg_version":"#{parameters[:version]}",
-            "path":"#{parameters[:path]}"
-         },
-         "bottle":{
-            "root_url":"#{parameters[:root_url] || HOMEBREW_BOTTLE_DEFAULT_DOMAIN}",
-            "prefix":"/usr/local",
-            "cellar":"#{parameters[:cellar]}",
-            "rebuild":0,
-            "tags":{
-               "#{parameters[:os]}":{
-                  "filename":"#{parameters[:filename]}",
-                  "local_filename":"#{parameters[:local_filename]}",
-                  "sha256":"#{parameters[:sha256]}"
-               }
-            }
-         }
-      }
-    }
-  EOS
 end

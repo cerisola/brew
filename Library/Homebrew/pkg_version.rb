@@ -1,16 +1,14 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "version"
 
 # Combination of a version and a revision.
-#
-# @api private
 class PkgVersion
   include Comparable
   extend Forwardable
 
-  REGEX = /\A(.+?)(?:_(\d+))?\z/.freeze
+  REGEX = /\A(.+?)(?:_(\d+))?\z/
   private_constant :REGEX
 
   attr_reader :version, :revision
@@ -32,14 +30,17 @@ class PkgVersion
     version.head?
   end
 
-  def to_s
+  sig { returns(String) }
+  def to_str
     if revision.positive?
       "#{version}_#{revision}"
     else
       version.to_s
     end
   end
-  alias to_str to_s
+
+  sig { returns(String) }
+  def to_s = to_str
 
   def <=>(other)
     return unless other.is_a?(PkgVersion)

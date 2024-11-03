@@ -1,34 +1,30 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "dependable"
 
 # A dependency on another Homebrew formula.
 #
-# @api private
+# @api internal
 class Dependency
-  extend Forwardable
   include Dependable
   extend Cachable
 
-  attr_reader :name, :env_proc, :option_names, :tap
+  sig { returns(String) }
+  attr_reader :name
 
-  DEFAULT_ENV_PROC = proc {}.freeze
-  private_constant :DEFAULT_ENV_PROC
+  sig { returns(T.nilable(Tap)) }
+  attr_reader :tap
 
-  def initialize(name, tags = [], env_proc = DEFAULT_ENV_PROC, option_names = [name&.split("/")&.last])
+  def initialize(name, tags = [])
     raise ArgumentError, "Dependency must have a name!" unless name
 
     @name = name
     @tags = tags
-    @env_proc = env_proc
-    @option_names = option_names
 
-    @tap = Tap.fetch(Regexp.last_match(1), Regexp.last_match(2)) if name =~ HOMEBREW_TAP_FORMULA_REGEX
-  end
+    return unless (tap_with_name = Tap.with_formula_name(name))
 
-  def to_s
-    name
+    @tap, = tap_with_name
   end
 
   def ==(other)
@@ -41,12 +37,13 @@ class Dependency
   end
 
   def to_formula
-    formula = Formulary.factory(name)
+    formula = Formulary.factory(name, warn: false)
     formula.build = BuildOptions.new(options, formula.options)
     formula
   end
 
-  def installed?(minimum_version: nil)
+  sig { params(minimum_version: T.nilable(Version), minimum_revision: T.nilable(Integer)).returns(T::Boolean) }
+  def installed?(minimum_version: nil, minimum_revision: nil)
     formula = begin
       to_formula
     rescue FormulaUnavailableError
@@ -54,15 +51,38 @@ class Dependency
     end
     return false unless formula
 
-    if minimum_version.present?
-      formula.any_version_installed? && (formula.any_installed_version.version >= minimum_version)
+    return true if formula.latest_version_installed?
+
+    return false if minimum_version.blank?
+
+    # If the opt prefix doesn't exist: we likely have an incomplete installation.
+    return false unless formula.opt_prefix.exist?
+
+    installed_keg = formula.any_installed_keg
+    return false unless installed_keg
+
+    # If the keg name doesn't match, we may have moved from an alias to a full formula and need to upgrade.
+    return false unless formula.possible_names.include?(installed_keg.name)
+
+    installed_version = installed_keg.version
+
+    # Tabs prior to 4.1.18 did not have revision or pkg_version fields.
+    # As a result, we have to be more conversative when we do not have
+    # a minimum revision from the tab and assume that if the formula has a
+    # the same version and a non-zero revision that it needs upgraded.
+    if minimum_revision.present?
+      minimum_pkg_version = PkgVersion.new(minimum_version, minimum_revision)
+      installed_version >= minimum_pkg_version
+    elsif installed_version.version == minimum_version
+      formula.revision.zero?
     else
-      formula.latest_version_installed?
+      installed_version.version > minimum_version
     end
   end
 
-  def satisfied?(inherited_options = [], minimum_version: nil)
-    installed?(minimum_version: minimum_version) && missing_options(inherited_options).empty?
+  def satisfied?(inherited_options = [], minimum_version: nil, minimum_revision: nil)
+    installed?(minimum_version:, minimum_revision:) &&
+      missing_options(inherited_options).empty?
   end
 
   def missing_options(inherited_options)
@@ -74,8 +94,8 @@ class Dependency
     required
   end
 
-  def modify_build_environment
-    env_proc&.call
+  def option_names
+    [name.split("/").last].freeze
   end
 
   sig { overridable.returns(T::Boolean) }
@@ -84,22 +104,16 @@ class Dependency
   end
 
   sig { returns(String) }
+  def to_s = name
+
+  sig { returns(String) }
   def inspect
     "#<#{self.class.name}: #{name.inspect} #{tags.inspect}>"
   end
 
-  # Define marshaling semantics because we cannot serialize @env_proc.
-  def _dump(*)
-    Marshal.dump([name, tags])
-  end
-
-  def self._load(marshaled)
-    new(*Marshal.load(marshaled)) # rubocop:disable Security/MarshalLoad
-  end
-
   sig { params(formula: Formula).returns(T.self_type) }
   def dup_with_formula_name(formula)
-    self.class.new(formula.full_name.to_s, tags, env_proc, option_names)
+    self.class.new(formula.full_name.to_s, tags)
   end
 
   class << self
@@ -108,6 +122,8 @@ class Dependency
     # the list.
     # The default filter, which is applied when a block is not given, omits
     # optionals and recommends based on what the dependent has asked for
+    #
+    # @api internal
     def expand(dependent, deps = dependent.deps, cache_key: nil, &block)
       # Keep track dependencies to avoid infinite cyclic dependency recursion.
       @expand_stack ||= []
@@ -129,14 +145,14 @@ class Dependency
         when :skip
           next if @expand_stack.include? dep.name
 
-          expanded_deps.concat(expand(dep.to_formula, cache_key: cache_key, &block))
+          expanded_deps.concat(expand(dep.to_formula, cache_key:, &block))
         when :keep_but_prune_recursive_deps
           expanded_deps << dep
         else
           next if @expand_stack.include? dep.name
 
           dep_formula = dep.to_formula
-          expanded_deps.concat(expand(dep_formula, cache_key: cache_key, &block))
+          expanded_deps.concat(expand(dep_formula, cache_key:, &block))
 
           # Fixes names for renamed/aliased formulae.
           dep = dep.dup_with_formula_name(dep_formula)
@@ -174,6 +190,8 @@ class Dependency
     end
 
     # Keep a dependency, but prune its dependencies.
+    #
+    # @api internal
     sig { void }
     def keep_but_prune_recursive_deps
       throw(:action, :keep_but_prune_recursive_deps)
@@ -186,15 +204,9 @@ class Dependency
         deps = grouped.fetch(name)
         dep  = deps.first
         tags = merge_tags(deps)
-        option_names = deps.flat_map(&:option_names).uniq
         kwargs = {}
         kwargs[:bounds] = dep.bounds if dep.uses_from_macos?
-        # TODO: simpify to just **kwargs when we require Ruby >= 2.7
-        if kwargs.empty?
-          dep.class.new(name, tags, dep.env_proc, option_names)
-        else
-          dep.class.new(name, tags, dep.env_proc, option_names, **kwargs)
-        end
+        dep.class.new(name, tags, **kwargs)
       end
     end
 
@@ -234,8 +246,9 @@ end
 class UsesFromMacOSDependency < Dependency
   attr_reader :bounds
 
-  def initialize(name, tags = [], env_proc = DEFAULT_ENV_PROC, option_names = [name], bounds:)
-    super(name, tags, env_proc, option_names)
+  sig { params(name: String, tags: T::Array[Symbol], bounds: T::Hash[Symbol, Symbol]).void }
+  def initialize(name, tags = [], bounds:)
+    super(name, tags)
 
     @bounds = bounds
   end
@@ -248,8 +261,9 @@ class UsesFromMacOSDependency < Dependency
     [name, tags, bounds].hash
   end
 
-  def installed?(minimum_version: nil)
-    use_macos_install? || super(minimum_version: minimum_version)
+  sig { params(minimum_version: T.nilable(Version), minimum_revision: T.nilable(Integer)).returns(T::Boolean) }
+  def installed?(minimum_version: nil, minimum_revision: nil)
+    use_macos_install? || super
   end
 
   sig { returns(T::Boolean) }
@@ -276,7 +290,7 @@ class UsesFromMacOSDependency < Dependency
 
   sig { override.params(formula: Formula).returns(T.self_type) }
   def dup_with_formula_name(formula)
-    self.class.new(formula.full_name.to_s, tags, env_proc, option_names, bounds: bounds)
+    self.class.new(formula.full_name.to_s, tags, bounds:)
   end
 
   sig { returns(String) }

@@ -3,7 +3,7 @@
 require "livecheck/strategy"
 require "bundle_version"
 
-describe Homebrew::Livecheck::Strategy::ExtractPlist do
+RSpec.describe Homebrew::Livecheck::Strategy::ExtractPlist do
   subject(:extract_plist) { described_class }
 
   let(:http_url) { "https://brew.sh/blog/" }
@@ -72,7 +72,7 @@ describe Homebrew::Livecheck::Strategy::ExtractPlist do
       ).to eq(versions)
     end
 
-    it "returns an array of version strings when given Items, a regex, and a block" do
+    it "returns an array of version strings when given `Item`s, a regex and a block" do
       # Returning a string from block
       expect(
         extract_plist.versions_from_items(multipart_items, multipart_regex) do |items, regex|
@@ -113,6 +113,16 @@ describe Homebrew::Livecheck::Strategy::ExtractPlist do
 
       expect(installer_artifact).to be_a(Cask::Artifact::Installer)
       expect(installer_artifact.path).to be_a(Pathname)
+    end
+
+    it "uses the provided livecheck url", :needs_macos do
+      cask = Cask::CaskLoader.load(cask_path("livecheck/livecheck-extract-plist"))
+      livecheck_url = "file://#{TEST_FIXTURE_DIR}/cask/caffeine-with-plist.zip"
+
+      expect(Homebrew::UnversionedCaskChecker).to receive(:new).with(cask).and_call_original
+      result = described_class.find_versions(cask:, url: livecheck_url)
+      expect(result)
+        .to eq({ matches: { "1.2.3"=> @version="1.2.3" }, regex: nil, url: livecheck_url })
     end
   end
 end

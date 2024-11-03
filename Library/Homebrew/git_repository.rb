@@ -6,7 +6,6 @@ require "utils/popen"
 
 # Given a {Pathname}, provides methods for querying Git repository information.
 # @see Utils::Git
-# @api private
 class GitRepository
   sig { returns(Pathname) }
   attr_reader :pathname
@@ -17,8 +16,15 @@ class GitRepository
   end
 
   sig { returns(T::Boolean) }
-  def git_repo?
+  def git_repository?
     pathname.join(".git").exist?
+  end
+
+  sig { returns(T::Boolean) }
+  def git_repo?
+    # delete this whole function when removing odisabled
+    odeprecated "GitRepository#git_repo?", "GitRepository#git_repository?"
+    git_repository?
   end
 
   # Gets the URL of the Git origin remote.
@@ -30,7 +36,7 @@ class GitRepository
   # Sets the URL of the Git origin remote.
   sig { params(origin: String).returns(T.nilable(T::Boolean)) }
   def origin_url=(origin)
-    return if !git_repo? || !Utils::Git.available?
+    return if !git_repository? || !Utils::Git.available?
 
     safe_system Utils::Git.git, "remote", "set-url", "origin", origin, chdir: pathname
   end
@@ -38,14 +44,14 @@ class GitRepository
   # Gets the full commit hash of the HEAD commit.
   sig { params(safe: T::Boolean).returns(T.nilable(String)) }
   def head_ref(safe: false)
-    popen_git("rev-parse", "--verify", "--quiet", "HEAD", safe: safe)
+    popen_git("rev-parse", "--verify", "--quiet", "HEAD", safe:)
   end
 
   # Gets a short commit hash of the HEAD commit.
   sig { params(length: T.nilable(Integer), safe: T::Boolean).returns(T.nilable(String)) }
   def short_head_ref(length: nil, safe: false)
     short_arg = length.present? ? "--short=#{length}" : "--short"
-    popen_git("rev-parse", short_arg, "--verify", "--quiet", "HEAD", safe: safe)
+    popen_git("rev-parse", short_arg, "--verify", "--quiet", "HEAD", safe:)
   end
 
   # Gets the relative date of the last commit, e.g. "1 hour ago"
@@ -57,7 +63,7 @@ class GitRepository
   # Gets the name of the currently checked-out branch, or HEAD if the repository is in a detached HEAD state.
   sig { params(safe: T::Boolean).returns(T.nilable(String)) }
   def branch_name(safe: false)
-    popen_git("rev-parse", "--abbrev-ref", "HEAD", safe: safe)
+    popen_git("rev-parse", "--abbrev-ref", "HEAD", safe:)
   end
 
   # Change the name of a local branch
@@ -104,19 +110,17 @@ class GitRepository
   # Gets the full commit message of the specified commit, or of the HEAD commit if unspecified.
   sig { params(commit: String, safe: T::Boolean).returns(T.nilable(String)) }
   def commit_message(commit = "HEAD", safe: false)
-    popen_git("log", "-1", "--pretty=%B", commit, "--", safe: safe, err: :out)&.strip
+    popen_git("log", "-1", "--pretty=%B", commit, "--", safe:, err: :out)&.strip
   end
 
   sig { returns(String) }
-  def to_s
-    pathname.to_s
-  end
+  def to_s = pathname.to_s
 
   private
 
   sig { params(args: T.untyped, safe: T::Boolean, err: T.nilable(Symbol)).returns(T.nilable(String)) }
   def popen_git(*args, safe: false, err: nil)
-    unless git_repo?
+    unless git_repository?
       return unless safe
 
       raise "Not a Git repository: #{pathname}"
@@ -128,6 +132,6 @@ class GitRepository
       raise "Git is unavailable"
     end
 
-    Utils.popen_read(Utils::Git.git, *args, safe: safe, chdir: pathname, err: err).chomp.presence
+    Utils.popen_read(Utils::Git.git, *args, safe:, chdir: pathname, err:).chomp.presence
   end
 end

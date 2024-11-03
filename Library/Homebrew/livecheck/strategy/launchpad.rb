@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 module Homebrew
@@ -27,11 +27,11 @@ module Homebrew
         URL_MATCH_REGEX = %r{
           ^https?://(?:[^/]+?\.)*launchpad\.net
           /(?<project_name>[^/]+) # The Launchpad project name
-        }ix.freeze
+        }ix
 
         # The default regex used to identify the latest version when a regex
         # isn't provided.
-        DEFAULT_REGEX = %r{class="[^"]*version[^"]*"[^>]*>\s*Latest version is (.+)\s*</}.freeze
+        DEFAULT_REGEX = %r{class="[^"]*version[^"]*"[^>]*>\s*Latest version is (.+)\s*</}
 
         # Whether the strategy can be applied to the provided URL.
         #
@@ -72,14 +72,14 @@ module Homebrew
           params(
             url:    String,
             regex:  Regexp,
-            unused: T.nilable(T::Hash[Symbol, T.untyped]),
+            unused: T.untyped,
             block:  T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }
         def self.find_versions(url:, regex: DEFAULT_REGEX, **unused, &block)
           generated = generate_input_values(url)
 
-          PageMatch.find_versions(url: generated[:url], regex: regex, **unused, &block)
+          PageMatch.find_versions(url: generated[:url], regex:, **unused, &block)
         end
       end
     end

@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 module Utils
@@ -25,16 +25,18 @@ module Utils
     sig { returns(T.nilable(Pathname)) }
     def self.launchctl
       return @launchctl if defined? @launchctl
+      return if ENV["HOMEBREW_TEST_GENERIC_OS"]
 
-      @launchctl = which("launchctl")
+      @launchctl = T.let(which("launchctl"), T.nilable(Pathname))
     end
 
     # Path to systemctl binary.
     sig { returns(T.nilable(Pathname)) }
     def self.systemctl
       return @systemctl if defined? @systemctl
+      return if ENV["HOMEBREW_TEST_GENERIC_OS"]
 
-      @systemctl = which("systemctl")
+      @systemctl = T.let(which("systemctl"), T.nilable(Pathname))
     end
 
     sig { returns(T::Boolean) }

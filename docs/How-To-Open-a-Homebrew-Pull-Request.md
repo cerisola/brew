@@ -6,11 +6,11 @@ The type of change you want to make influences which of Homebrew's main reposito
 
 ## Submit a new version of an existing formula
 
-1. Use `brew bump-formula-pr` to do everything (i.e. forking, committing, pushing) with a single command. Run `brew bump-formula-pr --help` to learn more.
+1. Use [`brew bump-formula-pr`](Manpage#bump-formula-pr-options-formula) to do everything (i.e. forking, committing, pushing) with a single command. Run `brew bump-formula-pr --help` to learn more.
 
 ## Submit a new version of an existing cask
 
-1. Use `brew bump-cask-pr` to do everything (i.e. forking, committing, pushing) with a single command. Run `brew bump-cask-pr --help` to learn more.
+1. Use [`brew bump-cask-pr`](Manpage#bump-cask-pr-options-cask) to do everything (i.e. forking, committing, pushing) with a single command. Run `brew bump-cask-pr --help` to learn more.
 
 ## Set up your own fork of the Homebrew repository
 
@@ -33,6 +33,8 @@ The type of change you want to make influences which of Homebrew's main reposito
    * `<YOUR_USERNAME>` is your GitHub username, not your local machine username.
 
 ### Formulae-related pull request
+
+Before creating a new formulae, please read [Acceptable Formulae](https://docs.brew.sh/Acceptable-Formulae).
 
 1. [Fork the Homebrew/homebrew-core repository on GitHub](https://github.com/Homebrew/homebrew-core/fork).
    * This creates a personal remote repository that you can push to. This is needed because only Homebrew maintainers have push access to the main repositories.
@@ -57,6 +59,8 @@ The type of change you want to make influences which of Homebrew's main reposito
    * `<YOUR_USERNAME>` is your GitHub username, not your local machine username.
 
 ### Cask-related pull request
+
+Before creating a new cask, please read [Acceptable Casks](https://docs.brew.sh/Acceptable-Casks).
 
 1. [Fork the Homebrew/homebrew-cask repository on GitHub](https://github.com/Homebrew/homebrew-cask/fork).
    * This creates a personal remote repository that you can push to. This is needed because only Homebrew maintainers have push access to the main repositories.
@@ -113,8 +117,8 @@ To make changes on a new branch and submit it for review, create a GitHub pull r
    brew audit --strict --online <CHANGED_FORMULA|CHANGED_CASK>
    ```
 
-6. [Make a separate commit](Formula-Cookbook.md#commit) for each changed formula with `git add` and `git commit`.
-   * Please note that our preferred commit message format for simple version updates is "`<FORMULA_NAME> <NEW_VERSION>`", e.g. "`source-highlight 3.1.8`".
+6. [Make a separate commit](Formula-Cookbook.md#commit) for each changed formula with `git add` and `git commit`. Each formula's commits must be squashed.
+   * Please note that our required commit message format for simple version updates is "`<FORMULA_NAME> <NEW_VERSION>`", e.g. "`source-highlight 3.1.8`".
 7. Upload your branch of new commits to your fork:
 
    ```sh

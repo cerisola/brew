@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "tab"
@@ -6,10 +6,12 @@ require "tab"
 module Utils
   # Helper functions for bottles.
   #
-  # @api private
+  # @api internal
   module Bottles
     class << self
       # Gets the tag for the running OS.
+      #
+      # @api internal
       sig { params(tag: T.nilable(T.any(Symbol, Tag))).returns(Tag) }
       def tag(tag = nil)
         case tag
@@ -28,21 +30,20 @@ module Utils
       def built_as?(formula)
         return false unless formula.latest_version_installed?
 
-        tab = Tab.for_keg(formula.latest_installed_prefix)
+        tab = Keg.new(formula.latest_installed_prefix).tab
         tab.built_as_bottle
       end
 
       def file_outdated?(formula, file)
+        file = file.resolved_path
+
         filename = file.basename.to_s
         return false if formula.bottle.blank?
 
-        bottle_ext, bottle_tag, = extname_tag_rebuild(filename)
-        return false if bottle_ext.blank?
-        return false if bottle_tag != tag.to_s
+        _, bottle_tag, bottle_rebuild = extname_tag_rebuild(filename)
+        return false if bottle_tag.blank?
 
-        bottle_url_ext, = extname_tag_rebuild(formula.bottle.url)
-
-        bottle_ext && bottle_url_ext && bottle_ext != bottle_url_ext
+        bottle_tag != formula.bottle.tag.to_s || bottle_rebuild.to_i != formula.bottle.rebuild
       end
 
       def extname_tag_rebuild(filename)
@@ -51,7 +52,7 @@ module Utils
 
       def receipt_path(bottle_file)
         bottle_file_list(bottle_file).find do |line|
-          line =~ %r{.+/.+/INSTALL_RECEIPT.json}
+          %r{.+/.+/INSTALL_RECEIPT.json}.match?(line)
         end
       end
 
@@ -65,12 +66,14 @@ module Utils
           receipt_file = file_from_bottle(bottle_file, receipt_file_path)
           tap = Tab.from_file_content(receipt_file, "#{bottle_file}/#{receipt_file_path}").tap
           "#{tap}/#{name}" if tap.present? && !tap.core_tap?
-        elsif (bottle_json_path = Pathname(bottle_file.sub(/\.(\d+\.)?tar\.gz$/, ".json"))) &&
-              bottle_json_path.exist? &&
-              (bottle_json_path_contents = bottle_json_path.read.presence) &&
-              (bottle_json = JSON.parse(bottle_json_path_contents).presence) &&
-              bottle_json.is_a?(Hash)
-          bottle_json.keys.first.presence
+        else
+          bottle_json_path = Pathname(bottle_file.sub(/\.(\d+\.)?tar\.gz$/, ".json"))
+          if bottle_json_path.exist? &&
+             (bottle_json_path_contents = bottle_json_path.read.presence) &&
+             (bottle_json = JSON.parse(bottle_json_path_contents).presence) &&
+             bottle_json.is_a?(Hash)
+            bottle_json.keys.first.presence
+          end
         end
         full_name ||= name
 
@@ -103,7 +106,7 @@ module Utils
 
       def load_tab(formula)
         keg = Keg.new(formula.prefix)
-        tabfile = keg/Tab::FILENAME
+        tabfile = keg/AbstractTab::FILENAME
         bottle_json_path = formula.local_bottle_path&.sub(/\.(\d+\.)?tar\.gz$/, ".json")
 
         if (tab_attributes = formula.bottle_tab_attributes.presence)
@@ -114,7 +117,14 @@ module Utils
           tab_json = bottle_hash[formula.full_name]["bottle"]["tags"][tag]["tab"].to_json
           Tab.from_file_content(tab_json, tabfile)
         else
-          Tab.for_keg(keg)
+          tab = keg.tab
+
+          tab.runtime_dependencies = begin
+            f_runtime_deps = formula.runtime_dependencies(read_from_tab: false)
+            Tab.runtime_deps_hash(formula, f_runtime_deps)
+          end
+
+          tab
         end
       end
 
@@ -148,7 +158,7 @@ module Utils
 
         system = match[:system].to_sym
         arch = match[:arch]&.to_sym || :x86_64
-        new(system: system, arch: arch)
+        new(system:, arch:)
       end
 
       sig { params(system: Symbol, arch: Symbol).void }
@@ -188,7 +198,7 @@ module Utils
         elsif macos? && [:x86_64, :intel].include?(arch)
           system
         else
-          "#{standardized_arch}_#{system}".to_sym
+          :"#{standardized_arch}_#{system}"
         end
       end
 
@@ -260,6 +270,11 @@ module Utils
         @checksum = checksum
         @cellar = cellar
       end
+
+      def ==(other)
+        self.class == other.class && tag == other.tag && checksum == other.checksum && cellar == other.cellar
+      end
+      alias eql? ==
     end
 
     # Collector for bottle specifications.
@@ -274,15 +289,20 @@ module Utils
         @tag_specs.keys
       end
 
+      def ==(other)
+        self.class == other.class && @tag_specs == other.instance_variable_get(:@tag_specs)
+      end
+      alias eql? ==
+
       sig { params(tag: Utils::Bottles::Tag, checksum: Checksum, cellar: T.any(Symbol, String)).void }
       def add(tag, checksum:, cellar:)
-        spec = Utils::Bottles::TagSpecification.new(tag: tag, checksum: checksum, cellar: cellar)
+        spec = Utils::Bottles::TagSpecification.new(tag:, checksum:, cellar:)
         @tag_specs[tag] = spec
       end
 
       sig { params(tag: Utils::Bottles::Tag, no_older_versions: T::Boolean).returns(T::Boolean) }
       def tag?(tag, no_older_versions: false)
-        tag = find_matching_tag(tag, no_older_versions: no_older_versions)
+        tag = find_matching_tag(tag, no_older_versions:)
         tag.present?
       end
 
@@ -296,7 +316,7 @@ module Utils
           .returns(T.nilable(Utils::Bottles::TagSpecification))
       }
       def specification_for(tag, no_older_versions: false)
-        tag = find_matching_tag(tag, no_older_versions: no_older_versions)
+        tag = find_matching_tag(tag, no_older_versions:)
         @tag_specs[tag] if tag
       end
 

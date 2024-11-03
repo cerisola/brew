@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
+require "cmd/list"
 require "cmd/shared_examples/args_parse"
 
-describe "brew list" do
+RSpec.describe Homebrew::Cmd::List do
   let(:formulae) { %w[bar foo qux] }
 
   it_behaves_like "parseable arguments"
@@ -17,4 +18,6 @@ describe "brew list" do
       .and not_to_output.to_stderr
       .and be_a_success
   end
+
+  # TODO: add a test for the shell fast-path (`brew_sh`)
 end

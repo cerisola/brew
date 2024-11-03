@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "rubocops/shared/helper_functions"
@@ -6,8 +6,6 @@ require "rubocops/shared/helper_functions"
 module RuboCop
   module Cop
     # This module performs common checks the `desc` field in both formulae and casks.
-    #
-    # @api private
     module DescHelper
       include HelperFunctions
 
@@ -66,7 +64,7 @@ module RuboCop
         if type == :cask &&
            (match = regex_match_group(desc, /\b(macOS|Mac( ?OS( ?X)?)?|OS ?X)(?! virtual machines?)\b/i)) &&
            match[1] != "MAC"
-          desc_problem "Description shouldn't contain the platform."
+          add_offense(@offensive_source_range, message: "Description shouldn't contain the platform.")
         end
 
         # Check if a full stop is used at the end of a desc (apart from in the case of "etc.").
@@ -86,7 +84,7 @@ module RuboCop
 
       # Auto correct desc problems. `regex_match_group` must be called before this to populate @offense_source_range.
       def desc_problem(message)
-        add_offense(@offensive_source_range, message: message) do |corrector|
+        add_offense(@offensive_source_range, message:) do |corrector|
           match_data = @offensive_node.source.match(/\A(?<quote>["'])(?<correction>.*)(?:\k<quote>)\Z/)
           correction = match_data[:correction]
           quote = match_data[:quote]
@@ -110,6 +108,8 @@ module RuboCop
           correction.gsub!(/^\s+/, "")
           correction.gsub!(/\s+$/, "")
           correction.gsub!(/\.$/, "")
+
+          next if correction == match_data[:correction]
 
           corrector.replace(@offensive_node.source_range, "#{quote}#{correction}#{quote}")
         end

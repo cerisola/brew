@@ -1,12 +1,10 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "utils/string_inreplace_extension"
 
 module Utils
   # Helper functions for replacing text in files in-place.
-  #
-  # @api private
   module Inreplace
     # Error during text replacement.
     class Error < RuntimeError
@@ -25,13 +23,21 @@ module Utils
     # defined by the formula, as only `HOMEBREW_PREFIX` is available
     # in the {DATAPatch embedded patch}.
     #
-    # @example `inreplace` supports regular expressions:
-    #   inreplace "somefile.cfg", /look[for]what?/, "replace by #{bin}/tool"
+    # ### Examples
     #
-    # @example `inreplace` supports blocks:
-    #   inreplace "Makefile" do |s|
-    #     s.gsub! "/usr/local", HOMEBREW_PREFIX.to_s
-    #   end
+    # `inreplace` supports regular expressions:
+    #
+    # ```ruby
+    # inreplace "somefile.cfg", /look[for]what?/, "replace by #{bin}/tool"
+    # ```
+    #
+    # `inreplace` supports blocks:
+    #
+    # ```ruby
+    # inreplace "Makefile" do |s|
+    #   s.gsub! "/usr/local", HOMEBREW_PREFIX.to_s
+    # end
+    # ```
     #
     # @see StringInreplaceExtension
     # @api public
@@ -41,10 +47,11 @@ module Utils
         before:       T.nilable(T.any(Pathname, Regexp, String)),
         after:        T.nilable(T.any(Pathname, String, Symbol)),
         audit_result: T::Boolean,
+        global:       T::Boolean,
         block:        T.nilable(T.proc.params(s: StringInreplaceExtension).void),
       ).void
     }
-    def self.inreplace(paths, before = nil, after = nil, audit_result: true, &block)
+    def self.inreplace(paths, before = nil, after = nil, audit_result: true, global: true, &block)
       paths = Array(paths)
       after &&= after.to_s
       before = before.to_s if before.is_a?(Pathname)
@@ -61,8 +68,10 @@ module Utils
           raise ArgumentError, "Must supply a block or before/after params" unless block
 
           yield s
+        elsif global
+          s.gsub!(T.must(before), T.must(after), audit_result:)
         else
-          s.gsub!(T.must(before), T.must(after), audit_result)
+          s.sub!(T.must(before), T.must(after), audit_result:)
         end
 
         errors[path] = s.errors unless s.errors.empty?
@@ -73,7 +82,6 @@ module Utils
       raise Utils::Inreplace::Error, errors if errors.present?
     end
 
-    # @api private
     def self.inreplace_pairs(path, replacement_pairs, read_only_run: false, silent: false)
       str = File.binread(path)
       contents = StringInreplaceExtension.new(str)

@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "uri"
@@ -7,11 +7,11 @@ require "utils/github/api"
 
 require "system_command"
 
-# Wrapper functions for the GitHub API.
+# A module that interfaces with GitHub, code like PAT scopes, credential handling and API errors.
 #
-# @api private
+# @api internal
 module GitHub
-  include SystemCommand::Mixin
+  extend SystemCommand::Mixin
 
   def self.check_runs(repo: nil, commit: nil, pull_request: nil)
     if pull_request
@@ -23,7 +23,7 @@ module GitHub
   end
 
   def self.create_check_run(repo:, data:)
-    API.open_rest(url_to("repos", repo, "check-runs"), data: data)
+    API.open_rest(url_to("repos", repo, "check-runs"), data:)
   end
 
   def self.issues(repo:, **filters)
@@ -43,13 +43,13 @@ module GitHub
   def self.create_gist(files, description, private:)
     url = "#{API_URL}/gists"
     data = { "public" => !private, "files" => files, "description" => description }
-    API.open_rest(url, data: data, scopes: CREATE_GIST_SCOPES)["html_url"]
+    API.open_rest(url, data:, scopes: CREATE_GIST_SCOPES)["html_url"]
   end
 
   def self.create_issue(repo, title, body)
     url = "#{API_URL}/repos/#{repo}/issues"
     data = { "title" => title, "body" => body }
-    API.open_rest(url, data: data, scopes: CREATE_ISSUE_FORK_OR_PR_SCOPES)["html_url"]
+    API.open_rest(url, data:, scopes: CREATE_ISSUE_FORK_OR_PR_SCOPES)["html_url"]
   end
 
   def self.repository(user, repo)
@@ -59,7 +59,7 @@ module GitHub
   def self.issues_for_formula(name, tap: CoreTap.instance, tap_remote_repo: tap&.full_name, state: nil, type: nil)
     return [] unless tap_remote_repo
 
-    search_issues(name, repo: tap_remote_repo, state: state, type: type, in: "title")
+    search_issues(name, repo: tap_remote_repo, state:, type:, in: "title")
   end
 
   def self.user
@@ -89,9 +89,9 @@ module GitHub
 
   def self.merge_pull_request(repo, number:, sha:, merge_method:, commit_message: nil)
     url = "#{API_URL}/repos/#{repo}/pulls/#{number}/merge"
-    data = { sha: sha, merge_method: merge_method }
+    data = { sha:, merge_method: }
     data[:commit_message] = commit_message if commit_message
-    API.open_rest(url, data: data, request_method: :PUT, scopes: CREATE_ISSUE_FORK_OR_PR_SCOPES)
+    API.open_rest(url, data:, request_method: :PUT, scopes: CREATE_ISSUE_FORK_OR_PR_SCOPES)
   end
 
   def self.print_pull_requests_matching(query, only = nil)
@@ -122,7 +122,7 @@ module GitHub
     data = {}
     data[:organization] = org if org
     scopes = CREATE_ISSUE_FORK_OR_PR_SCOPES
-    API.open_rest(url, data: data, scopes: scopes)
+    API.open_rest(url, data:, scopes:)
   end
 
   def self.fork_exists?(repo, org: nil)
@@ -138,9 +138,9 @@ module GitHub
 
   def self.create_pull_request(repo, title, head, base, body)
     url = "#{API_URL}/repos/#{repo}/pulls"
-    data = { title: title, head: head, base: base, body: body, maintainer_can_modify: true }
+    data = { title:, head:, base:, body:, maintainer_can_modify: true }
     scopes = CREATE_ISSUE_FORK_OR_PR_SCOPES
-    API.open_rest(url, data: data, scopes: scopes)
+    API.open_rest(url, data:, scopes:)
   end
 
   def self.private_repo?(full_name)
@@ -151,17 +151,18 @@ module GitHub
   def self.search_query_string(*main_params, **qualifiers)
     params = main_params
 
-    if (args = qualifiers.fetch(:args, nil))
-      params << if args.from && args.to
-        "created:#{args.from}..#{args.to}"
-      elsif args.from
-        "created:>=#{args.from}"
-      elsif args.to
-        "created:<=#{args.to}"
-      end
+    from = qualifiers.fetch(:from, nil)
+    to = qualifiers.fetch(:to, nil)
+
+    params << if from && to
+      "created:#{from}..#{to}"
+    elsif from
+      "created:>=#{from}"
+    elsif to
+      "created:<=#{to}"
     end
 
-    params += qualifiers.except(:args).flat_map do |key, value|
+    params += qualifiers.except(:args, :from, :to).flat_map do |key, value|
       Array(value).map { |v| "#{key.to_s.tr("_", "-")}:#{v}" }
     end
 
@@ -211,7 +212,7 @@ module GitHub
     reviews = result["repository"]["pullRequest"]["reviews"]["nodes"]
 
     valid_associations = %w[MEMBER OWNER]
-    reviews.map do |r|
+    reviews.filter_map do |r|
       next if commit.present? && commit != r["commit"]["oid"]
       next unless valid_associations.include? r["authorAssociation"]
 
@@ -226,7 +227,7 @@ module GitHub
         "name"  => name,
         "login" => r["author"]["login"],
       }
-    end.compact
+    end
   end
 
   def self.dispatch_event(user, repo, event, **payload)
@@ -238,7 +239,7 @@ module GitHub
 
   def self.workflow_dispatch_event(user, repo, workflow, ref, **inputs)
     url = "#{API_URL}/repos/#{user}/#{repo}/actions/workflows/#{workflow}/dispatches"
-    API.open_rest(url, data:           { ref: ref, inputs: inputs },
+    API.open_rest(url, data:           { ref:, inputs: },
                        request_method: :POST,
                        scopes:         CREATE_ISSUE_FORK_OR_PR_SCOPES)
   end
@@ -257,7 +258,7 @@ module GitHub
     url = "#{API_URL}/repos/#{user}/#{repo}/releases/generate-notes"
     data = { tag_name: tag }
     data[:previous_tag_name] = previous_tag if previous_tag.present?
-    API.open_rest(url, data: data, request_method: :POST, scopes: CREATE_ISSUE_FORK_OR_PR_SCOPES)
+    API.open_rest(url, data:, request_method: :POST, scopes: CREATE_ISSUE_FORK_OR_PR_SCOPES)
   end
 
   def self.create_or_update_release(user, repo, tag, id: nil, name: nil, body: nil, draft: false)
@@ -271,10 +272,10 @@ module GitHub
     data = {
       tag_name: tag,
       name:     name || tag,
-      draft:    draft,
+      draft:,
     }
     data[:body] = body if body.present?
-    API.open_rest(url, data: data, request_method: method, scopes: CREATE_ISSUE_FORK_OR_PR_SCOPES)
+    API.open_rest(url, data:, request_method: method, scopes: CREATE_ISSUE_FORK_OR_PR_SCOPES)
   end
 
   def self.upload_release_asset(user, repo, id, local_file: nil, remote_file: nil)
@@ -283,12 +284,12 @@ module GitHub
     API.open_rest(url, data_binary_path: local_file, request_method: :POST, scopes: CREATE_ISSUE_FORK_OR_PR_SCOPES)
   end
 
-  def self.get_workflow_run(user, repo, pull_request, workflow_id: "tests.yml", artifact_name: "bottles")
+  def self.get_workflow_run(user, repo, pull_request, workflow_id: "tests.yml", artifact_pattern: "bottles{,_*}")
     scopes = CREATE_ISSUE_FORK_OR_PR_SCOPES
 
     # GraphQL unfortunately has no way to get the workflow yml name, so we need an extra REST call.
     workflow_api_url = "#{API_URL}/repos/#{user}/#{repo}/actions/workflows/#{workflow_id}"
-    workflow_payload = API.open_rest(workflow_api_url, scopes: scopes)
+    workflow_payload = API.open_rest(workflow_api_url, scopes:)
     workflow_id_num = workflow_payload["id"]
 
     query = <<~EOS
@@ -318,11 +319,11 @@ module GitHub
       }
     EOS
     variables = {
-      user: user,
-      repo: repo,
+      user:,
+      repo:,
       pr:   pull_request.to_i,
     }
-    result = API.open_graphql(query, variables: variables, scopes: scopes)
+    result = API.open_graphql(query, variables:, scopes:)
 
     commit_node = result["repository"]["pullRequest"]["commits"]["nodes"].first
     check_suite = if commit_node.present?
@@ -333,11 +334,11 @@ module GitHub
       []
     end
 
-    [check_suite, user, repo, pull_request, workflow_id, scopes, artifact_name]
+    [check_suite, user, repo, pull_request, workflow_id, scopes, artifact_pattern]
   end
 
-  def self.get_artifact_url(workflow_array)
-    check_suite, user, repo, pr, workflow_id, scopes, artifact_name = *workflow_array
+  def self.get_artifact_urls(workflow_array)
+    check_suite, user, repo, pr, workflow_id, scopes, artifact_pattern = *workflow_array
     if check_suite.empty?
       raise API::Error, <<~EOS
         No matching check suite found for these criteria!
@@ -355,27 +356,36 @@ module GitHub
     end
 
     run_id = check_suite.last["workflowRun"]["databaseId"]
-    artifacts = API.open_rest("#{API_URL}/repos/#{user}/#{repo}/actions/runs/#{run_id}/artifacts", scopes: scopes)
-
-    artifact = artifacts["artifacts"].select do |art|
-      art["name"] == artifact_name
+    artifacts = []
+    per_page = 50
+    API.paginate_rest("#{API_URL}/repos/#{user}/#{repo}/actions/runs/#{run_id}/artifacts",
+                      per_page:, scopes:) do |result|
+      result = result["artifacts"]
+      artifacts.concat(result)
+      break if result.length < per_page
     end
 
-    if artifact.empty?
+    matching_artifacts =
+      artifacts
+      .group_by { |art| art["name"] }
+      .select { |name| File.fnmatch?(artifact_pattern, name, File::FNM_EXTGLOB) }
+      .map { |_, arts| arts.last }
+
+    if matching_artifacts.empty?
       raise API::Error, <<~EOS
-        No artifact with the name `#{artifact_name}` was found!
+        No artifacts with the pattern `#{artifact_pattern}` were found!
           #{Formatter.url check_suite.last["workflowRun"]["url"]}
       EOS
     end
 
-    artifact.last["archive_download_url"]
+    matching_artifacts.map { |art| art["archive_download_url"] }
   end
 
   def self.public_member_usernames(org, per_page: 100)
     url = "#{API_URL}/orgs/#{org}/public_members"
     members = []
 
-    API.paginate_rest(url, per_page: per_page) do |result|
+    API.paginate_rest(url, per_page:) do |result|
       result = result.map { |member| member["login"] }
       members.concat(result)
 
@@ -424,56 +434,49 @@ module GitHub
       )
   }
   def self.sponsorships(user)
-    has_next_page = T.let(true, T::Boolean)
-    after = ""
-    sponsorships = T.let([], T::Array[Hash])
-    errors = T.let([], T::Array[Hash])
-    while has_next_page
-      query = <<~EOS
-          { organization(login: "#{user}") {
-            sponsorshipsAsMaintainer(first: 100 #{after}) {
-              pageInfo {
-                startCursor
-                hasNextPage
-                endCursor
-              }
-              totalCount
-              nodes {
-                tier {
+    query = <<~EOS
+        query($user: String!, $after: String) { organization(login: $user) {
+          sponsorshipsAsMaintainer(first: 100, after: $after) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              tier {
+                monthlyPriceInDollars
+                closestLesserValueTier {
                   monthlyPriceInDollars
-                  closestLesserValueTier {
-                    monthlyPriceInDollars
-                  }
                 }
-                sponsorEntity {
-                  __typename
-                  ... on Organization { login name }
-                  ... on User { login name }
-                }
+              }
+              sponsorEntity {
+                ... on Organization { login name }
+                ... on User { login name }
               }
             }
           }
         }
-      EOS
+      }
+    EOS
+
+    sponsorships = T.let([], T::Array[Hash])
+    errors = T.let([], T::Array[Hash])
+
+    API.paginate_graphql(query, variables: { user: }, scopes: ["user"], raise_errors: false) do |result|
       # Some organisations do not permit themselves to be queried through the
       # API like this and raise an error so handle these errors later.
       # This has been reported to GitHub.
-      result = API.open_graphql(query, scopes: ["user"], raise_errors: false)
       errors += result["errors"] if result["errors"].present?
 
-      current_sponsorships = result["data"]["organization"]["sponsorshipsAsMaintainer"]
+      current_sponsorships = result.dig("data", "organization", "sponsorshipsAsMaintainer")
+      # if `current_sponsorships` is blank, then there should be errors to report.
+      next { "hasNextPage" => false } if current_sponsorships.blank?
 
       # The organisations mentioned above will show up as nil nodes.
       if (nodes = current_sponsorships["nodes"].compact.presence)
         sponsorships += nodes
       end
 
-      if (page_info = current_sponsorships["pageInfo"].presence) &&
-         page_info["hasNextPage"].presence
-        after = %Q(, after: "#{page_info["endCursor"]}")
-      else
-        has_next_page = false
-      end
+      current_sponsorships.fetch("pageInfo")
     end
 
     # Only raise errors if we didn't get any sponsorships.
@@ -491,14 +494,16 @@ module GitHub
       {
         name:                        sponsor["name"].presence || sponsor["login"],
         login:                       sponsor["login"],
-        monthly_amount:              monthly_amount,
-        closest_tier_monthly_amount: closest_tier_monthly_amount,
+        monthly_amount:,
+        closest_tier_monthly_amount:,
       }
     end
   end
 
-  def self.get_repo_license(user, repo)
-    response = API.open_rest("#{API_URL}/repos/#{user}/#{repo}/license")
+  def self.get_repo_license(user, repo, ref: nil)
+    url = "#{API_URL}/repos/#{user}/#{repo}/license"
+    url += "?ref=#{ref}" if ref.present?
+    response = API.open_rest(url)
     return unless response.key?("license")
 
     response["license"]["spdx_id"]
@@ -509,24 +514,74 @@ module GitHub
   end
 
   def self.pull_request_title_regex(name, version = nil)
-    return /(^|\s)#{Regexp.quote(name)}(:|,|\s|$)/i.freeze if version.blank?
+    return /(^|\s)#{Regexp.quote(name)}(:|,|\s|$)/i if version.blank?
 
-    /(^|\s)#{Regexp.quote(name)}(:|,|\s)(.*\s)?#{Regexp.quote(version)}(:|,|\s|$)/i.freeze
+    /(^|\s)#{Regexp.quote(name)}(:|,|\s)(.*\s)?#{Regexp.quote(version)}(:|,|\s|$)/i
   end
 
+  sig {
+    params(name: String, tap_remote_repo: String, state: T.nilable(String), version: T.nilable(String))
+      .returns(T::Array[T::Hash[String, T.untyped]])
+  }
   def self.fetch_pull_requests(name, tap_remote_repo, state: nil, version: nil)
+    return [] if Homebrew::EnvConfig.no_github_api?
+
     regex = pull_request_title_regex(name, version)
     query = "is:pr #{name} #{version}".strip
 
-    issues_for_formula(query, tap_remote_repo: tap_remote_repo, state: state).select do |pr|
-      pr["html_url"].include?("/pull/") && regex.match?(pr["title"])
+    # Unauthenticated users cannot use GraphQL so use search REST API instead.
+    # Limit for this is 30/minute so is usually OK unless you're spamming bump PRs (e.g. CI).
+    if API.credentials_type == :none
+      return issues_for_formula(query, tap_remote_repo:, state:).select do |pr|
+        pr["html_url"].include?("/pull/") && regex.match?(pr["title"])
+      end
+    elsif state == "open" && ENV["GITHUB_REPOSITORY_OWNER"] == "Homebrew"
+      # Try use PR API, which might be cheaper on rate limits in some cases.
+      # The rate limit of the search API under GraphQL is unclear as it
+      # costs the same as any other query according to /rate_limit.
+      # The PR API is also not very scalable so limit to Homebrew CI.
+      return fetch_open_pull_requests(name, tap_remote_repo, version:)
+    end
+
+    query += " repo:#{tap_remote_repo} in:title"
+    query += " state:#{state}" if state.present?
+    graphql_query = <<~EOS
+      query($query: String!, $after: String) {
+        search(query: $query, type: ISSUE, first: 100, after: $after) {
+          nodes {
+            ... on PullRequest {
+              number
+              title
+              url
+              state
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    EOS
+    variables = { query: }
+
+    pull_requests = []
+    API.paginate_graphql(graphql_query, variables:) do |result|
+      data = result["search"]
+      pull_requests.concat(data["nodes"].select { |pr| regex.match?(pr["title"]) })
+      data["pageInfo"]
+    end
+    pull_requests.map! do |pr|
+      pr.merge({
+        "html_url" => pr.delete("url"),
+        "state"    => pr.fetch("state").downcase,
+      })
     end
   rescue API::RateLimitExceededError => e
     opoo e.message
-    []
+    pull_requests || []
   end
 
-  # WARNING: The GitHub API returns results in a slightly different form here compared to `fetch_pull_requests`.
   def self.fetch_open_pull_requests(name, tap_remote_repo, version: nil)
     return [] if tap_remote_repo.blank?
 
@@ -537,29 +592,55 @@ module GitHub
 
     @open_pull_requests ||= {}
     @open_pull_requests[cache_key] ||= begin
+      query = <<~EOS
+        query($owner: String!, $repo: String!, $states: [PullRequestState!], $after: String) {
+          repository(owner: $owner, name: $repo) {
+            pullRequests(states: $states, first: 100, after: $after) {
+              nodes {
+                number
+                title
+                url
+              }
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+            }
+          }
+        }
+      EOS
       owner, repo = tap_remote_repo.split("/")
-      endpoint = "repos/#{owner}/#{repo}/pulls"
-      query_parameters = ["state=open", "direction=desc"]
+      variables = { owner:, repo:, states: ["OPEN"] }
+
       pull_requests = []
-
-      API.paginate_rest("#{API_URL}/#{endpoint}", additional_query_params: query_parameters.join("&")) do |page|
-        pull_requests.concat(page)
+      API.paginate_graphql(query, variables:) do |result|
+        data = result.dig("repository", "pullRequests")
+        pull_requests.concat(data["nodes"])
+        data["pageInfo"]
       end
-
       pull_requests
     end
 
     regex = pull_request_title_regex(name, version)
     @open_pull_requests[cache_key].select { |pr| regex.match?(pr["title"]) }
+                                  .map { |pr| pr.merge("html_url" => pr.delete("url")) }
+  rescue API::RateLimitExceededError => e
+    opoo e.message
+    pull_requests || []
   end
 
-  def self.check_for_duplicate_pull_requests(name, tap_remote_repo, state:, file:, args:, version: nil)
-    # `fetch_open_pull_requests` is more reliable but *really* slow, so let's use it only in CI.
-    pull_requests = if state == "open" && ENV["CI"].present?
-      fetch_open_pull_requests(name, tap_remote_repo, version: version)
-    else
-      fetch_pull_requests(name, tap_remote_repo, state: state, version: version)
-    end
+  sig {
+    params(
+      name:            String,
+      tap_remote_repo: String,
+      file:            String,
+      quiet:           T::Boolean,
+      state:           T.nilable(String),
+      version:         T.nilable(String),
+    ).void
+  }
+  def self.check_for_duplicate_pull_requests(name, tap_remote_repo, file:, quiet: false, state: nil, version: nil)
+    pull_requests = fetch_pull_requests(name, tap_remote_repo, state:, version:)
 
     pull_requests.select! do |pr|
       get_pull_request_changed_files(
@@ -568,17 +649,25 @@ module GitHub
     end
     return if pull_requests.blank?
 
+    confidence = version ? "are" : "might be"
     duplicates_message = <<~EOS
-      These #{state} pull requests may be duplicates:
+      These #{state} pull requests #{confidence} duplicates:
       #{pull_requests.map { |pr| "#{pr["title"]} #{pr["html_url"]}" }.join("\n")}
     EOS
-    error_message = "Duplicate PRs should not be opened. Use --force to override this error."
-    if args.force? && !args.quiet?
-      opoo duplicates_message
-    elsif !args.force? && args.quiet?
-      odie error_message
-    elsif !args.force?
+    error_message = <<~EOS
+      Duplicate PRs must not be opened.
+      Manually open these PRs if you are sure that they are not duplicates (and tell us that in the PR).
+    EOS
+
+    if version
       odie <<~EOS
+        #{duplicates_message.chomp}
+        #{error_message}
+      EOS
+    elsif quiet
+      opoo error_message
+    else
+      opoo <<~EOS
         #{duplicates_message.chomp}
         #{error_message}
       EOS
@@ -589,18 +678,21 @@ module GitHub
     API.open_rest(url_to("repos", tap_remote_repo, "pulls", pull_request, "files"))
   end
 
+  private_class_method def self.add_auth_token_to_url!(url)
+    if API.credentials_type == :env_token
+      url.sub!(%r{^https://github\.com/}, "https://x-access-token:#{API.credentials}@github.com/")
+    end
+    url
+  end
+
   def self.forked_repo_info!(tap_remote_repo, org: nil)
-    response = create_fork(tap_remote_repo, org: org)
+    response = create_fork(tap_remote_repo, org:)
     # GitHub API responds immediately but fork takes a few seconds to be ready.
-    sleep 1 until fork_exists?(tap_remote_repo, org: org)
+    sleep 1 until fork_exists?(tap_remote_repo, org:)
     remote_url = if system("git", "config", "--local", "--get-regexp", "remote..*.url", "git@github.com:.*")
       response.fetch("ssh_url")
     else
-      url = response.fetch("clone_url")
-      if (api_token = Homebrew::EnvConfig.github_api_token)
-        url.gsub!(%r{^https://github\.com/}, "https://#{api_token}@github.com/")
-      end
-      url
+      add_auth_token_to_url!(response.fetch("clone_url"))
     end
     username = response.fetch("owner").fetch("login")
     [remote_url, username]
@@ -612,7 +704,7 @@ module GitHub
     old_contents = info[:old_contents]
     additional_files = info[:additional_files] || []
     remote = info[:remote] || "origin"
-    remote_branch = info[:remote_branch] || tap.git_repo.origin_branch_name
+    remote_branch = info[:remote_branch] || tap.git_repository.origin_branch_name
     branch = info[:branch_name]
     commit_message = info[:commit_message]
     previous_branch = info[:previous_branch] || "-"
@@ -620,6 +712,7 @@ module GitHub
     pr_message = info[:pr_message]
 
     sourcefile_path.parent.cd do
+      require "utils/popen"
       git_dir = Utils.popen_read("git", "rev-parse", "--git-dir").chomp
       shallow = !git_dir.empty? && File.exist?("#{git_dir}/shallow")
       changed_files = [sourcefile_path]
@@ -647,6 +740,7 @@ module GitHub
         unless args.commit?
           if args.no_fork?
             remote_url = Utils.popen_read("git", "remote", "get-url", "--push", "origin").chomp
+            add_auth_token_to_url!(remote_url)
             username = tap.user
           else
             begin
@@ -709,7 +803,7 @@ module GitHub
       raise API::Error, "Getting #{commit_count} commits would exceed limit of #{API_MAX_ITEMS} API items!"
     end
 
-    API.paginate_rest(commits_api, per_page: per_page) do |result, page|
+    API.paginate_rest(commits_api, per_page:) do |result, page|
       commits.concat(result.map { |c| c["sha"] })
 
       return commits if commits.length == commit_count
@@ -728,6 +822,7 @@ module GitHub
   def self.last_commit(user, repo, ref, version)
     return if Homebrew::EnvConfig.no_github_api?
 
+    require "utils/curl"
     output, _, status = Utils::Curl.curl_output(
       "--silent", "--head", "--location",
       "--header", "Accept: application/vnd.github.sha",
@@ -744,8 +839,9 @@ module GitHub
   end
 
   def self.multiple_short_commits_exist?(user, repo, commit)
-    return if Homebrew::EnvConfig.no_github_api?
+    return false if Homebrew::EnvConfig.no_github_api?
 
+    require "utils/curl"
     output, _, status = Utils::Curl.curl_output(
       "--silent", "--head", "--location",
       "--header", "Accept: application/vnd.github.sha",
@@ -758,12 +854,12 @@ module GitHub
     output[/^Status: (200)/, 1] != "200"
   end
 
-  def self.repo_commits_for_user(nwo, user, filter, args, max)
+  def self.repo_commits_for_user(nwo, user, filter, from, to, max)
     return if Homebrew::EnvConfig.no_github_api?
 
     params = ["#{filter}=#{user}"]
-    params << "since=#{DateTime.parse(args.from).iso8601}" if args.from
-    params << "until=#{DateTime.parse(args.to).iso8601}" if args.to
+    params << "since=#{DateTime.parse(from).iso8601}" if from.present?
+    params << "until=#{DateTime.parse(to).iso8601}" if to.present?
 
     commits = []
     API.paginate_rest("#{API_URL}/repos/#{nwo}/commits", additional_query_params: params.join("&")) do |result|
@@ -776,11 +872,11 @@ module GitHub
     commits
   end
 
-  def self.count_repo_commits(nwo, user, args, max: nil)
+  def self.count_repo_commits(nwo, user, from: nil, to: nil, max: nil)
     odie "Cannot count commits, HOMEBREW_NO_GITHUB_API set!" if Homebrew::EnvConfig.no_github_api?
 
-    author_shas = repo_commits_for_user(nwo, user, "author", args, max)
-    committer_shas = repo_commits_for_user(nwo, user, "committer", args, max)
+    author_shas = repo_commits_for_user(nwo, user, "author", from, to, max)
+    committer_shas = repo_commits_for_user(nwo, user, "committer", from, to, max)
     return [0, 0] if author_shas.blank? && committer_shas.blank?
 
     author_count = author_shas.count
@@ -788,5 +884,63 @@ module GitHub
     committer_count = committer_shas.difference(author_shas).count
 
     [author_count, committer_count]
+  end
+
+  MAXIMUM_OPEN_PRS = 15
+
+  sig { params(tap: T.nilable(Tap)).returns(T::Boolean) }
+  def self.too_many_open_prs?(tap)
+    # We don't enforce unofficial taps.
+    return false if tap.nil? || !tap.official?
+
+    # BrewTestBot can open as many PRs as it wants.
+    return false if ENV["HOMEBREW_TEST_BOT_AUTOBUMP"].present?
+
+    odie "Cannot count PRs, HOMEBREW_NO_GITHUB_API set!" if Homebrew::EnvConfig.no_github_api?
+
+    query = <<~EOS
+      query($after: String) {
+        viewer {
+          login
+          pullRequests(first: 100, states: OPEN, after: $after) {
+            totalCount
+            nodes {
+              baseRepository {
+                owner {
+                  login
+                }
+              }
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+      }
+    EOS
+    puts
+
+    homebrew_prs_count = 0
+
+    API.paginate_graphql(query) do |result|
+      data = result.fetch("viewer")
+      github_user = data.fetch("login")
+
+      # BrewTestBot can open as many PRs as it wants.
+      return false if github_user.casecmp?("brewtestbot")
+
+      pull_requests = data.fetch("pullRequests")
+      return false if pull_requests.fetch("totalCount") < MAXIMUM_OPEN_PRS
+
+      homebrew_prs_count += pull_requests.fetch("nodes").count do |node|
+        node.dig("baseRepository", "owner", "login").casecmp?("homebrew")
+      end
+      return true if homebrew_prs_count >= MAXIMUM_OPEN_PRS
+
+      pull_requests.fetch("pageInfo")
+    end
+
+    false
   end
 end

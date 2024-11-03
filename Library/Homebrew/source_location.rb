@@ -3,8 +3,6 @@
 
 module Homebrew
   # A location in source code.
-  #
-  # @api private
   class SourceLocation
     sig { returns(Integer) }
     attr_reader :line
@@ -13,7 +11,7 @@ module Homebrew
     attr_reader :column
 
     sig { params(line: Integer, column: T.nilable(Integer)).void }
-    def initialize(line, column = T.unsafe(nil))
+    def initialize(line, column = nil)
       @line = line
       @column = column
     end

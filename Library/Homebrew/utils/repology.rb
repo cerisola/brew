@@ -1,11 +1,9 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "utils/curl"
 
 # Repology API client.
-#
-# @api private
 module Repology
   HOMEBREW_CORE = "homebrew"
   HOMEBREW_CASK = "homebrew_casks"
@@ -38,6 +36,7 @@ module Repology
     data = JSON.parse(output)
     { name => data }
   rescue => e
+    require "utils/backtrace"
     error_output = [errors, "#{e.class}: #{e}", Utils::Backtrace.clean(e)].compact
     if Homebrew::EnvConfig.developer?
       $stderr.puts(*error_output)
@@ -66,7 +65,7 @@ module Repology
     while page_no <= MAX_PAGINATION
       odebug "Paginating Repology API page: #{page_no}"
 
-      response = query_api(last_package, repository: repository)
+      response = query_api(last_package, repository:)
       outdated_packages.merge!(response)
       last_package = response.keys.max
 

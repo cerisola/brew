@@ -3,7 +3,7 @@
 require "formula"
 require "caveats"
 
-describe Caveats do
+RSpec.describe Caveats do
   subject(:caveats) { described_class.new(f) }
 
   let(:f) { formula { url "foo-1.0" } }
@@ -31,30 +31,9 @@ describe Caveats do
   end
 
   describe "#caveats" do
-    context "when f.plist is not nil", :needs_macos do
+    context "when service block is defined" do
       before do
-        allow(Utils::Service).to receive(:launchctl?).and_return(true)
-      end
-
-      it "prints error when no launchd is present" do
-        f = formula do
-          url "foo-1.0"
-          def plist
-            "plist_test.plist"
-          end
-        end
-        expect(Utils::Service).to receive(:launchctl?).once.and_return(false)
-        expect(described_class.new(f).caveats).to include("provides a launchd plist which can only be used on macOS!")
-      end
-
-      it "prints plist login information when f.plist_startup is nil" do
-        f = formula do
-          url "foo-1.0"
-          def plist
-            "plist_test.plist"
-          end
-        end
-        expect(described_class.new(f).caveats).to include("restart at login")
+        allow(Utils::Service).to receive_messages(launchctl?: true, systemctl?: true)
       end
 
       it "gives information about service" do
@@ -71,42 +50,6 @@ describe Caveats do
         expect(caveats).to include("background service")
       end
 
-      it "warns about brew failing under tmux" do
-        f = formula do
-          url "foo-1.0"
-          def plist
-            "plist_test.plist"
-          end
-        end
-        ENV["HOMEBREW_TMUX"] = "1"
-        allow(Homebrew).to receive(:_system).and_return(true)
-        allow(Homebrew).to receive(:_system).with("/usr/bin/pbpaste").and_return(false)
-        caveats = described_class.new(f).caveats
-
-        expect(caveats).to include("WARNING:")
-        expect(caveats).to include("tmux")
-      end
-
-      # @todo This should get deprecated and the service block `plist_name` method should get used instead.
-      it "prints info when there are custom service files" do
-        f = formula do
-          url "foo-1.0"
-          def plist_name
-            "custom.mxcl.foo"
-          end
-        end
-        expect(Utils::Service).to receive(:installed?).with(f).once.and_return(true)
-        expect(Utils::Service).to receive(:running?).with(f).once.and_return(false)
-        expect(described_class.new(f).caveats).to include("restart at login")
-      end
-    end
-
-    context "when service block is defined" do
-      before do
-        allow(Utils::Service).to receive(:launchctl?).and_return(true)
-        allow(Utils::Service).to receive(:systemctl?).and_return(true)
-      end
-
       it "prints warning when no service daemon is found" do
         f = formula do
           url "foo-1.0"
@@ -114,8 +57,8 @@ describe Caveats do
             run [bin/"cmd"]
           end
         end
-        expect(Utils::Service).to receive(:launchctl?).twice.and_return(false)
-        expect(Utils::Service).to receive(:systemctl?).once.and_return(false)
+        expect(Utils::Service).to receive(:launchctl?).and_return(false)
+        expect(Utils::Service).to receive(:systemctl?).and_return(false)
         expect(described_class.new(f).caveats).to include("service which can only be used on macOS or systemd!")
       end
 
@@ -131,7 +74,7 @@ describe Caveats do
         expect(described_class.new(f).caveats).to include("startup")
       end
 
-      it "prints service login information when f.plist_startup is nil" do
+      it "prints service login information" do
         f = formula do
           url "foo-1.0"
           service do
@@ -284,6 +227,7 @@ describe Caveats do
         let(:caveats) { described_class.new(f).caveats }
 
         it "adds the correct amount of new lines to the output" do
+          expect(Utils::Service).to receive(:launchctl?).at_least(:once).and_return(true)
           expect(caveats).to include("something else")
           expect(caveats).to include("keg-only")
           expect(caveats).to include("if you don't want/need a background service")
@@ -301,30 +245,34 @@ describe Caveats do
       let(:caveats) { described_class.new(f).caveats }
       let(:path) { f.prefix.resolved_path }
 
+      let(:bash_completion_dir) { path/"etc/bash_completion.d" }
+      let(:fish_vendor_completions) { path/"share/fish/vendor_completions.d" }
+      let(:zsh_site_functions) { path/"share/zsh/site-functions" }
+
       before do
         # don't try to load/fetch gcc/glibc
-        allow(DevelopmentTools).to receive(:needs_libc_formula?).and_return(false)
-        allow(DevelopmentTools).to receive(:needs_compiler_formula?).and_return(false)
+        allow(DevelopmentTools).to receive_messages(needs_libc_formula?: false, needs_compiler_formula?: false)
 
-        allow_any_instance_of(Pathname).to receive(:children).and_return([Pathname.new("child")])
         allow_any_instance_of(Object).to receive(:which).with(any_args).and_return(Pathname.new("shell"))
-        allow(Utils::Shell).to receive(:preferred).and_return(nil)
-        allow(Utils::Shell).to receive(:parent).and_return(nil)
+        allow(Utils::Shell).to receive_messages(preferred: nil, parent: nil)
       end
 
-      it "gives dir where Bash completions have been installed" do
-        (path/"etc/bash_completion.d").mkpath
+      it "includes where Bash completions have been installed to" do
+        bash_completion_dir.mkpath
+        FileUtils.touch bash_completion_dir/f.name
         expect(caveats).to include(HOMEBREW_PREFIX/"etc/bash_completion.d")
       end
 
-      it "gives dir where zsh completions have been installed" do
-        (path/"share/zsh/site-functions").mkpath
-        expect(caveats).to include(HOMEBREW_PREFIX/"share/zsh/site-functions")
+      it "includes where fish completions have been installed to" do
+        fish_vendor_completions.mkpath
+        FileUtils.touch fish_vendor_completions/f.name
+        expect(caveats).to include(HOMEBREW_PREFIX/"share/fish/vendor_completions.d")
       end
 
-      it "gives dir where fish completions have been installed" do
-        (path/"share/fish/vendor_completions.d").mkpath
-        expect(caveats).to include(HOMEBREW_PREFIX/"share/fish/vendor_completions.d")
+      it "includes where zsh completions have been installed to" do
+        zsh_site_functions.mkpath
+        FileUtils.touch zsh_site_functions/f.name
+        expect(caveats).to include(HOMEBREW_PREFIX/"share/zsh/site-functions")
       end
     end
   end

@@ -2,7 +2,9 @@
 
 require "system_command"
 
-describe SystemCommand::Result do
+RSpec.describe SystemCommand::Result do
+  RSpec::Matchers.alias_matcher :a_string_containing, :include
+
   subject(:result) do
     described_class.new([], output_array, instance_double(Process::Status, exitstatus: 0, success?: true),
                         secrets: [])

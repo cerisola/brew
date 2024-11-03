@@ -10,7 +10,7 @@ A detailed checklist can be found [below](#detailed-merge-checklist). This is al
 - Ensure it is not a library that can be installed with [gem](https://en.wikipedia.org/wiki/RubyGems), [cpan](https://en.wikipedia.org/wiki/Cpan) or [pip](https://pip.pypa.io/en/stable/).
 - Ensure that any dependencies are accurate and minimal. We don't need to support every possible optional feature for the software.
 - When bottles aren't required or affected, use the GitHub squash & merge workflow for a single-formula PR or rebase & merge workflow for a multiple-formulae PR. See the [How to merge without bottles](#how-to-merge-without-bottles) section below for more details.
-- Use `brew pr-publish` or `brew pr-pull` otherwise, which adds messages to auto-close pull requests and pull bottles built by Brew Test Bot.
+- Use `brew pr-publish` or `brew pr-pull` otherwise, which adds messages to auto-close pull requests and pull bottles built by BrewTestBot.
 - Thank people for contributing.
 
 Checking dependencies is important, because they will probably stick around forever. Nobody really checks if they are necessary or not.
@@ -21,11 +21,11 @@ Homebrew is about Unix software. Stuff that builds to an `.app` should be in Hom
 
 ## Merging, rebasing, cherry-picking
 
-For most PRs that make formula modifications, you can simply approve the PR and an automatic merge (with bottles) will be performed by [@BrewTestBot](https://github.com/BrewTestBot). See [Brew Test Bot for Maintainers](Brew-Test-Bot-For-Core-Contributors.md) for more information.
+For most PRs that make formula modifications, you can simply approve the PR and an automatic merge (with bottles) will be performed by [@BrewTestBot](https://github.com/BrewTestBot). See [BrewTestBot for Maintainers](BrewTestBot-For-Maintainers.md) for more information.
 
-Certain PRs may not be merged automatically by [@BrewTestBot](https://github.com/BrewTestBot), even after they've been approved. This includes PRs with the `new formula`, `automerge-skip`, and `linux-only` labels. To trigger a merge for these PRs, run `brew pr-publish`.
+Certain PRs may not be merged automatically by [@BrewTestBot](https://github.com/BrewTestBot), even after they've been approved. This includes PRs with the `new formula` and `automerge-skip` labels. To trigger a merge for these PRs, run `brew pr-publish`.
 
-PRs modifying formulae that don't need bottles or making changes that don't require new bottles to be pulled should use GitHub's squash & merge or rebase & merge workflows. See the [table below](#how-to-merge-without-bottles) for more details.
+PRs modifying formulae that don't need bottles or making changes that don't require new bottles to be pulled should use GitHub's squash & merge or rebase & merge workflows.
 
 Otherwise, you should use `brew pr-pull` (or `rebase`/`cherry-pick` contributions).
 
@@ -34,10 +34,6 @@ Don’t `rebase` until you finally `push`. Once `master` is pushed, you can’t 
 Cherry-picking changes the date of the commit, which kind of sucks.
 
 Don’t `merge` unclean branches. So if someone is still learning `git` and their branch is filled with nonsensical merges, then `rebase` and squash the commits. Our main branch history should be useful to other people, not confusing.
-
-Here’s a flowchart for managing a PR which is ready to merge:
-
-![Flowchart for managing pull requests](assets/img/docs/managing-pull-requests.drawio.svg)
 
 Only one maintainer is necessary to approve and merge the addition of a new or updated formula which passes CI. However, if the formula addition or update proves controversial the maintainer who adds it will be expected to answer requests and fix problems that arise with it in future.
 
@@ -64,7 +60,7 @@ We now accept versioned formulae as long as they [meet the requirements](Version
 
 ## Testing
 
-We need to at least check that it builds. Use [Brew Test Bot](Brew-Test-Bot.md) for this.
+We need to at least check that it builds. Use [BrewTestBot](BrewTestBot.md) for this.
 
 Verify the formula works if possible. If you can’t tell (e.g. if it’s a library) trust the original contributor; it worked for them, so chances are it is fine. If you aren’t an expert in the tool in question, you can’t really gauge if the formula installed the program correctly. At some point an expert will come along, cry blue murder that it doesn’t work, and fix it. This is how open source works. Ideally, request a `test do` block to test that functionality is consistently available.
 
@@ -158,9 +154,9 @@ Solution:
 
 ```ruby
 if OS.mac?
-    system ENV.cc, "-I#{include}", "-L#{lib}", "-lmagic", "test.c", "-o", "test"
+  system ENV.cc, "-I#{include}", "-L#{lib}", "-lmagic", "test.c", "-o", "test"
 else
-    system ENV.cc, "test.c", "-I#{include}", "-L#{lib}", "-lmagic", "-o", "test"
+  system ENV.cc, "test.c", "-I#{include}", "-L#{lib}", "-lmagic", "-o", "test"
 end
 ```
 
@@ -186,7 +182,7 @@ Here is a rough outline of how to use a staging branch:
 
 1. Open a _draft_ PR that merges the staging branch into the `master` branch. This allows you to keep track of the work done so far. You may wish to apply the [`no long build conflict`](https://github.com/Homebrew/homebrew-core/labels/no%20long%20build%20conflict) label to this PR to avoid conflicting changes from being merged to the `master` branch.
 
-1. Open PRs targetting the staging branch that update the affected formulae. Each PR should touch as few formulae as possible. The typical PR that targets the staging branch will update only one formula at a time. Staging branch PRs can be merged using the same process as PRs that target the `master` branch. Ideally, these PRs should be opened in [topological order](https://en.wikipedia.org/wiki/Topological_sorting) according to the dependency graph, but we don't currently have good tooling for generating a topological sort. (Help wanted.)
+1. Open PRs targeting the staging branch that update the affected formulae. Each PR should touch as few formulae as possible. The typical PR that targets the staging branch will update only one formula at a time. Staging branch PRs can be merged using the same process as PRs that target the `master` branch. Ideally, these PRs should be opened in [topological order](https://en.wikipedia.org/wiki/Topological_sorting) according to the dependency graph, but we don't currently have good tooling for generating a topological sort. (Help wanted.)
 
 1. Label PRs that target the staging branch with the [`staging-branch-pr`](https://github.com/Homebrew/homebrew-core/labels/staging-branch-pr) label for ease of tracking and review. (TODO: Add some automation for this to homebrew-core.)
 

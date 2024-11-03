@@ -2,7 +2,7 @@
 
 require "download_strategy"
 
-describe CurlGitHubPackagesDownloadStrategy do
+RSpec.describe CurlGitHubPackagesDownloadStrategy do
   subject(:strategy) { described_class.new(url, name, version, **specs) }
 
   let(:name) { "foo" }
@@ -26,6 +26,8 @@ describe CurlGitHubPackagesDownloadStrategy do
   describe "#fetch" do
     before do
       stub_const("HOMEBREW_GITHUB_PACKAGES_AUTH", authorization) if authorization.present?
+
+      allow(strategy).to receive(:curl_version).and_return(Version.new("8.7.1"))
 
       allow(strategy).to receive(:system_command)
         .with(
@@ -56,7 +58,7 @@ describe CurlGitHubPackagesDownloadStrategy do
       strategy.fetch
     end
 
-    context "with Github Packages authentication defined" do
+    context "with GitHub Packages authentication defined" do
       let(:authorization) { "Bearer dead-beef-cafe" }
 
       it "calls curl with the provided header value" do

@@ -26,7 +26,7 @@ RSpec.shared_context "custom internal commands" do # rubocop:disable RSpec/Conte
   end
 end
 
-describe Commands do
+RSpec.describe Commands do
   include_context "custom internal commands"
 
   specify "::internal_commands" do
@@ -53,7 +53,7 @@ describe Commands do
 
       FileUtils.touch "#{dir}/brew-t4"
 
-      allow(Tap).to receive(:cmd_directories).and_return([dir])
+      allow(described_class).to receive(:tap_cmd_directories).and_return([dir])
 
       cmds = described_class.external_commands
 

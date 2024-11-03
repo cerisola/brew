@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 require "download_strategy"
@@ -9,8 +9,6 @@ module GitHub
   #
   # @param url [String] URL to download from
   # @param artifact_id [String] a value that uniquely identifies the downloaded artifact
-  #
-  # @api private
   sig { params(url: String, artifact_id: String).void }
   def self.download_artifact(url, artifact_id)
     raise API::MissingAuthenticationError if API.credentials == :none
@@ -18,41 +16,40 @@ module GitHub
     # We use a download strategy here to leverage the Homebrew cache
     # to avoid repeated downloads of (possibly large) bottles.
     token = API.credentials
-    downloader = GitHubArtifactDownloadStrategy.new(url, artifact_id, token: token)
+    downloader = GitHubArtifactDownloadStrategy.new(url, artifact_id, token:)
     downloader.fetch
     downloader.stage
   end
 end
 
 # Strategy for downloading an artifact from GitHub Actions.
-#
-# @api private
 class GitHubArtifactDownloadStrategy < AbstractFileDownloadStrategy
+  sig { params(url: String, artifact_id: String, token: String).void }
   def initialize(url, artifact_id, token:)
     super(url, "artifact", artifact_id)
-    @cache = HOMEBREW_CACHE/"gh-actions-artifact"
-    @token = token
+    @cache = T.let(HOMEBREW_CACHE/"gh-actions-artifact", Pathname)
+    @token = T.let(token, String)
   end
 
+  sig { params(timeout: T.nilable(Integer)).void }
   def fetch(timeout: nil)
     ohai "Downloading #{url}"
     if cached_location.exist?
       puts "Already downloaded: #{cached_location}"
     else
       begin
-        Utils::Curl.curl "--location", "--create-dirs", "--output", temporary_path, url,
+        Utils::Curl.curl("--location", "--create-dirs", "--output", temporary_path, url,
                          "--header", "Authorization: token #{@token}",
                          secrets: [@token],
-                         timeout: timeout
+                         timeout:)
       rescue ErrorDuringExecution
         raise CurlDownloadStrategyError, url
       end
-      ignore_interrupts do
-        cached_location.dirname.mkpath
-        temporary_path.rename(cached_location)
-        symlink_location.dirname.mkpath
-      end
+      cached_location.dirname.mkpath
+      temporary_path.rename(cached_location)
     end
+
+    symlink_location.dirname.mkpath
     FileUtils.ln_s cached_location.relative_path_from(symlink_location.dirname), symlink_location, force: true
   end
 

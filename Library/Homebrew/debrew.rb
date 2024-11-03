@@ -1,13 +1,11 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
+require "attrable"
 require "mutex_m"
-require "debrew/irb"
 require "ignorable"
 
 # Helper module for debugging formulae.
-#
-# @api private
 module Debrew
   extend Mutex_m
 
@@ -75,7 +73,7 @@ module Debrew
   @debugged_exceptions = Set.new
 
   class << self
-    extend Predicable
+    extend Attrable
     attr_predicate :active?
     attr_reader :debugged_exceptions
   end
@@ -117,7 +115,10 @@ module Debrew
               set_trace_func proc { |event, _, _, id, binding, klass|
                 if klass == Object && id == :raise && event == "return"
                   set_trace_func(nil)
-                  mu_synchronize { IRB.start_within(binding) }
+                  mu_synchronize do
+                    require "debrew/irb"
+                    IRB.start_within(binding)
+                  end
                 end
               }
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -p
 set -u
 
 # Fail fast with concise message when not using bash
@@ -12,10 +12,20 @@ fi
 
 set +o posix # as we are using bash now
 
-# Fail fast with concise message when cwd does not exist
+# Fail fast with concise messages when PWD has issues
+if [[ -z "${PWD-}" ]]
+then
+  echo "Error: \$PWD must be set to run brew." >&2
+  exit 1
+fi
 if ! [[ -d "${PWD}" ]]
 then
-  echo "Error: The current working directory doesn't exist, cannot proceed." >&2
+  echo "Error: The current working directory must exist to run brew." >&2
+  exit 1
+fi
+if ! [[ -r "${PWD}" ]]
+then
+  echo "Error: The current working directory must be readable to ${USER} to run brew." >&2
   exit 1
 fi
 
@@ -27,7 +37,7 @@ then
 fi
 
 quiet_cd() {
-  cd "$@" &>/dev/null || return
+  CDPATH='' cd -- "$@" &>/dev/null || return
 }
 
 symlink_target_directory() {
@@ -46,6 +56,28 @@ do
   builtin enable "${cmd}"
 done
 unset cmd
+
+# Avoid picking up any random `sudo` in `PATH`.
+if [[ -x /usr/bin/sudo ]]
+then
+  SUDO=/usr/bin/sudo
+else
+  # Do this after ensuring we're using default Bash builtins.
+  SUDO="$(command -v sudo 2>/dev/null)"
+fi
+
+# Reset sudo timestamp to avoid running unauthorized sudo commands
+if [[ -n "${SUDO}" ]]
+then
+  "${SUDO}" --reset-timestamp 2>/dev/null || true
+fi
+unset SUDO
+
+# Take the HOMEBREW_PATH if we are running brew within brew, otherwise we would lose the original path.
+if [[ -n "${HOMEBREW_BREW_FILE:-}" && -n "${HOMEBREW_PATH:-}" ]]
+then
+  PATH="${HOMEBREW_PATH}"
+fi
 
 BREW_FILE_DIRECTORY="$(quiet_cd "${0%/*}/" && pwd -P)"
 HOMEBREW_BREW_FILE="${BREW_FILE_DIRECTORY%/}/${0##*/}"
@@ -66,7 +98,7 @@ then
   HOMEBREW_REPOSITORY="${BREW_FILE_DIRECTORY%/*}"
 fi
 
-# Try to find a /usr/local HOMEBREW_PREFIX where possible (for bottles)
+# Try to find a /usr/local HOMEBREW_PREFIX where possible (for macOS x86_64 bottles)
 if [[ -L "/usr/local/bin/brew" && ! -L "${HOMEBREW_PREFIX}/Cellar" ]]
 then
   USR_LOCAL_BREW_FILE_DIRECTORY="$(symlink_target_directory "/usr/local/bin/brew" "/usr/local/bin")"
@@ -134,6 +166,7 @@ MANPAGE_VARS=(
   BAT_CONFIG_PATH
   BAT_THEME
   BROWSER
+  BUNDLE_USER_CACHE
   DISPLAY
   EDITOR
   NO_COLOR
@@ -152,12 +185,20 @@ done
 # We don't want to take the user's value for, e.g., `HOMEBREW_PATH` here!
 USED_BY_HOMEBREW_VARS=(
   CODESPACES
+  COLORTERM
   DBUS_SESSION_BUS_ADDRESS
+  NODENV_ROOT
   PATH
+  PYENV_ROOT
+  RBENV_ROOT
   SSH_TTY
   SUDO_USER
+  TMPDIR
   TMUX
+  XDG_CACHE_HOME
+  XDG_DATA_DIRS
   XDG_RUNTIME_DIR
+  ZDOTDIR
 )
 for VAR in "${USED_BY_HOMEBREW_VARS[@]}"
 do
@@ -228,6 +269,18 @@ then
     FILTERED_ENV+=("${VAR}=${!VAR}")
   done
 fi
+
+if [[ -n "${HOMEBREW_RDBG:-}" ]]
+then
+  for VAR in "${!RUBY_DEBUG_@}"
+  do
+    # Skip if variable value is empty.
+    [[ -z "${!VAR:-}" ]] && continue
+
+    FILTERED_ENV+=("${VAR}=${!VAR}")
+  done
+fi
+
 unset VAR ENV_VAR_NAMES
 
-exec /usr/bin/env -i "${FILTERED_ENV[@]}" /bin/bash "${HOMEBREW_LIBRARY}/Homebrew/brew.sh" "$@"
+exec /usr/bin/env -i "${FILTERED_ENV[@]}" /bin/bash -p "${HOMEBREW_LIBRARY}/Homebrew/brew.sh" "$@"

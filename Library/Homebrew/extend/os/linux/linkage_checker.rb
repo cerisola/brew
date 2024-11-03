@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "compilers"
@@ -29,7 +29,7 @@ class LinkageChecker
   private
 
   def check_dylibs(rebuild_cache:)
-    generic_check_dylibs(rebuild_cache: rebuild_cache)
+    generic_check_dylibs(rebuild_cache:)
 
     # glibc and gcc are implicit dependencies.
     # No other linkage to system libraries is expected or desired.
@@ -45,5 +45,6 @@ class LinkageChecker
     #   https://github.com/Homebrew/brew/pull/13796
     # TODO: Find a nicer way to handle this. (e.g. examining the ELF file to determine the required libstdc++.)
     @undeclared_deps.delete("gcc")
+    @indirect_deps.delete("gcc")
   end
 end

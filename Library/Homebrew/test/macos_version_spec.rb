@@ -2,14 +2,26 @@
 
 require "macos_version"
 
-describe MacOSVersion do
+RSpec.describe MacOSVersion do
   let(:version) { described_class.new("10.14") }
   let(:big_sur_major) { described_class.new("11.0") }
   let(:big_sur_update) { described_class.new("11.1") }
 
+  describe ".kernel_major_version" do
+    it "returns the kernel major version" do
+      expect(described_class.kernel_major_version(version)).to eq "18"
+      expect(described_class.kernel_major_version(big_sur_major)).to eq "20"
+      expect(described_class.kernel_major_version(big_sur_update)).to eq "20"
+    end
+
+    it "matches the major version returned by OS.kernel_version", :needs_macos do
+      expect(described_class.kernel_major_version(OS::Mac.version)).to eq OS.kernel_version.major
+    end
+  end
+
   specify "comparison with Symbol" do
     expect(version).to be > :high_sierra
-    expect(version).to be == :mojave
+    expect(version).to eq :mojave
     expect(version).to be === :mojave # rubocop:disable Style/CaseEquality
     expect(version).to be < :catalina
   end
@@ -21,14 +33,14 @@ describe MacOSVersion do
 
   specify "comparison with String" do
     expect(version).to be > "10.3"
-    expect(version).to be == "10.14"
+    expect(version).to eq "10.14"
     expect(version).to be === "10.14" # rubocop:disable Style/CaseEquality
     expect(version).to be < "10.15"
   end
 
   specify "comparison with Version" do
     expect(version).to be > Version.new("10.3")
-    expect(version).to be == Version.new("10.14")
+    expect(version).to eq Version.new("10.14")
     expect(version).to be === Version.new("10.14") # rubocop:disable Style/CaseEquality
     expect(version).to be < Version.new("10.15")
   end
@@ -78,6 +90,10 @@ describe MacOSVersion do
   specify "#pretty_name" do
     expect(described_class.new("10.11").pretty_name).to eq("El Capitan")
     expect(described_class.new("10.14").pretty_name).to eq("Mojave")
+  end
+
+  specify "#inspect" do
+    expect(described_class.new("11").inspect).to eq("#<MacOSVersion: \"11\">")
   end
 
   specify "#requires_nehalem_cpu?", :needs_macos do

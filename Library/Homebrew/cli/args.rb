@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 require "ostruct"
@@ -6,21 +6,27 @@ require "ostruct"
 module Homebrew
   module CLI
     class Args < OpenStruct
+      # Represents a processed option. The array elements are:
+      #   0: short option name (e.g. "-d")
+      #   1: long option name (e.g. "--debug")
+      #   2: option description (e.g. "Print debugging information")
+      #   3: whether the option is hidden
+      OptionsType = T.type_alias { T::Array[[String, T.nilable(String), String, T::Boolean]] }
+      sig { returns(T::Array[String]) }
       attr_reader :options_only, :flags_only
-
-      # undefine tap to allow --tap argument
-      undef tap
 
       sig { void }
       def initialize
         require "cli/named_args"
 
-        super()
+        super
 
-        @processed_options = []
-        @options_only = []
-        @flags_only = []
-        @cask_options = false
+        @cli_args = T.let(nil, T.nilable(T::Array[String]))
+        @processed_options = T.let([], OptionsType)
+        @options_only = T.let([], T::Array[String])
+        @flags_only = T.let([], T::Array[String])
+        @cask_options = T.let(false, T::Boolean)
+        @table = T.let({}, T::Hash[Symbol, T.untyped])
 
         # Can set these because they will be overwritten by freeze_named_args!
         # (whereas other values below will only be overwritten if passed).
@@ -28,10 +34,12 @@ module Homebrew
         self[:remaining] = []
       end
 
+      sig { params(remaining_args: T::Array[T.any(T::Array[String], String)]).void }
       def freeze_remaining_args!(remaining_args)
         self[:remaining] = remaining_args.freeze
       end
 
+      sig { params(named_args: T::Array[String], cask_options: T::Boolean, without_api: T::Boolean).void }
       def freeze_named_args!(named_args, cask_options:, without_api:)
         options = {}
         options[:force_bottle] = true if self[:force_bottle?]
@@ -40,12 +48,13 @@ module Homebrew
         self[:named] = NamedArgs.new(
           *named_args.freeze,
           parent:       self,
-          cask_options: cask_options,
-          without_api:  without_api,
+          cask_options:,
+          without_api:,
           **options,
         )
       end
 
+      sig { params(processed_options: OptionsType).void }
       def freeze_processed_options!(processed_options)
         # Reset cache values reliant on processed_options
         @cli_args = nil
@@ -53,8 +62,8 @@ module Homebrew
         @processed_options += processed_options
         @processed_options.freeze
 
-        @options_only = cli_args.select { |a| a.start_with?("-") }.freeze
-        @flags_only = cli_args.select { |a| a.start_with?("--") }.freeze
+        @options_only = cli_args.select { _1.start_with?("-") }.freeze
+        @flags_only = cli_args.select { _1.start_with?("--") }.freeze
       end
 
       sig { returns(NamedArgs) }
@@ -63,10 +72,10 @@ module Homebrew
         self[:named]
       end
 
-      def no_named?
-        named.blank?
-      end
+      sig { returns(T::Boolean) }
+      def no_named? = named.blank?
 
+      sig { returns(T::Array[String]) }
       def build_from_source_formulae
         if build_from_source? || self[:HEAD?] || self[:build_bottle?]
           named.to_formulae.map(&:full_name)
@@ -75,6 +84,7 @@ module Homebrew
         end
       end
 
+      sig { returns(T::Array[String]) }
       def include_test_formulae
         if include_test?
           named.to_formulae.map(&:full_name)
@@ -83,6 +93,7 @@ module Homebrew
         end
       end
 
+      sig { params(name: String).returns(T.nilable(String)) }
       def value(name)
         arg_prefix = "--#{name}="
         flag_with_value = flags_only.find { |arg| arg.start_with?(arg_prefix) }
@@ -96,9 +107,13 @@ module Homebrew
         Context::ContextStruct.new(debug: debug?, quiet: quiet?, verbose: verbose?)
       end
 
+      sig { returns(T.nilable(Symbol)) }
       def only_formula_or_cask
-        return :formula if formula? && !cask?
-        return :cask if cask? && !formula?
+        if formula? && !cask?
+          :formula
+        elsif cask? && !formula?
+          :cask
+        end
       end
 
       sig { returns(T::Array[[Symbol, Symbol]]) }
@@ -128,7 +143,7 @@ module Homebrew
 
         oses.product(arches).select do |os, arch|
           if skip_invalid_combinations
-            bottle_tag = Utils::Bottles::Tag.new(system: os, arch: arch)
+            bottle_tag = Utils::Bottles::Tag.new(system: os, arch:)
             bottle_tag.valid_combination?
           else
             true
@@ -138,18 +153,20 @@ module Homebrew
 
       private
 
+      sig { params(option: String).returns(String) }
       def option_to_name(option)
         option.sub(/\A--?/, "")
               .tr("-", "_")
       end
 
+      sig { returns(T::Array[String]) }
       def cli_args
         return @cli_args if @cli_args
 
         @cli_args = []
         @processed_options.each do |short, long|
           option = long || short
-          switch = "#{option_to_name(option)}?".to_sym
+          switch = :"#{option_to_name(option)}?"
           flag = option_to_name(option).to_sym
           if @table[switch] == true || @table[flag] == true
             @cli_args << option
@@ -162,10 +179,12 @@ module Homebrew
         @cli_args.freeze
       end
 
-      def respond_to_missing?(method_name, *)
+      sig { params(method_name: Symbol, _include_private: T::Boolean).returns(T::Boolean) }
+      def respond_to_missing?(method_name, _include_private = false)
         @table.key?(method_name)
       end
 
+      sig { params(method_name: Symbol, args: T.untyped).returns(T.untyped) }
       def method_missing(method_name, *args)
         return_value = super
 

@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 module Homebrew
@@ -25,7 +25,7 @@ module Homebrew
           (?<package_name>.+)- # The package name followed by a hyphen
           .*? # The version string
           (?<suffix>\.tar\.[a-z0-9]+|\.[a-z0-9]+)$ # Filename extension
-        /ix.freeze
+        /ix
 
         # The `Regexp` used to determine if the strategy applies to the URL.
         URL_MATCH_REGEX = %r{
@@ -33,7 +33,7 @@ module Homebrew
           /packages
           (?:/[^/]+)+ # The hexadecimal paths before the filename
           /#{FILENAME_REGEX.source.strip} # The filename
-        }ix.freeze
+        }ix
 
         # Whether the strategy can be applied to the provided URL.
         #
@@ -67,7 +67,7 @@ module Homebrew
           regex_suffix = Regexp.escape(suffix).gsub("\\-", "-")
 
           # Example regex: `%r{href=.*?/packages.*?/example[._-]v?(\d+(?:\.\d+)*(?:[._-]post\d+)?)\.t}i`
-          regex_name = Regexp.escape(T.must(match[:package_name])).gsub("\\-", "-")
+          regex_name = Regexp.escape(T.must(match[:package_name])).gsub(/\\[_-]/, "[_-]")
           values[:regex] =
             %r{href=.*?/packages.*?/#{regex_name}[._-]v?(\d+(?:\.\d+)*(?:[._-]post\d+)?)#{regex_suffix}}i
 
@@ -84,7 +84,7 @@ module Homebrew
           params(
             url:    String,
             regex:  T.nilable(Regexp),
-            unused: T.nilable(T::Hash[Symbol, T.untyped]),
+            unused: T.untyped,
             block:  T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }

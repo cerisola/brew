@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 require "delegate"
@@ -7,8 +7,6 @@ require "etc"
 require "system_command"
 
 # A system user.
-#
-# @api private
 class User < SimpleDelegator
   include SystemCommand::Mixin
 
@@ -31,6 +29,6 @@ class User < SimpleDelegator
     pwuid = Etc.getpwuid(Process.euid)
     return if pwuid.nil?
 
-    @current = new(pwuid.name)
+    @current = T.let(new(pwuid.name), T.nilable(T.attached_class))
   end
 end

@@ -1,41 +1,54 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
+require "attrable"
+require "bundle_version"
 require "cask/cask_loader"
 require "cask/config"
 require "cask/dsl"
 require "cask/metadata"
+require "cask/tab"
 require "utils/bottles"
 require "extend/api_hashable"
 
 module Cask
   # An instance of a cask.
-  #
-  # @api private
   class Cask
     extend Forwardable
-    extend Predicable
+    extend Attrable
     extend APIHashable
     include Metadata
 
-    attr_reader :token, :sourcefile_path, :source, :config, :default_config, :loader
+    # The token of this {Cask}.
+    #
+    # @api internal
+    attr_reader :token
+
+    # The configuration of this {Cask}.
+    #
+    # @api internal
+    attr_reader :config
+
+    attr_reader :sourcefile_path, :source, :default_config, :loader
     attr_accessor :download, :allow_reassignment
 
     attr_predicate :loaded_from_api?
 
-    def self.all
-      # TODO: ideally avoid using ARGV by moving to e.g. CLI::Parser
-      if ARGV.exclude?("--eval-all") && !Homebrew::EnvConfig.eval_all?
-        odisabled "Cask::Cask#all without --eval-all or HOMEBREW_EVAL_ALL"
+    def self.all(eval_all: false)
+      if !eval_all && !Homebrew::EnvConfig.eval_all?
+        raise ArgumentError, "Cask::Cask#all cannot be used without `--eval-all` or HOMEBREW_EVAL_ALL"
       end
 
-      Tap.flat_map(&:cask_files).map do |f|
-        CaskLoader::FromTapPathLoader.new(f).load(config: nil)
+      # Load core casks from tokens so they load from the API when the core cask is not tapped.
+      tokens_and_files = CoreCaskTap.instance.cask_tokens
+      tokens_and_files += Tap.reject(&:core_cask_tap?).flat_map(&:cask_files)
+      tokens_and_files.filter_map do |token_or_file|
+        CaskLoader.load(token_or_file)
       rescue CaskUnreadableError => e
         opoo e.message
 
         nil
-      end.compact
+      end
     end
 
     def tap
@@ -66,7 +79,8 @@ module Cask
       @allow_reassignment = allow_reassignment
       @loaded_from_api = loaded_from_api
       @loader = loader
-      # Sorbet has trouble with bound procs assigned to ivars: https://github.com/sorbet/sorbet/issues/6843
+      # Sorbet has trouble with bound procs assigned to instance variables:
+      # https://github.com/sorbet/sorbet/issues/6843
       instance_variable_set(:@block, block)
 
       @default_config = config || Config.new
@@ -81,9 +95,9 @@ module Cask
     # An old name for the cask.
     sig { returns(T::Array[String]) }
     def old_tokens
-      @old_tokens ||= if tap
-        tap.cask_renames
-           .flat_map { |old_token, new_token| (new_token == token) ? old_token : [] }
+      @old_tokens ||= if (tap = self.tap)
+        Tap.tap_migration_oldnames(tap, token) +
+          tap.cask_reverse_renames.fetch(token, [])
       else
         []
       end
@@ -103,15 +117,15 @@ module Cask
       @dsl.language_eval
     end
 
-    DSL::DSL_METHODS.each do |method_name|
-      define_method(method_name) { |&block| @dsl.send(method_name, &block) }
+    ::Cask::DSL::DSL_METHODS.each do |method_name|
+      define_method(method_name) { |*args, &block| @dsl.send(method_name, *args, &block) }
     end
 
     sig { params(caskroom_path: Pathname).returns(T::Array[[String, String]]) }
     def timestamped_versions(caskroom_path: self.caskroom_path)
       relative_paths = Pathname.glob(metadata_timestamped_path(
                                        version: "*", timestamp: "*",
-                                       caskroom_path: caskroom_path
+                                       caskroom_path:
                                      ))
                                .map { |p| p.relative_path_from(p.parent.parent) }
       # Sorbet is unaware that Pathname is sortable: https://github.com/sorbet/sorbet/issues/6844
@@ -119,12 +133,20 @@ module Cask
        .map { |p| p.split.map(&:to_s) }
     end
 
-    def full_name
+    # The fully-qualified token of this {Cask}.
+    #
+    # @api internal
+    def full_token
       return token if tap.nil?
-      return token if tap.user == "Homebrew"
+      return token if tap.core_cask_tap?
 
       "#{tap.name}/#{token}"
     end
+
+    # Alias for {#full_token}.
+    #
+    # @api internal
+    def full_name = full_token
 
     sig { returns(T::Boolean) }
     def installed?
@@ -135,6 +157,17 @@ module Cask
     # `*flight` blocks or the cask has multiple languages
     def caskfile_only?
       languages.any? || artifacts.any?(Artifact::AbstractFlightBlock)
+    end
+
+    def uninstall_flight_blocks?
+      artifacts.any? do |artifact|
+        case artifact
+        when Artifact::PreflightBlock
+          artifact.directives.key?(:uninstall_preflight)
+        when Artifact::PostflightBlock
+          artifact.directives.key?(:uninstall_postflight)
+        end
+      end
     end
 
     sig { returns(T.nilable(Time)) }
@@ -172,8 +205,24 @@ module Cask
 
     sig { returns(T.nilable(String)) }
     def installed_version
+      return unless (installed_caskfile = self.installed_caskfile)
+
       # <caskroom_path>/.metadata/<version>/<timestamp>/Casks/<token>.{rb,json} -> <version>
-      installed_caskfile&.dirname&.dirname&.dirname&.basename&.to_s
+      installed_caskfile.dirname.dirname.dirname.basename.to_s
+    end
+
+    sig { returns(T.nilable(String)) }
+    def bundle_short_version
+      bundle_version&.short_version
+    end
+
+    sig { returns(T.nilable(String)) }
+    def bundle_long_version
+      bundle_version&.version
+    end
+
+    def tab
+      Tab.for_cask(self)
     end
 
     def config_path
@@ -181,6 +230,8 @@ module Cask
     end
 
     def checksumable?
+      return false if (url = self.url).nil?
+
       DownloadStrategyDetector.detect(url.to_s, url.using) <= AbstractFileDownloadStrategy
     end
 
@@ -209,9 +260,12 @@ module Cask
       @caskroom_path ||= Caskroom.path.join(token)
     end
 
+    # Check if the installed cask is outdated.
+    #
+    # @api internal
     def outdated?(greedy: false, greedy_latest: false, greedy_auto_updates: false)
-      !outdated_version(greedy: greedy, greedy_latest: greedy_latest,
-                        greedy_auto_updates: greedy_auto_updates).nil?
+      !outdated_version(greedy:, greedy_latest:,
+                        greedy_auto_updates:).nil?
     end
 
     def outdated_version(greedy: false, greedy_latest: false, greedy_auto_updates: false)
@@ -235,8 +289,8 @@ module Cask
     def outdated_info(greedy, verbose, json, greedy_latest, greedy_auto_updates)
       return token if !verbose && !json
 
-      installed_version = outdated_version(greedy: greedy, greedy_latest: greedy_latest,
-                                           greedy_auto_updates: greedy_auto_updates).to_s
+      installed_version = outdated_version(greedy:, greedy_latest:,
+                                           greedy_auto_updates:).to_s
 
       if json
         {
@@ -258,9 +312,10 @@ module Cask
       @ruby_source_path = sourcefile_path.relative_path_from(tap.path)
     end
 
+    sig { returns(T::Hash[Symbol, String]) }
     def ruby_source_checksum
       @ruby_source_checksum ||= {
-        "sha256" => Digest::SHA256.file(sourcefile_path).hexdigest,
+        sha256: Digest::SHA256.file(sourcefile_path).hexdigest,
       }.freeze
     end
 
@@ -270,22 +325,29 @@ module Cask
 
     def tap_git_head
       @tap_git_head ||= tap&.git_head
+    rescue TapUnavailableError
+      nil
     end
 
     def populate_from_api!(json_cask)
       raise ArgumentError, "Expected cask to be loaded from the API" unless loaded_from_api?
 
-      @languages = json_cask[:languages]
+      @languages = json_cask.fetch(:languages, [])
       @tap_git_head = json_cask.fetch(:tap_git_head, "HEAD")
 
       @ruby_source_path = json_cask[:ruby_source_path]
-      @ruby_source_checksum = json_cask[:ruby_source_checksum].freeze
+
+      # TODO: Clean this up when we deprecate the current JSON API and move to the internal JSON v3.
+      ruby_source_sha256 = json_cask.dig(:ruby_source_checksum, :sha256)
+      ruby_source_sha256 ||= json_cask[:ruby_source_sha256]
+      @ruby_source_checksum = { sha256: ruby_source_sha256 }
     end
 
-    def to_s
-      @token
-    end
+    # @api public
+    sig { returns(String) }
+    def to_s = token
 
+    sig { returns(String) }
     def inspect
       "#<Cask #{token}#{sourcefile_path&.to_s&.prepend(" ")}>"
     end
@@ -300,14 +362,6 @@ module Cask
     alias == eql?
 
     def to_h
-      url_specs = url&.specs.dup
-      case url_specs&.dig(:user_agent)
-      when :default
-        url_specs.delete(:user_agent)
-      when Symbol
-        url_specs[:user_agent] = ":#{url_specs[:user_agent]}"
-      end
-
       {
         "token"                => token,
         "full_token"           => full_name,
@@ -318,9 +372,11 @@ module Cask
         "homepage"             => homepage,
         "url"                  => url,
         "url_specs"            => url_specs,
-        "appcast"              => appcast,
         "version"              => version,
         "installed"            => installed_version,
+        "installed_time"       => install_time&.to_i,
+        "bundle_version"       => bundle_long_version,
+        "bundle_short_version" => bundle_short_version,
         "outdated"             => outdated?,
         "sha256"               => sha256,
         "artifacts"            => artifacts_list,
@@ -329,6 +385,12 @@ module Cask
         "conflicts_with"       => conflicts_with,
         "container"            => container&.pairs,
         "auto_updates"         => auto_updates,
+        "deprecated"           => deprecated?,
+        "deprecation_date"     => deprecation_date,
+        "deprecation_reason"   => deprecation_reason,
+        "disabled"             => disabled?,
+        "disable_date"         => disable_date,
+        "disable_reason"       => disable_reason,
         "tap_git_head"         => tap_git_head,
         "languages"            => languages,
         "ruby_source_path"     => ruby_source_path,
@@ -336,27 +398,77 @@ module Cask
       }
     end
 
-    def to_hash_with_variations
-      if loaded_from_api? && !Homebrew::EnvConfig.no_install_from_api?
-        return api_to_local_hash(Homebrew::API::Cask.all_casks[token])
+    def to_internal_api_hash
+      api_hash = {
+        "token"              => token,
+        "name"               => name,
+        "desc"               => desc,
+        "homepage"           => homepage,
+        "url"                => url,
+        "version"            => version,
+        "sha256"             => sha256,
+        "artifacts"          => artifacts_list(compact: true),
+        "ruby_source_path"   => ruby_source_path,
+        "ruby_source_sha256" => ruby_source_checksum.fetch(:sha256),
+      }
+
+      if deprecation_date
+        api_hash["deprecation_date"] = deprecation_date
+        api_hash["deprecation_reason"] = deprecation_reason
       end
 
-      hash = to_h
-      variations = {}
+      if disable_date
+        api_hash["disable_date"] = disable_date
+        api_hash["disable_reason"] = disable_reason
+      end
 
-      hash_keys_to_skip = %w[outdated installed versions]
+      if (url_specs_hash = url_specs).present?
+        api_hash["url_specs"] = url_specs_hash
+      end
+
+      api_hash["caskfile_only"] = true if caskfile_only?
+      api_hash["conflicts_with"] = conflicts_with if conflicts_with.present?
+      api_hash["depends_on"] = depends_on if depends_on.present?
+      api_hash["container"] = container.pairs if container
+      api_hash["caveats"] = caveats if caveats.present?
+      api_hash["auto_updates"] = auto_updates if auto_updates
+      api_hash["languages"] = languages if languages.present?
+
+      api_hash
+    end
+
+    HASH_KEYS_TO_SKIP = %w[outdated installed versions].freeze
+    private_constant :HASH_KEYS_TO_SKIP
+
+    def to_hash_with_variations(hash_method: :to_h)
+      case hash_method
+      when :to_h
+        if loaded_from_api? && !Homebrew::EnvConfig.no_install_from_api?
+          return api_to_local_hash(Homebrew::API::Cask.all_casks[token].dup)
+        end
+      when :to_internal_api_hash
+        raise ArgumentError, "API Hash must be generated from Ruby source files" if loaded_from_api?
+      else
+        raise ArgumentError, "Unknown hash method #{hash_method.inspect}"
+      end
+
+      hash = public_send(hash_method)
+      variations = {}
 
       if @dsl.on_system_blocks_exist?
         begin
           MacOSVersion::SYMBOLS.keys.product(OnSystem::ARCH_OPTIONS).each do |os, arch|
-            bottle_tag = ::Utils::Bottles::Tag.new(system: os, arch: arch)
+            bottle_tag = ::Utils::Bottles::Tag.new(system: os, arch:)
             next unless bottle_tag.valid_combination?
+            next if depends_on.macos &&
+                    !@dsl.depends_on_set_in_block? &&
+                    !depends_on.macos.allows?(bottle_tag.to_macos_version)
 
-            Homebrew::SimulateSystem.with os: os, arch: arch do
+            Homebrew::SimulateSystem.with(os:, arch:) do
               refresh
 
-              to_h.each do |key, value|
-                next if hash_keys_to_skip.include? key
+              public_send(hash_method).each do |key, value|
+                next if HASH_KEYS_TO_SKIP.include? key
                 next if value.to_s == hash[key].to_s
 
                 variations[bottle_tag.to_sym] ||= {}
@@ -369,11 +481,40 @@ module Cask
         end
       end
 
-      hash["variations"] = variations
+      hash["variations"] = variations if hash_method != :to_internal_api_hash || variations.present?
       hash
     end
 
+    def artifacts_list(compact: false, uninstall_only: false)
+      artifacts.filter_map do |artifact|
+        case artifact
+        when Artifact::AbstractFlightBlock
+          uninstall_flight_block = artifact.directives.key?(:uninstall_preflight) ||
+                                   artifact.directives.key?(:uninstall_postflight)
+          next if uninstall_only && !uninstall_flight_block
+
+          # Only indicate whether this block is used as we don't load it from the API
+          # We can skip this entirely once we move to internal JSON v3.
+          { artifact.summarize.to_sym => nil } unless compact
+        else
+          zap_artifact = artifact.is_a?(Artifact::Zap)
+          uninstall_artifact = artifact.respond_to?(:uninstall_phase) || artifact.respond_to?(:post_uninstall_phase)
+          next if uninstall_only && !zap_artifact && !uninstall_artifact
+
+          { artifact.class.dsl_key => artifact.to_args }
+        end
+      end
+    end
+
     private
+
+    sig { returns(T.nilable(Homebrew::BundleVersion)) }
+    def bundle_version
+      @bundle_version ||= if (bundle = artifacts.find { |a| a.is_a?(Artifact::App) }&.target) &&
+                             (plist = Pathname("#{bundle}/Contents/Info.plist")) && plist.exist?
+        Homebrew::BundleVersion.from_info_plist(plist)
+      end
+    end
 
     def api_to_local_hash(hash)
       hash["token"] = token
@@ -382,14 +523,13 @@ module Cask
       hash
     end
 
-    def artifacts_list
-      artifacts.map do |artifact|
-        case artifact
-        when Artifact::AbstractFlightBlock
-          # Only indicate whether this block is used as we don't load it from the API
-          { artifact.summarize => nil }
-        else
-          { artifact.class.dsl_key => artifact.to_args }
+    def url_specs
+      url&.specs.dup.tap do |url_specs|
+        case url_specs&.dig(:user_agent)
+        when :default
+          url_specs.delete(:user_agent)
+        when Symbol
+          url_specs[:user_agent] = ":#{url_specs[:user_agent]}"
         end
       end
     end

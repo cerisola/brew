@@ -1,12 +1,15 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
+
+require "system_command"
 
 module Utils
   # Helper functions for querying Git information.
   #
   # @see GitRepository
-  # @api private
   module Git
+    extend SystemCommand::Mixin
+
     def self.available?
       version.present?
     end
@@ -80,7 +83,7 @@ module Utils
     }
     def self.last_revision_of_file(repo, file, before_commit: nil)
       relative_file = Pathname(file).relative_path_from(repo)
-      commit_hash = last_revision_commit_of_file(repo, relative_file, before_commit: before_commit)
+      commit_hash = last_revision_commit_of_file(repo, relative_file, before_commit:)
       file_at_commit(repo, file, commit_hash)
     end
 

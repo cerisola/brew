@@ -1,12 +1,10 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "cask/macos"
 
 module Cask
   # Helper class for uninstalling `.pkg` installers.
-  #
-  # @api private
   class Pkg
     sig { params(regexp: String, command: T.class_of(SystemCommand)).returns(T::Array[Pkg]) }
     def self.all_matching(regexp, command)
@@ -76,7 +74,7 @@ module Cask
 
     sig { returns(T::Array[Pathname]) }
     def pkgutil_bom_specials
-      @pkgutil_bom_specials ||= pkgutil_bom_all.select(&method(:special?))
+      @pkgutil_bom_specials ||= pkgutil_bom_all.select { special?(_1) }
     end
 
     sig { returns(T::Array[Pathname]) }
@@ -90,7 +88,7 @@ module Cask
                                    .stdout
                                    .split("\n")
                                    .map { |path| root.join(path) }
-                                   .reject(&MacOS.public_method(:undeletable?))
+                                   .reject { MacOS.undeletable?(_1) }
     end
 
     sig { returns(Pathname) }

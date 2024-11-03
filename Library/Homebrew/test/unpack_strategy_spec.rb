@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-describe UnpackStrategy do
+RSpec.describe UnpackStrategy do
   describe "#extract_nestedly" do
     subject(:strategy) { described_class.detect(path) }
 
@@ -65,7 +65,8 @@ describe UnpackStrategy do
         it "does not make other files writable" do
           strategy.extract_nestedly(to: unpack_dir)
 
-          expect(unpack_dir/executable).not_to be_writable
+          # We don't check `writable?` here as that's always true as root.
+          expect((unpack_dir/executable).stat.mode & 0222).to be_zero
         end
       end
     end
@@ -82,7 +83,7 @@ describe UnpackStrategy do
       end
 
       it "does not pass down the basename of the archive" do
-        strategy.extract_nestedly(to: unpack_dir, basename: basename)
+        strategy.extract_nestedly(to: unpack_dir, basename:)
         expect(unpack_dir/"file.txt").to be_a_file
       end
     end

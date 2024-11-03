@@ -2,9 +2,11 @@
 
 require "utils/gzip"
 
-describe Utils::Gzip do
+RSpec.describe Utils::Gzip do
+  include FileUtils
+
   describe "compress_with_options" do
-    it "uses the explicitly specified mtime, orig_name, and output path when passed" do
+    it "uses the explicitly specified mtime, orig_name and output path when passed" do
       mktmpdir do |path|
         mtime = Time.at(12345).utc
         orig_name = "someotherfile"
@@ -16,8 +18,8 @@ describe Utils::Gzip do
         File.write(somefile, file_content)
         mkdir path/"subdir"
 
-        expect(described_class.compress_with_options(somefile, mtime: mtime, orig_name: orig_name,
-output: output)).to eq(output)
+        expect(described_class.compress_with_options(somefile, mtime:, orig_name:,
+output:)).to eq(output)
         expect(Digest::SHA256.hexdigest(File.read(output))).to eq(expected_checksum)
       end
     end
@@ -63,7 +65,7 @@ output: output)).to eq(output)
         files = (0..2).map { |n| path/"somefile#{n}" }
         files.each { |f| File.write(f, "Hello world") }
 
-        results = described_class.compress(*files, mtime: mtime)
+        results = described_class.compress(*files, mtime:)
         3.times do |n|
           expect(results[n].to_s).to eq("#{files[n]}.gz")
           expect(Digest::SHA256.hexdigest(File.read(results[n]))).to eq(expected_checksums[n])

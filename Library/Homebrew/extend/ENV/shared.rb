@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "compilers"
@@ -11,7 +11,10 @@ require "development_tools"
 # @see Stdenv
 # @see https://www.rubydoc.info/stdlib/Env Ruby's ENV API
 module SharedEnvExtension
+  extend T::Helpers
   include CompilerConstants
+
+  requires_ancestor { Sorbet::Private::Static::ENVClass }
 
   CC_FLAG_VARS = %w[CFLAGS CXXFLAGS OBJCFLAGS OBJCXXFLAGS].freeze
   private_constant :CC_FLAG_VARS
@@ -51,8 +54,8 @@ module SharedEnvExtension
     @debug_symbols = debug_symbols
     reset
   end
-  private :setup_build_environment
   alias generic_shared_setup_build_environment setup_build_environment
+  private :generic_shared_setup_build_environment
 
   sig { void }
   def reset
@@ -60,7 +63,7 @@ module SharedEnvExtension
   end
   private :reset
 
-  sig { returns(T::Hash[String, String]) }
+  sig { returns(T::Hash[String, T.nilable(String)]) }
   def remove_cc_etc
     keys = %w[CC CXX OBJC OBJCXX LD CPP CFLAGS CXXFLAGS OBJCFLAGS OBJCXXFLAGS LDFLAGS CPPFLAGS]
     keys.to_h { |key| [key, delete(key)] }
@@ -271,7 +274,6 @@ module SharedEnvExtension
     set_cpu_flags(flags)
   end
 
-  # @private
   sig { returns(Symbol) }
   def effective_arch
     if @build_bottle && @bottle_arch
@@ -281,21 +283,20 @@ module SharedEnvExtension
     end
   end
 
-  # @private
   sig { params(name: String).returns(Formula) }
   def gcc_version_formula(name)
     version = name[GNU_GCC_REGEXP, 1]
     gcc_version_name = "gcc@#{version}"
 
     gcc = Formulary.factory("gcc")
-    if gcc.try(:version_suffix) == version
+    if gcc.respond_to?(:version_suffix) && T.unsafe(gcc).version_suffix == version
       gcc
     else
       Formulary.factory(gcc_version_name)
     end
   end
+  private :gcc_version_formula
 
-  # @private
   sig { params(name: String).void }
   def warn_about_non_apple_gcc(name)
     begin
@@ -313,15 +314,18 @@ module SharedEnvExtension
         brew install #{gcc_formula.full_name}
     EOS
   end
+  private :warn_about_non_apple_gcc
 
   sig { void }
   def permit_arch_flags; end
 
-  # @private
-  sig { params(cc: T.any(Symbol, String)).returns(T::Boolean) }
-  def compiler_any_clang?(cc = compiler)
-    %w[clang llvm_clang].include?(cc.to_s)
+  sig { returns(Integer) }
+  def make_jobs
+    Homebrew::EnvConfig.make_jobs.to_i
   end
+
+  sig { void }
+  def refurbish_args; end
 
   private
 
@@ -348,7 +352,7 @@ module SharedEnvExtension
     COMPILER_SYMBOL_MAP.fetch(value) do |other|
       case other
       when GNU_GCC_REGEXP
-        other
+        other.to_sym
       else
         raise "Invalid value for #{source}: #{other}"
       end

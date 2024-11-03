@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
+require "livecheck/livecheck"
 require "livecheck/skip_conditions"
 
-describe Homebrew::Livecheck::SkipConditions do
+RSpec.describe Homebrew::Livecheck::SkipConditions do
   subject(:skip_conditions) { described_class }
 
   let(:formulae) do
@@ -29,11 +30,6 @@ describe Homebrew::Livecheck::SkipConditions do
         homepage "https://brew.sh"
         url "https://brew.sh/test-0.0.1.tgz"
         disable! date: "2020-06-25", because: :unmaintained
-      end,
-      versioned:           formula("test@0.0.1") do
-        desc "Versioned test formula"
-        homepage "https://brew.sh"
-        url "https://brew.sh/test-0.0.1.tgz"
       end,
       head_only:           formula("test_head_only") do
         desc "HEAD-only test formula"
@@ -73,6 +69,11 @@ describe Homebrew::Livecheck::SkipConditions do
           skip "Not maintained"
         end
       end,
+      versioned:           formula("test@0.0.1") do
+        desc "Versioned test formula"
+        homepage "https://brew.sh"
+        url "https://brew.sh/test-0.0.1.tgz"
+      end,
     }
   end
 
@@ -91,17 +92,38 @@ describe Homebrew::Livecheck::SkipConditions do
           regex(/"stable":"(\d+(?:\.\d+)+)"/i)
         end
       end,
-      discontinued:      Cask::Cask.new("test_discontinued") do
+      deprecated:        Cask::Cask.new("test_deprecated") do
         version "0.0.1"
         sha256 :no_check
 
         url "https://brew.sh/test-0.0.1.tgz"
-        name "Test Discontinued"
-        desc "Discontinued test cask"
+        name "Test Deprecate"
+        desc "Deprecated test cask"
         homepage "https://brew.sh"
 
-        caveats do
-          discontinued
+        deprecate! date: "2020-06-25", because: :discontinued
+      end,
+      disabled:          Cask::Cask.new("test_disabled") do
+        version "0.0.1"
+        sha256 :no_check
+
+        url "https://brew.sh/test-0.0.1.tgz"
+        name "Test Disable"
+        desc "Disabled test cask"
+        homepage "https://brew.sh"
+
+        disable! date: "2020-06-25", because: :discontinued
+      end,
+      extract_plist:     Cask::Cask.new("test_extract_plist_skip") do
+        version "0.0.1"
+
+        url "https://brew.sh/test-0.0.1.tgz"
+        name "Test ExtractPlist Skip"
+        desc "Skipped test cask"
+        homepage "https://brew.sh"
+
+        livecheck do
+          strategy :extract_plist
         end
       end,
       latest:            Cask::Cask.new("test_latest") do
@@ -223,11 +245,26 @@ describe Homebrew::Livecheck::SkipConditions do
         },
       },
       cask:    {
-        discontinued:      {
-          cask:   "test_discontinued",
-          status: "discontinued",
+        deprecated:        {
+          cask:   "test_deprecated",
+          status: "deprecated",
           meta:   {
             livecheckable: false,
+          },
+        },
+        disabled:          {
+          cask:   "test_disabled",
+          status: "disabled",
+          meta:   {
+            livecheckable: false,
+          },
+        },
+        extract_plist:     {
+          cask:     "test_extract_plist_skip",
+          status:   "skipped",
+          messages: ["Use `--extract-plist` to enable checking multiple casks with ExtractPlist strategy"],
+          meta:     {
+            livecheckable: true,
           },
         },
         latest:            {
@@ -323,10 +360,24 @@ describe Homebrew::Livecheck::SkipConditions do
       end
     end
 
-    context "when a cask without a livecheckable is discontinued" do
+    context "when a cask without a livecheckable is deprecated" do
       it "skips" do
-        expect(skip_conditions.skip_information(casks[:discontinued]))
-          .to eq(status_hashes[:cask][:discontinued])
+        expect(skip_conditions.skip_information(casks[:deprecated]))
+          .to eq(status_hashes[:cask][:deprecated])
+      end
+    end
+
+    context "when a cask without a livecheckable is disabled" do
+      it "skips" do
+        expect(skip_conditions.skip_information(casks[:disabled]))
+          .to eq(status_hashes[:cask][:disabled])
+      end
+    end
+
+    context "when a cask has a `livecheck` block using `ExtractPlist` and `--extract-plist` is not used" do
+      it "skips" do
+        expect(skip_conditions.skip_information(casks[:extract_plist], extract_plist: false))
+          .to eq(status_hashes[:cask][:extract_plist])
       end
     end
 
@@ -425,10 +476,26 @@ describe Homebrew::Livecheck::SkipConditions do
       end
     end
 
-    context "when a cask without a livecheckable is discontinued" do
+    context "when a cask without a livecheckable is deprecated" do
       it "errors" do
-        expect { skip_conditions.referenced_skip_information(casks[:discontinued], original_name) }
-          .to raise_error(RuntimeError, "Referenced cask (test_discontinued) is skipped as discontinued")
+        expect { skip_conditions.referenced_skip_information(casks[:deprecated], original_name) }
+          .to raise_error(RuntimeError, "Referenced cask (test_deprecated) is skipped as deprecated")
+      end
+    end
+
+    context "when a cask without a livecheckable is disabled" do
+      it "errors" do
+        expect { skip_conditions.referenced_skip_information(casks[:disabled], original_name) }
+          .to raise_error(RuntimeError, "Referenced cask (test_disabled) is skipped as disabled")
+      end
+    end
+
+    context "when a cask has a `livecheck` block using `ExtractPlist` and `--extract-plist` is not used" do
+      it "skips" do
+        expect do
+          skip_conditions.referenced_skip_information(casks[:extract_plist], original_name, extract_plist: false)
+        end
+          .to raise_error(RuntimeError, "Referenced cask (test_extract_plist_skip) is automatically skipped")
       end
     end
 
@@ -534,10 +601,18 @@ describe Homebrew::Livecheck::SkipConditions do
       end
     end
 
-    context "when the cask is discontinued without a livecheckable" do
+    context "when the cask is deprecated without a livecheckable" do
       it "prints skip information" do
-        expect { skip_conditions.print_skip_information(status_hashes[:cask][:discontinued]) }
-          .to output("test_discontinued: discontinued\n").to_stdout
+        expect { skip_conditions.print_skip_information(status_hashes[:cask][:deprecated]) }
+          .to output("test_deprecated: deprecated\n").to_stdout
+          .and not_to_output.to_stderr
+      end
+    end
+
+    context "when the cask is disabled without a livecheckable" do
+      it "prints skip information" do
+        expect { skip_conditions.print_skip_information(status_hashes[:cask][:disabled]) }
+          .to output("test_disabled: disabled\n").to_stdout
           .and not_to_output.to_stderr
       end
     end
@@ -573,10 +648,6 @@ describe Homebrew::Livecheck::SkipConditions do
     context "with a blank parameter" do
       it "prints nothing" do
         expect { skip_conditions.print_skip_information({}) }
-          .to not_to_output.to_stdout
-          .and not_to_output.to_stderr
-
-        expect { skip_conditions.print_skip_information(nil) }
           .to not_to_output.to_stdout
           .and not_to_output.to_stderr
       end

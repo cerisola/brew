@@ -1,6 +1,7 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
+require "ipaddr"
 require "extend/on_system"
 
 module Homebrew
@@ -66,20 +67,20 @@ module Homebrew
 
     sig {
       params(
-        command: T.nilable(T.any(T::Array[String], String, Pathname)),
-        macos:   T.nilable(T.any(T::Array[String], String, Pathname)),
-        linux:   T.nilable(T.any(T::Array[String], String, Pathname)),
-      ).returns(T.nilable(Array))
+        command: T.nilable(T.any(T::Array[T.any(String, Pathname)], String, Pathname)),
+        macos:   T.nilable(T.any(T::Array[T.any(String, Pathname)], String, Pathname)),
+        linux:   T.nilable(T.any(T::Array[T.any(String, Pathname)], String, Pathname)),
+      ).returns(T.nilable(T::Array[T.any(String, Pathname)]))
     }
     def run(command = nil, macos: nil, linux: nil)
       # Save parameters for serialization
       if command
         @run_params = command
       elsif macos || linux
-        @run_params = { macos: macos, linux: linux }.compact
+        @run_params = { macos:, linux: }.compact
       end
 
-      command ||= on_system_conditional(macos: macos, linux: linux)
+      command ||= on_system_conditional(macos:, linux:)
       case command
       when nil
         @run
@@ -151,8 +152,7 @@ module Homebrew
       when true, false
         @keep_alive = { always: value }
       when Hash
-        hash = T.cast(value, Hash)
-        unless (hash.keys - KEEP_ALIVE_KEYS).empty?
+        unless (value.keys - KEEP_ALIVE_KEYS).empty?
           raise TypeError, "Service#keep_alive allows only #{KEEP_ALIVE_KEYS}"
         end
 
@@ -187,17 +187,33 @@ module Homebrew
       end
     end
 
-    sig { params(value: T.nilable(String)).returns(T.nilable(T::Hash[Symbol, String])) }
+    SOCKET_STRING_REGEX = %r{^([a-z]+)://(.+):([0-9]+)$}i
+
+    sig {
+      params(value: T.nilable(T.any(String, T::Hash[Symbol, String])))
+        .returns(T.nilable(T::Hash[Symbol, T::Hash[Symbol, String]]))
+    }
     def sockets(value = nil)
-      case value
-      when nil
-        @sockets
+      return @sockets if value.nil?
+
+      @sockets = case value
       when String
-        match = T.must(value).match(%r{([a-z]+)://([a-z0-9.]+):([0-9]+)}i)
+        { listeners: value }
+      when Hash
+        value
+      end.transform_values do |socket_string|
+        match = socket_string.match(SOCKET_STRING_REGEX)
         raise TypeError, "Service#sockets a formatted socket definition as <type>://<host>:<port>" if match.blank?
 
         type, host, port = match.captures
-        @sockets = { host: host, port: port, type: type }
+
+        begin
+          IPAddr.new(host)
+        rescue IPAddr::InvalidAddressError
+          raise TypeError, "Service#sockets expects a valid ipv4 or ipv6 host address"
+        end
+
+        { host:, port:, type: }
       end
     end
 
@@ -410,12 +426,13 @@ module Homebrew
 
       if @sockets.present?
         base[:Sockets] = {}
-        base[:Sockets][:Listeners] = {
-          SockNodeName:    @sockets[:host],
-          SockServiceName: @sockets[:port],
-          SockProtocol:    @sockets[:type].upcase,
-          SockFamily:      "IPv4v6",
-        }
+        @sockets.each do |name, info|
+          base[:Sockets][name] = {
+            SockNodeName:    info[:host],
+            SockServiceName: info[:port],
+            SockProtocol:    info[:type].upcase,
+          }
+        end
       end
 
       if @cron.present? && @run_type == RUN_TYPE_CRON
@@ -497,7 +514,7 @@ module Homebrew
 
     # Prepare the service hash for inclusion in the formula API JSON.
     sig { returns(Hash) }
-    def serialize
+    def to_hash
       name_params = {
         macos: (plist_name if plist_name != default_plist_name),
         linux: (service_name if service_name != default_service_name),
@@ -511,7 +528,20 @@ module Homebrew
           .join(" ")
       end
 
-      sockets_string = "#{@sockets[:type]}://#{@sockets[:host]}:#{@sockets[:port]}" if @sockets.present?
+      sockets_var = if @sockets.present?
+        @sockets.transform_values { |info| "#{info[:type]}://#{info[:host]}:#{info[:port]}" }
+                .then do |sockets_hash|
+                  # TODO: Remove this code when all users are running on versions of Homebrew
+                  # that can process sockets hashes (this commit or later).
+                  if sockets_hash.size == 1 && sockets_hash.key?(:listeners)
+                    # When original #sockets argument was a string: `sockets "tcp://127.0.0.1:80"`
+                    sockets_hash.fetch(:listeners)
+                  else
+                    # When original #sockets argument was a hash: `sockets http: "tcp://0.0.0.0:80"`
+                    sockets_hash
+                  end
+                end
+      end
 
       {
         name:                  name_params.presence,
@@ -531,13 +561,13 @@ module Homebrew
         restart_delay:         @restart_delay,
         process_type:          @process_type,
         macos_legacy_timers:   @macos_legacy_timers,
-        sockets:               sockets_string,
+        sockets:               sockets_var,
       }.compact
     end
 
     # Turn the service API hash values back into what is expected by the formula DSL.
     sig { params(api_hash: Hash).returns(Hash) }
-    def self.deserialize(api_hash)
+    def self.from_hash(api_hash)
       hash = {}
       hash[:name] = api_hash["name"].transform_keys(&:to_sym) if api_hash.key?("name")
 
@@ -550,11 +580,11 @@ module Homebrew
         when String
           replace_placeholders(api_hash["run"])
         when Array
-          api_hash["run"].map(&method(:replace_placeholders))
+          api_hash["run"].map { replace_placeholders(_1) }
         when Hash
           api_hash["run"].to_h do |key, elem|
             run_cmd = if elem.is_a?(Array)
-              elem.map(&method(:replace_placeholders))
+              elem.map { replace_placeholders(_1) }
             else
               replace_placeholders(elem)
             end
@@ -564,8 +594,6 @@ module Homebrew
         else
           raise ArgumentError, "Unexpected run command: #{api_hash["run"]}"
         end
-
-      hash[:keep_alive] = api_hash["keep_alive"].transform_keys(&:to_sym) if api_hash.key?("keep_alive")
 
       if api_hash.key?("environment_variables")
         hash[:environment_variables] = api_hash["environment_variables"].to_h do |key, value|
@@ -585,10 +613,20 @@ module Homebrew
         hash[key.to_sym] = replace_placeholders(value)
       end
 
-      %w[interval cron launch_only_once require_root restart_delay macos_legacy_timers sockets].each do |key|
+      %w[interval cron launch_only_once require_root restart_delay macos_legacy_timers].each do |key|
         next if (value = api_hash[key]).nil?
 
         hash[key.to_sym] = value
+      end
+
+      %w[sockets keep_alive].each do |key|
+        next unless (value = api_hash[key])
+
+        hash[key.to_sym] = if value.is_a?(Hash)
+          value.transform_keys(&:to_sym)
+        else
+          value
+        end
       end
 
       hash

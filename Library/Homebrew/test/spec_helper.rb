@@ -10,39 +10,46 @@ if ENV["HOMEBREW_TESTS_COVERAGE"]
   ]
   SimpleCov.formatters = SimpleCov::Formatter::MultiFormatter.new(formatters)
 
-  if RUBY_PLATFORM[/darwin/] && ENV["TEST_ENV_NUMBER"]
+  # Needed for outputting coverage reporting only once for parallel_tests.
+  # Otherwise, "Coverage report generated" will get spammed for each process.
+  if ENV["TEST_ENV_NUMBER"]
     SimpleCov.at_exit do
       result = SimpleCov.result
-      result.format! if ParallelTests.number_of_running_processes <= 1
+      # `SimpleCov.result` calls `ParallelTests.wait_for_other_processes_to_finish`
+      # internally for you on the last process.
+      result.format! if ParallelTests.last_process?
     end
   end
 end
 
+require_relative "../standalone"
 require_relative "../warnings"
 
 Warnings.ignore :parser_syntax do
   require "rubocop"
 end
 
-require "rspec/its"
 require "rspec/github"
 require "rspec/retry"
 require "rspec/sorbet"
 require "rubocop/rspec/support"
 require "find"
-require "byebug"
 require "timeout"
 
-$LOAD_PATH.push(File.expand_path("#{ENV.fetch("HOMEBREW_LIBRARY")}/Homebrew/test/support/lib"))
+$LOAD_PATH.unshift(File.expand_path("#{ENV.fetch("HOMEBREW_LIBRARY")}/Homebrew/test/support/lib"))
+
+require_relative "support/extend/cachable"
 
 require_relative "../global"
 
+require "debug" if ENV["HOMEBREW_DEBUG"]
+
 require "test/support/quiet_progress_formatter"
 require "test/support/helper/cask"
+require "test/support/helper/files"
 require "test/support/helper/fixtures"
 require "test/support/helper/formula"
 require "test/support/helper/mktmpdir"
-require "test/support/helper/output_as_tty"
 
 require "test/support/helper/spec/shared_context/homebrew_cask" if OS.mac?
 require "test/support/helper/spec/shared_context/integration_test"
@@ -66,6 +73,8 @@ RSpec.configure do |config|
   config.order = :random
 
   config.raise_errors_for_deprecations!
+  config.warnings = true
+  config.disable_monkey_patching!
 
   config.filter_run_when_matching :focus
 
@@ -85,6 +94,24 @@ RSpec.configure do |config|
   # Don't want the nicer default retry behaviour when using BuildPulse to
   # identify flaky tests.
   config.default_retry_count = 2 unless ENV["BUILDPULSE"]
+
+  config.expect_with :rspec do |expectations|
+    # This option will default to `true` in RSpec 4. It makes the `description`
+    # and `failure_message` of custom matchers include text for helper methods
+    # defined using `chain`, e.g.:
+    #     be_bigger_than(2).and_smaller_than(4).description
+    #     # => "be bigger than 2 and smaller than 4"
+    # ...rather than:
+    #     # => "be bigger than 2"
+    expectations.include_chain_clauses_in_custom_matcher_descriptions = true
+  end
+  config.mock_with :rspec do |mocks|
+    # Prevents you from mocking or stubbing a method that does not exist on
+    # a real object. This is generally recommended and will default to
+    # `true` in RSpec 4.
+    mocks.verify_partial_doubles = true
+  end
+  config.shared_context_metadata_behavior = :apply_to_host_groups
 
   # Increase timeouts for integration tests (as we expect them to take longer).
   config.around(:each, :integration_test) do |example|
@@ -107,15 +134,12 @@ RSpec.configure do |config|
   # Never truncate output objects.
   RSpec::Support::ObjectFormatter.default_instance.max_formatted_output_length = nil
 
-  config.include(FileUtils)
-
   config.include(RuboCop::RSpec::ExpectOffense)
 
   config.include(Test::Helper::Cask)
   config.include(Test::Helper::Fixtures)
   config.include(Test::Helper::Formula)
   config.include(Test::Helper::MkTmpDir)
-  config.include(Test::Helper::OutputAsTTY)
 
   config.before(:each, :needs_linux) do
     skip "Not running on Linux." unless OS.linux?
@@ -139,6 +163,24 @@ RSpec.configure do |config|
 
   config.before(:each, :needs_network) do
     skip "Requires network connection." unless ENV["HOMEBREW_TEST_ONLINE"]
+  end
+
+  config.before(:each, :needs_homebrew_core) do
+    core_tap_path = "#{ENV.fetch("HOMEBREW_LIBRARY")}/Taps/homebrew/homebrew-core"
+    skip "Requires homebrew/core to be tapped." unless Dir.exist?(core_tap_path)
+  end
+
+  config.before do |example|
+    next if example.metadata.key?(:needs_network)
+    next if example.metadata.key?(:needs_utils_curl)
+
+    allow(Utils::Curl).to receive(:curl_executable).and_raise(<<~ERROR)
+      Unexpected call to Utils::Curl.curl_executable without setting :needs_network or :needs_utils_curl.
+    ERROR
+  end
+
+  config.before(:each, :no_api) do
+    ENV["HOMEBREW_NO_INSTALL_FROM_API"] = "1"
   end
 
   config.before(:each, :needs_svn) do
@@ -177,26 +219,10 @@ RSpec.configure do |config|
   end
 
   config.around do |example|
-    def find_files
-      return [] unless File.exist?(TEST_TMPDIR)
-
-      Find.find(TEST_TMPDIR)
-          .reject { |f| File.basename(f) == ".DS_Store" }
-          .reject { |f| TEST_DIRECTORIES.include?(Pathname(f)) }
-          .map { |f| f.sub(TEST_TMPDIR, "") }
-    end
-
     Homebrew.raise_deprecation_exceptions = true
 
-    Formulary.clear_cache
-    Tap.clear_cache
-    DependencyCollector.clear_cache
-    Formula.clear_cache
-    Keg.clear_cache
-    Tab.clear_cache
-    Dependency.clear_cache
-    Requirement.clear_cache
-    Readall.clear_cache if defined?(Readall)
+    Tap.installed.each(&:clear_cache)
+    Cachable::Registry.clear_all_caches
     FormulaInstaller.clear_attempted
     FormulaInstaller.clear_installed
     FormulaInstaller.clear_fetched
@@ -206,7 +232,7 @@ RSpec.configure do |config|
 
     @__homebrew_failed = Homebrew.failed?
 
-    @__files_before_test = find_files
+    @__files_before_test = Test::Helper::Files.find_files
 
     @__env = ENV.to_hash # dup doesn't work on ENV
 
@@ -215,14 +241,14 @@ RSpec.configure do |config|
     @__stdin = $stdin.clone
 
     begin
-      if (example.metadata.keys & [:focus, :byebug]).empty? && !ENV.key?("HOMEBREW_VERBOSE_TESTS")
+      if example.metadata.keys.exclude?(:focus) && !ENV.key?("HOMEBREW_VERBOSE_TESTS")
         $stdout.reopen(File::NULL)
         $stderr.reopen(File::NULL)
+        $stdin.reopen(File::NULL)
       else
-        # don't retry when focusing/debugging
+        # don't retry when focusing
         config.default_retry_count = 0
       end
-      $stdin.reopen(File::NULL)
 
       begin
         timeout = example.metadata.fetch(:timeout, 60)
@@ -236,6 +262,7 @@ RSpec.configure do |config|
       example.example.set_exception(e)
     ensure
       ENV.replace(@__env)
+      Context.current = Context::ContextStruct.new
 
       $stdout.reopen(@__stdout)
       $stderr.reopen(@__stderr)
@@ -244,19 +271,12 @@ RSpec.configure do |config|
       @__stderr.close
       @__stdin.close
 
-      Formulary.clear_cache
-      Tap.clear_cache
-      DependencyCollector.clear_cache
-      Formula.clear_cache
-      Keg.clear_cache
-      Tab.clear_cache
-      Dependency.clear_cache
-      Requirement.clear_cache
-      Readall.clear_cache if defined?(Readall)
+      Tap.all.each(&:clear_cache)
+      Cachable::Registry.clear_all_caches
 
       FileUtils.rm_rf [
         *TEST_DIRECTORIES,
-        *Keg::MUST_EXIST_SUBDIRECTORIES,
+        *Keg.must_exist_subdirectories,
         HOMEBREW_LINKED_KEGS,
         HOMEBREW_PINNED_KEGS,
         HOMEBREW_PREFIX/"var",
@@ -280,7 +300,7 @@ RSpec.configure do |config|
         *Pathname.glob("#{HOMEBREW_CELLAR}/*/"),
       ]
 
-      files_after_test = find_files
+      files_after_test = Test::Helper::Files.find_files
 
       diff = Set.new(@__files_before_test) ^ Set.new(files_after_test)
       expect(diff).to be_empty, <<~EOS
@@ -294,18 +314,7 @@ RSpec.configure do |config|
 end
 
 RSpec::Matchers.define_negated_matcher :not_to_output, :output
-RSpec::Matchers.define_negated_matcher :not_raise_error, :raise_error
 RSpec::Matchers.alias_matcher :have_failed, :be_failed
-RSpec::Matchers.alias_matcher :a_string_containing, :include
-
-RSpec::Matchers.define :a_json_string do
-  match do |actual|
-    JSON.parse(actual)
-    true
-  rescue JSON::ParserError
-    false
-  end
-end
 
 # Match consecutive elements in an array.
 RSpec::Matchers.define :array_including_cons do |*cons|

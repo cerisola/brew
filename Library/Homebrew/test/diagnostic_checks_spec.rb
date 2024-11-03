@@ -2,7 +2,7 @@
 
 require "diagnostic"
 
-describe Homebrew::Diagnostic::Checks do
+RSpec.describe Homebrew::Diagnostic::Checks do
   subject(:checks) { described_class.new }
 
   specify "#inject_file_list" do
@@ -64,18 +64,18 @@ describe Homebrew::Diagnostic::Checks do
     homebrew_path =
       "#{HOMEBREW_PREFIX}/bin#{File::PATH_SEPARATOR}" +
       ENV["HOMEBREW_PATH"].gsub(/(?:^|#{Regexp.escape(File::PATH_SEPARATOR)})#{Regexp.escape(sbin)}/, "")
-    stub_const("ORIGINAL_PATHS", PATH.new(homebrew_path).map { |path| Pathname.new(path).expand_path }.compact)
+    stub_const("ORIGINAL_PATHS", PATH.new(homebrew_path).filter_map { |path| Pathname.new(path).expand_path })
 
     expect(checks.check_user_path_1).to be_nil
     expect(checks.check_user_path_2).to be_nil
     expect(checks.check_user_path_3)
       .to match("Homebrew's \"sbin\" was not found in your PATH")
   ensure
-    sbin.rmtree
+    FileUtils.rm_rf(sbin)
   end
 
   specify "#check_for_symlinked_cellar" do
-    HOMEBREW_CELLAR.rmtree
+    FileUtils.rm_r(HOMEBREW_CELLAR)
 
     mktmpdir do |path|
       FileUtils.ln_s path, HOMEBREW_CELLAR
@@ -101,7 +101,7 @@ describe Homebrew::Diagnostic::Checks do
           FileUtils.chmod 0755, cmd
         end
 
-        allow(Tap).to receive(:cmd_directories).and_return([path1, path2])
+        allow(Commands).to receive(:tap_cmd_directories).and_return([path1, path2])
 
         expect(checks.check_for_external_cmd_name_conflict)
           .to match("brew-foo")

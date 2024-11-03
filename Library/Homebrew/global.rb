@@ -1,28 +1,9 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require_relative "startup"
 
-require "English"
-require "fileutils"
-require "json"
-require "json/add/exception"
-require "forwardable"
-require "set"
-
-# Only require "core_ext" here to ensure we're only requiring the minimum of
-# what we need.
-require "active_support/core_ext/array/access"
-require "active_support/core_ext/enumerable"
-require "active_support/core_ext/file/atomic"
-require "active_support/core_ext/hash/deep_merge"
-require "active_support/core_ext/hash/except"
-require "active_support/core_ext/hash/keys"
-require "active_support/core_ext/object/blank"
-require "active_support/core_ext/object/try"
-require "active_support/core_ext/string/exclude"
-require "active_support/core_ext/string/filters"
-require "active_support/core_ext/string/indent"
+HOMEBREW_HELP_MESSAGE = ENV.fetch("HOMEBREW_HELP_MESSAGE").freeze
 
 HOMEBREW_API_DEFAULT_DOMAIN = ENV.fetch("HOMEBREW_API_DEFAULT_DOMAIN").freeze
 HOMEBREW_BOTTLE_DEFAULT_DOMAIN = ENV.fetch("HOMEBREW_BOTTLE_DEFAULT_DOMAIN").freeze
@@ -45,10 +26,12 @@ HOMEBREW_PHYSICAL_PROCESSOR = ENV.fetch("HOMEBREW_PHYSICAL_PROCESSOR").freeze
 HOMEBREW_BREWED_CURL_PATH = Pathname(ENV.fetch("HOMEBREW_BREWED_CURL_PATH")).freeze
 HOMEBREW_USER_AGENT_CURL = ENV.fetch("HOMEBREW_USER_AGENT_CURL").freeze
 HOMEBREW_USER_AGENT_RUBY =
-  "#{ENV.fetch("HOMEBREW_USER_AGENT")} ruby/#{RUBY_VERSION}-p#{RUBY_PATCHLEVEL}"
+  "#{ENV.fetch("HOMEBREW_USER_AGENT")} ruby/#{RUBY_VERSION}-p#{RUBY_PATCHLEVEL}".freeze
 HOMEBREW_USER_AGENT_FAKE_SAFARI =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/605.1.15 " \
-  "(KHTML, like Gecko) Version/16.5 Safari/605.1.15"
+  # Don't update this beyond 10.15.7 until Safari actually updates their
+  # user agent to be beyond 10.15.7 (not the case as-of macOS 14)
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 " \
+  "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 HOMEBREW_GITHUB_PACKAGES_AUTH = ENV.fetch("HOMEBREW_GITHUB_PACKAGES_AUTH").freeze
 
 HOMEBREW_DEFAULT_PREFIX = ENV.fetch("HOMEBREW_GENERIC_DEFAULT_PREFIX").freeze
@@ -68,29 +51,28 @@ HOMEBREW_MACOS_OLDEST_SUPPORTED = ENV.fetch("HOMEBREW_MACOS_OLDEST_SUPPORTED").f
 HOMEBREW_MACOS_OLDEST_ALLOWED = ENV.fetch("HOMEBREW_MACOS_OLDEST_ALLOWED").freeze
 
 HOMEBREW_PULL_API_REGEX =
-  %r{https://api\.github\.com/repos/([\w-]+)/([\w-]+)?/pulls/(\d+)}.freeze
+  %r{https://api\.github\.com/repos/([\w-]+)/([\w-]+)?/pulls/(\d+)}
 HOMEBREW_PULL_OR_COMMIT_URL_REGEX =
-  %r[https://github\.com/([\w-]+)/([\w-]+)?/(?:pull/(\d+)|commit/[0-9a-fA-F]{4,40})].freeze
-HOMEBREW_BOTTLES_EXTNAME_REGEX = /\.([a-z0-9_]+)\.bottle\.(?:(\d+)\.)?tar\.gz$/.freeze
-
-require "extend/module"
-require "env_config"
-require "macos_version"
-require "os"
-require "messages"
-require "default_prefix"
+  %r[https://github\.com/([\w-]+)/([\w-]+)?/(?:pull/(\d+)|commit/[0-9a-fA-F]{4,40})]
+HOMEBREW_BOTTLES_EXTNAME_REGEX = /\.([a-z0-9_]+)\.bottle\.(?:(\d+)\.)?tar\.gz$/
 
 module Homebrew
   extend FileUtils
 
-  DEFAULT_CELLAR = "#{DEFAULT_PREFIX}/Cellar"
-  DEFAULT_MACOS_CELLAR = "#{HOMEBREW_DEFAULT_PREFIX}/Cellar"
-  DEFAULT_MACOS_ARM_CELLAR = "#{HOMEBREW_MACOS_ARM_DEFAULT_PREFIX}/Cellar"
-  DEFAULT_LINUX_CELLAR = "#{HOMEBREW_LINUX_DEFAULT_PREFIX}/Cellar"
+  DEFAULT_PREFIX = T.let(ENV.fetch("HOMEBREW_DEFAULT_PREFIX").freeze, String)
+  DEFAULT_REPOSITORY = T.let(ENV.fetch("HOMEBREW_DEFAULT_REPOSITORY").freeze, String)
+  DEFAULT_CELLAR = "#{DEFAULT_PREFIX}/Cellar".freeze
+  DEFAULT_MACOS_CELLAR = "#{HOMEBREW_DEFAULT_PREFIX}/Cellar".freeze
+  DEFAULT_MACOS_ARM_CELLAR = "#{HOMEBREW_MACOS_ARM_DEFAULT_PREFIX}/Cellar".freeze
+  DEFAULT_LINUX_CELLAR = "#{HOMEBREW_LINUX_DEFAULT_PREFIX}/Cellar".freeze
 
   class << self
     attr_writer :failed, :raise_deprecation_exceptions, :auditing
 
+    # Check whether Homebrew is using the default prefix.
+    #
+    # @api internal
+    sig { params(prefix: T.any(Pathname, String)).returns(T::Boolean) }
     def default_prefix?(prefix = HOMEBREW_PREFIX)
       prefix.to_s == DEFAULT_PREFIX
     end
@@ -113,8 +95,8 @@ module Homebrew
     end
 
     def running_as_root?
-      @process_uid ||= Process.uid
-      @process_uid.zero?
+      @process_euid ||= Process.euid
+      @process_euid.zero?
     end
 
     def owner_uid
@@ -128,29 +110,38 @@ module Homebrew
     def auto_update_command?
       ENV.fetch("HOMEBREW_AUTO_UPDATE_COMMAND", false).present?
     end
+
+    sig { params(cmd: T.nilable(String)).void }
+    def running_command=(cmd)
+      @running_command_with_args = "#{cmd} #{ARGV.join(" ")}"
+    end
+
+    sig { returns String }
+    def running_command_with_args
+      "brew #{@running_command_with_args}".strip
+    end
   end
 end
 
-require "context"
-require "extend/array"
-require "git_repository"
-require "extend/pathname"
-require "extend/predicable"
-require "cli/args"
-
 require "PATH"
-
 ENV["HOMEBREW_PATH"] ||= ENV.fetch("PATH")
-ORIGINAL_PATHS = PATH.new(ENV.fetch("HOMEBREW_PATH")).map do |p|
+ORIGINAL_PATHS = PATH.new(ENV.fetch("HOMEBREW_PATH")).filter_map do |p|
   Pathname.new(p).expand_path
 rescue
   nil
-end.compact.freeze
+end.freeze
 
-require "system_command"
+require "extend/blank"
+require "extend/kernel"
+require "os"
+
+require "extend/array"
+require "extend/cachable"
+require "extend/enumerable"
+require "extend/string"
+require "extend/pathname"
+
 require "exceptions"
-require "utils"
 
-require "official_taps"
-require "tap"
 require "tap_constants"
+require "official_taps"

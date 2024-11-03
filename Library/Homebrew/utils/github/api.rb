@@ -1,13 +1,12 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
-require "tempfile"
-require "utils/shell"
-require "utils/formatter"
+require "system_command"
 
-# A module that interfaces with GitHub, code like PAT scopes, credential handling and API errors.
 module GitHub
   def self.pat_blurb(scopes = ALL_SCOPES)
+    require "utils/formatter"
+    require "utils/shell"
     <<~EOS
       Create a GitHub personal access token:
         #{Formatter.url(
@@ -19,19 +18,26 @@ module GitHub
 
   API_URL = "https://api.github.com"
   API_MAX_PAGES = 50
+  private_constant :API_MAX_PAGES
   API_MAX_ITEMS = 5000
+  private_constant :API_MAX_ITEMS
   PAGINATE_RETRY_COUNT = 3
+  private_constant :PAGINATE_RETRY_COUNT
 
   CREATE_GIST_SCOPES = ["gist"].freeze
   CREATE_ISSUE_FORK_OR_PR_SCOPES = ["repo"].freeze
   CREATE_WORKFLOW_SCOPES = ["workflow"].freeze
   ALL_SCOPES = (CREATE_GIST_SCOPES + CREATE_ISSUE_FORK_OR_PR_SCOPES + CREATE_WORKFLOW_SCOPES).freeze
-  GITHUB_PERSONAL_ACCESS_TOKEN_REGEX = /^(?:[a-f0-9]{40}|gh[po]_\w{36,251})$/.freeze
+  private_constant :ALL_SCOPES
+  GITHUB_PERSONAL_ACCESS_TOKEN_REGEX = /^(?:[a-f0-9]{40}|(?:gh[pousr]|github_pat)_\w{36,251})$/
+  private_constant :GITHUB_PERSONAL_ACCESS_TOKEN_REGEX
 
-  # Helper functions to access the GitHub API.
+  # Helper functions for accessing the GitHub API.
   #
-  # @api private
+  # @api internal
   module API
+    extend SystemCommand::Mixin
+
     # Generic API error.
     class Error < RuntimeError
       attr_reader :github_message
@@ -65,7 +71,7 @@ module GitHub
                                            "the `(.+)` organization has an IP allow list enabled, " \
                                            "and your IP address is not permitted to access this resource").freeze
 
-    NO_CREDENTIALS_MESSAGE = <<~MESSAGE
+    NO_CREDENTIALS_MESSAGE = <<~MESSAGE.freeze
       No GitHub credentials found in macOS Keychain, GitHub CLI or the environment.
       #{GitHub.pat_blurb}
     MESSAGE
@@ -74,7 +80,7 @@ module GitHub
     class AuthenticationFailedError < Error
       def initialize(credentials_type, github_message)
         @github_message = github_message
-        message = +"GitHub API Error: #{github_message}\n"
+        message = "GitHub API Error: #{github_message}\n"
         message << case credentials_type
         when :github_cli_token
           <<~EOS
@@ -89,6 +95,7 @@ module GitHub
               printf "protocol=https\\nhost=github.com\\n" | git credential-osxkeychain erase
           EOS
         when :env_token
+          require "utils/formatter"
           <<~EOS
             HOMEBREW_GITHUB_API_TOKEN may be invalid or expired; check:
               #{Formatter.url("https://github.com/settings/tokens")}
@@ -128,44 +135,66 @@ module GitHub
       JSON::ParserError,
     ].freeze
 
+    sig { returns(T.nilable(String)) }
+    private_class_method def self.uid_home
+      require "etc"
+      Etc.getpwuid(Process.uid)&.dir
+    rescue ArgumentError
+      # Cover for misconfigured NSS setups
+      nil
+    end
+
     # Gets the token from the GitHub CLI for github.com.
     sig { returns(T.nilable(String)) }
     def self.github_cli_token
-      # Avoid `Formula["gh"].opt_bin` so this method works even with `HOMEBREW_DISABLE_LOAD_FORMULA`.
-      env = { "PATH" => PATH.new(HOMEBREW_PREFIX/"opt/gh/bin", ENV.fetch("PATH")) }
-      gh_out, _, result = system_command "gh",
-                                         args:         ["auth", "token", "--hostname", "github.com"],
-                                         env:          env,
-                                         print_stderr: false
-      return unless result.success?
+      require "utils/uid"
+      Utils::UID.drop_euid do
+        # Avoid `Formula["gh"].opt_bin` so this method works even with `HOMEBREW_DISABLE_LOAD_FORMULA`.
+        env = {
+          "PATH" => PATH.new(HOMEBREW_PREFIX/"opt/gh/bin", ENV.fetch("PATH")),
+          "HOME" => uid_home,
+        }.compact
+        gh_out, _, result = system_command "gh",
+                                           args:         ["auth", "token", "--hostname", "github.com"],
+                                           env:,
+                                           print_stderr: false
+        return unless result.success?
 
-      gh_out.chomp
+        gh_out.chomp
+      end
     end
 
     # Gets the password field from `git-credential-osxkeychain` for github.com,
     # but only if that password looks like a GitHub Personal Access Token.
     sig { returns(T.nilable(String)) }
     def self.keychain_username_password
-      git_credential_out, _, result = system_command "git",
-                                                     args:         ["credential-osxkeychain", "get"],
-                                                     input:        ["protocol=https\n", "host=github.com\n"],
-                                                     print_stderr: false
-      return unless result.success?
+      require "utils/uid"
+      Utils::UID.drop_euid do
+        git_credential_out, _, result = system_command "git",
+                                                       args:         ["credential-osxkeychain", "get"],
+                                                       input:        ["protocol=https\n", "host=github.com\n"],
+                                                       env:          { "HOME" => uid_home }.compact,
+                                                       print_stderr: false
+        return unless result.success?
 
-      github_username = git_credential_out[/username=(.+)/, 1]
-      github_password = git_credential_out[/password=(.+)/, 1]
-      return unless github_username
+        git_credential_out.force_encoding("ASCII-8BIT")
+        github_username = git_credential_out[/^username=(.+)/, 1]
+        github_password = git_credential_out[/^password=(.+)/, 1]
+        return unless github_username
 
-      # Don't use passwords from the keychain unless they look like
-      # GitHub Personal Access Tokens:
-      #   https://github.com/cerisola/brew/issues/6862#issuecomment-572610344
-      return unless GITHUB_PERSONAL_ACCESS_TOKEN_REGEX.match?(github_password)
+        # Don't use passwords from the keychain unless they look like
+        # GitHub Personal Access Tokens:
+        #   https://github.com/cerisola/brew/issues/6862#issuecomment-572610344
+        return unless GITHUB_PERSONAL_ACCESS_TOKEN_REGEX.match?(github_password)
 
-      github_password
+        github_password
+      end
     end
 
     def self.credentials
-      @credentials ||= Homebrew::EnvConfig.github_api_token || github_cli_token || keychain_username_password
+      @credentials ||= Homebrew::EnvConfig.github_api_token.presence
+      @credentials ||= github_cli_token.presence
+      @credentials ||= keychain_username_password.presence
     end
 
     sig { returns(Symbol) }
@@ -197,6 +226,7 @@ module GitHub
       credentials_scopes = response_headers["x-oauth-scopes"]
       return if needed_scopes.subset?(Set.new(credentials_scopes.to_s.split(", ")))
 
+      github_permission_link = GitHub.pat_blurb(needed_scopes.to_a)
       needed_scopes = needed_scopes.to_a.join(", ").presence || "none"
       credentials_scopes = "none" if credentials_scopes.blank?
 
@@ -205,7 +235,7 @@ module GitHub
         Your #{what} credentials do not have sufficient scope!
         Scopes required: #{needed_scopes}
         Scopes present:  #{credentials_scopes}
-        #{GitHub.pat_blurb}
+        #{github_permission_link}
       EOS
     end
 
@@ -224,6 +254,7 @@ module GitHub
       args += ["--header", "Authorization: token #{token}"] if credentials_type != :none
       args += ["--header", "X-GitHub-Api-Version:2022-11-28"]
 
+      require "tempfile"
       data_tmpfile = nil
       if data
         begin
@@ -251,6 +282,7 @@ module GitHub
 
         args += ["--dump-header", T.must(headers_tmpfile.path)]
 
+        require "utils/curl"
         output, errors, status = Utils::Curl.curl_output("--location", url.to_s, *args, secrets: [token])
         output, _, http_code = output.rpartition("\n")
         output, _, http_code = output.rpartition("\n") if http_code == "000"
@@ -280,11 +312,11 @@ module GitHub
       end
     end
 
-    def self.paginate_rest(url, additional_query_params: nil, per_page: 100)
+    def self.paginate_rest(url, additional_query_params: nil, per_page: 100, scopes: [].freeze)
       (1..API_MAX_PAGES).each do |page|
         retry_count = 1
         result = begin
-          API.open_rest("#{url}?per_page=#{per_page}&page=#{page}&#{additional_query_params}")
+          API.open_rest("#{url}?per_page=#{per_page}&page=#{page}&#{additional_query_params}", scopes:)
         rescue Error
           if retry_count < PAGINATE_RETRY_COUNT
             retry_count += 1
@@ -300,8 +332,8 @@ module GitHub
     end
 
     def self.open_graphql(query, variables: nil, scopes: [].freeze, raise_errors: true)
-      data = { query: query, variables: variables }
-      result = open_rest("#{API_URL}/graphql", scopes: scopes, data: data, request_method: "POST")
+      data = { query:, variables: }
+      result = open_rest("#{API_URL}/graphql", scopes:, data:, request_method: "POST")
 
       if raise_errors
         if result["errors"].present?
@@ -311,6 +343,30 @@ module GitHub
         result["data"]
       else
         result
+      end
+    end
+
+    sig {
+      params(
+        query:        String,
+        variables:    T.nilable(T::Hash[Symbol, T.untyped]),
+        scopes:       T::Array[String],
+        raise_errors: T::Boolean,
+        _block:       T.proc.params(data: T::Hash[String, T.untyped]).returns(T::Hash[String, T.untyped]),
+      ).void
+    }
+    def self.paginate_graphql(query, variables: nil, scopes: [].freeze, raise_errors: true, &_block)
+      result = API.open_graphql(query, variables:, scopes:, raise_errors:)
+
+      has_next_page = T.let(true, T::Boolean)
+      variables ||= {}
+      while has_next_page
+        page_info = yield result
+        has_next_page = page_info["hasNextPage"]
+        if has_next_page
+          variables[:after] = page_info["endCursor"]
+          result = API.open_graphql(query, variables:, scopes:, raise_errors:)
+        end
       end
     end
 

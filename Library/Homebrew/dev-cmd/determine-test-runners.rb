@@ -1,53 +1,61 @@
 # typed: strict
 # frozen_string_literal: true
 
-require "cli/parser"
+require "abstract_command"
 require "test_runner_formula"
 require "github_runner_matrix"
 
 module Homebrew
-  sig { returns(Homebrew::CLI::Parser) }
-  def self.determine_test_runners_args
-    Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `determine-test-runners` <testing-formulae> [<deleted-formulae>]
+  module DevCmd
+    class DetermineTestRunners < AbstractCommand
+      cmd_args do
+        usage_banner <<~EOS
+          `determine-test-runners` {<testing-formulae> [<deleted-formulae>]|--all-supported}
 
-        Determines the runners used to test formulae or their dependents.
-      EOS
-      switch "--eval-all",
-             description: "Evaluate all available formulae, whether installed or not, to determine testing " \
-                          "dependents."
-      switch "--dependents",
-             description: "Determine runners for testing dependents. Requires `--eval-all` or `HOMEBREW_EVAL_ALL`."
+          Determines the runners used to test formulae or their dependents. For internal use in Homebrew taps.
+        EOS
+        switch "--all-supported",
+               description: "Instead of selecting runners based on the chosen formula, return all supported runners."
+        switch "--eval-all",
+               description: "Evaluate all available formulae, whether installed or not, to determine testing " \
+                            "dependents.",
+               env:         :eval_all
+        switch "--dependents",
+               description: "Determine runners for testing dependents. Requires `--eval-all` or `HOMEBREW_EVAL_ALL`.",
+               depends_on:  "--eval-all"
 
-      named_args min: 1, max: 2
+        named_args max: 2
 
-      hide_from_man_page!
-    end
-  end
+        conflicts "--all-supported", "--dependents"
 
-  sig { void }
-  def self.determine_test_runners
-    args = determine_test_runners_args.parse
+        hide_from_man_page!
+      end
 
-    eval_all = args.eval_all? || Homebrew::EnvConfig.eval_all?
+      sig { override.void }
+      def run
+        if args.no_named? && !args.all_supported?
+          raise Homebrew::CLI::MinNamedArgumentsError, 1
+        elsif args.all_supported? && !args.no_named?
+          raise UsageError, "`--all-supported` is mutually exclusive to other arguments."
+        end
 
-    odie "`--dependents` requires `--eval-all` or `HOMEBREW_EVAL_ALL`!" if args.dependents? && !eval_all
+        testing_formulae = args.named.first&.split(",").to_a
+        testing_formulae.map! { |name| TestRunnerFormula.new(Formulary.factory(name), eval_all: args.eval_all?) }
+                        .freeze
+        deleted_formulae = args.named.second&.split(",").to_a.freeze
+        runner_matrix = GitHubRunnerMatrix.new(testing_formulae, deleted_formulae,
+                                               all_supported:    args.all_supported?,
+                                               dependent_matrix: args.dependents?)
+        runners = runner_matrix.active_runner_specs_hash
 
-    testing_formulae = args.named.first.split(",")
-    testing_formulae.map! { |name| TestRunnerFormula.new(Formulary.factory(name), eval_all: eval_all) }
-                    .freeze
-    deleted_formulae = args.named.second&.split(",").freeze
+        ohai "Runners", JSON.pretty_generate(runners)
 
-    runner_matrix = GitHubRunnerMatrix.new(testing_formulae, deleted_formulae, dependent_matrix: args.dependents?)
-    runners = runner_matrix.active_runner_specs_hash
-
-    ohai "Runners", JSON.pretty_generate(runners)
-
-    github_output = ENV.fetch("GITHUB_OUTPUT")
-    File.open(github_output, "a") do |f|
-      f.puts("runners=#{runners.to_json}")
-      f.puts("runners_present=#{runners.present?}")
+        github_output = ENV.fetch("GITHUB_OUTPUT")
+        File.open(github_output, "a") do |f|
+          f.puts("runners=#{runners.to_json}")
+          f.puts("runners_present=#{runners.present?}")
+        end
+      end
     end
   end
 end

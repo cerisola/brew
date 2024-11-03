@@ -1,8 +1,7 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 module Cask
-  # @api private
   class Uninstall
     def self.uninstall_casks(*casks, binaries: nil, force: false, verbose: false)
       require "cask/installer"
@@ -12,7 +11,7 @@ module Cask
 
         raise CaskNotInstalledError, cask if !cask.installed? && !force
 
-        Installer.new(cask, binaries: binaries, force: force, verbose: verbose).uninstall
+        Installer.new(cask, binaries:, force:, verbose:).uninstall
       end
     end
   end

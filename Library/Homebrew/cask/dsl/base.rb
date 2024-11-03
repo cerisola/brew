@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "cask/utils"
@@ -7,8 +7,6 @@ require "extend/on_system"
 module Cask
   class DSL
     # Superclass for all stanzas which take a block.
-    #
-    # @api private
     class Base
       extend Forwardable
 

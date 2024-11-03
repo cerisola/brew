@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "rubocops/extend/formula_cop"
@@ -13,7 +13,10 @@ module RuboCop
       class DependencyOrder < FormulaCop
         extend AutoCorrector
 
-        def audit_formula(_node, _class_node, _parent_class_node, body_node)
+        sig { override.params(formula_nodes: FormulaNodes).void }
+        def audit_formula(formula_nodes)
+          body_node = formula_nodes.body_node
+
           check_dependency_nodes_order(body_node)
           check_uses_from_macos_nodes_order(body_node)
           ([:head, :stable] + on_system_methods).each do |block_name|
@@ -75,7 +78,7 @@ module RuboCop
             ordered.each_with_index do |dep, pos|
               idx = pos+1
               match_nodes = build_with_dependency_name(dep)
-              next if !match_nodes || match_nodes.empty?
+              next if match_nodes.blank?
 
               idx1 = pos
               ordered.drop(idx1+1).each_with_index do |dep2, pos2|
@@ -155,7 +158,7 @@ module RuboCop
 
         def build_with_dependency_name(node)
           match_nodes = build_with_dependency_node(node)
-          match_nodes = match_nodes.to_a.delete_if(&:nil?)
+          match_nodes = match_nodes.to_a.compact
           match_nodes.map { |n| string_content(n) } unless match_nodes.empty?
         end
 

@@ -1,12 +1,10 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "resource"
 require "erb"
 
 # Helper module for creating patches.
-#
-# @api private
 module Patch
   def self.create(strip, src, &block)
     case strip
@@ -32,8 +30,6 @@ module Patch
 end
 
 # An abstract class representing a patch embedded into a formula.
-#
-# @api private
 class EmbeddedPatch
   attr_writer :owner
   attr_reader :strip
@@ -62,8 +58,6 @@ class EmbeddedPatch
 end
 
 # A patch at the `__END__` of a formula file.
-#
-# @api private
 class DATAPatch < EmbeddedPatch
   attr_accessor :path
 
@@ -78,7 +72,7 @@ class DATAPatch < EmbeddedPatch
     path.open("rb") do |f|
       loop do
         line = f.gets
-        break if line.nil? || line =~ /^__END__$/
+        break if line.nil? || /^__END__$/.match?(line)
       end
       while (line = f.gets)
         data << line
@@ -89,8 +83,6 @@ class DATAPatch < EmbeddedPatch
 end
 
 # A string containing a patch.
-#
-# @api private
 class StringPatch < EmbeddedPatch
   def initialize(strip, str)
     super(strip)
@@ -102,9 +94,7 @@ class StringPatch < EmbeddedPatch
   end
 end
 
-# A string containing a patch.
-#
-# @api private
+# A file containing a patch.
 class ExternalPatch
   extend Forwardable
 
@@ -116,7 +106,7 @@ class ExternalPatch
 
   def initialize(strip, &block)
     @strip    = strip
-    @resource = Resource::PatchResource.new(&block)
+    @resource = Resource::Patch.new(&block)
   end
 
   sig { returns(T::Boolean) }
@@ -150,7 +140,12 @@ class ExternalPatch
         patch_files.each do |patch_file|
           ohai "Applying #{patch_file}"
           patch_file = patch_dir/patch_file
-          safe_system "patch", "-g", "0", "-f", "-#{strip}", "-i", patch_file
+          Utils.safe_popen_write("patch", "-g", "0", "-f", "-#{strip}") do |p|
+            File.foreach(patch_file) do |line|
+              data = line.gsub("@@HOMEBREW_PREFIX@@", HOMEBREW_PREFIX)
+              p.write(data)
+            end
+          end
         end
       end
     end

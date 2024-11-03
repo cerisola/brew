@@ -3,7 +3,7 @@
 require "formula"
 require "service"
 
-describe Homebrew::Service do
+RSpec.describe Homebrew::Service do
   let(:name) { "formula_name" }
 
   def stub_formula(&block)
@@ -11,6 +11,15 @@ describe Homebrew::Service do
       url "https://brew.sh/test-1.0.tbz"
 
       instance_eval(&block) if block
+    end
+  end
+
+  def stub_formula_with_service_sockets(sockets_var)
+    stub_formula do
+      service do
+        run opt_bin/"beanstalkd"
+        sockets sockets_var
+      end
     end
   end
 
@@ -102,43 +111,44 @@ describe Homebrew::Service do
   end
 
   describe "#sockets" do
-    it "throws for missing type" do
-      f = stub_formula do
-        service do
-          run opt_bin/"beanstalkd"
-          sockets "127.0.0.1:80"
-        end
-      end
+    let(:sockets_type_error_message) { "Service#sockets a formatted socket definition as <type>://<host>:<port>" }
 
-      expect do
-        f.service.manual_command
-      end.to raise_error TypeError, "Service#sockets a formatted socket definition as <type>://<host>:<port>"
+    it "throws for missing type" do
+      [
+        stub_formula_with_service_sockets("127.0.0.1:80"),
+        stub_formula_with_service_sockets({ socket: "127.0.0.1:80" }),
+      ].each do |f|
+        expect { f.service.manual_command }.to raise_error TypeError, sockets_type_error_message
+      end
     end
 
     it "throws for missing host" do
-      f = stub_formula do
-        service do
-          run opt_bin/"beanstalkd"
-          sockets "tcp://:80"
-        end
+      [
+        stub_formula_with_service_sockets("tcp://:80"),
+        stub_formula_with_service_sockets({ socket: "tcp://:80" }),
+      ].each do |f|
+        expect { f.service.manual_command }.to raise_error TypeError, sockets_type_error_message
       end
-
-      expect do
-        f.service.manual_command
-      end.to raise_error TypeError, "Service#sockets a formatted socket definition as <type>://<host>:<port>"
     end
 
     it "throws for missing port" do
-      f = stub_formula do
-        service do
-          run opt_bin/"beanstalkd"
-          sockets "tcp://127.0.0.1"
-        end
+      [
+        stub_formula_with_service_sockets("tcp://127.0.0.1"),
+        stub_formula_with_service_sockets({ socket: "tcp://127.0.0.1" }),
+      ].each do |f|
+        expect { f.service.manual_command }.to raise_error TypeError, sockets_type_error_message
       end
+    end
 
-      expect do
-        f.service.manual_command
-      end.to raise_error TypeError, "Service#sockets a formatted socket definition as <type>://<host>:<port>"
+    it "throws for invalid host" do
+      [
+        stub_formula_with_service_sockets("tcp://300.0.0.1:80"),
+        stub_formula_with_service_sockets({ socket: "tcp://300.0.0.1:80" }),
+      ].each do |f|
+        expect do
+          f.service.manual_command
+        end.to raise_error TypeError, "Service#sockets expects a valid ipv4 or ipv6 host address"
+      end
     end
   end
 
@@ -259,10 +269,57 @@ describe Homebrew::Service do
     end
 
     it "returns valid plist with socket" do
+      plist_expect = <<~EOS
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+        \t<key>Label</key>
+        \t<string>homebrew.mxcl.formula_name</string>
+        \t<key>LimitLoadToSessionType</key>
+        \t<array>
+        \t\t<string>Aqua</string>
+        \t\t<string>Background</string>
+        \t\t<string>LoginWindow</string>
+        \t\t<string>StandardIO</string>
+        \t\t<string>System</string>
+        \t</array>
+        \t<key>ProgramArguments</key>
+        \t<array>
+        \t\t<string>#{HOMEBREW_PREFIX}/opt/formula_name/bin/beanstalkd</string>
+        \t</array>
+        \t<key>RunAtLoad</key>
+        \t<true/>
+        \t<key>Sockets</key>
+        \t<dict>
+        \t\t<key>listeners</key>
+        \t\t<dict>
+        \t\t\t<key>SockNodeName</key>
+        \t\t\t<string>127.0.0.1</string>
+        \t\t\t<key>SockProtocol</key>
+        \t\t\t<string>TCP</string>
+        \t\t\t<key>SockServiceName</key>
+        \t\t\t<string>80</string>
+        \t\t</dict>
+        \t</dict>
+        </dict>
+        </plist>
+      EOS
+
+      [
+        stub_formula_with_service_sockets("tcp://127.0.0.1:80"),
+        stub_formula_with_service_sockets({ listeners: "tcp://127.0.0.1:80" }),
+      ].each do |f|
+        plist = f.service.to_plist
+        expect(plist).to eq(plist_expect)
+      end
+    end
+
+    it "returns valid plist with multiple sockets" do
       f = stub_formula do
         service do
           run [opt_bin/"beanstalkd", "test"]
-          sockets "tcp://127.0.0.1:80"
+          sockets socket: "tcp://0.0.0.0:80", socket_tls: "tcp://0.0.0.0:443"
         end
       end
 
@@ -291,16 +348,23 @@ describe Homebrew::Service do
         \t<true/>
         \t<key>Sockets</key>
         \t<dict>
-        \t\t<key>Listeners</key>
+        \t\t<key>socket</key>
         \t\t<dict>
-        \t\t\t<key>SockFamily</key>
-        \t\t\t<string>IPv4v6</string>
         \t\t\t<key>SockNodeName</key>
-        \t\t\t<string>127.0.0.1</string>
+        \t\t\t<string>0.0.0.0</string>
         \t\t\t<key>SockProtocol</key>
         \t\t\t<string>TCP</string>
         \t\t\t<key>SockServiceName</key>
         \t\t\t<string>80</string>
+        \t\t</dict>
+        \t\t<key>socket_tls</key>
+        \t\t<dict>
+        \t\t\t<key>SockNodeName</key>
+        \t\t\t<string>0.0.0.0</string>
+        \t\t\t<key>SockProtocol</key>
+        \t\t\t<string>TCP</string>
+        \t\t\t<key>SockServiceName</key>
+        \t\t\t<string>443</string>
         \t\t</dict>
         \t</dict>
         </dict>
@@ -980,7 +1044,7 @@ describe Homebrew::Service do
     end
   end
 
-  describe "#serialize" do
+  describe "#to_hash" do
     let(:serialized_hash) do
       {
         environment_variables: {
@@ -994,8 +1058,8 @@ describe Homebrew::Service do
       }
     end
 
-    # @note The calls to `Formula.generating_hash!` and `Formula.generated_hash!`
-    #   are not idempotent so they can only be used in one test.
+    # NOTE: The calls to `Formula.generating_hash!` and `Formula.generated_hash!`
+    #       are not idempotent so they can only be used in one test.
     it "replaces local paths with placeholders" do
       f = stub_formula do
         service do
@@ -1008,12 +1072,12 @@ describe Homebrew::Service do
       end
 
       Formula.generating_hash!
-      expect(f.service.serialize).to eq(serialized_hash)
+      expect(f.service.to_hash).to eq(serialized_hash)
       Formula.generated_hash!
     end
   end
 
-  describe ".deserialize" do
+  describe ".from_hash" do
     let(:serialized_hash) do
       {
         "name"                  => {
@@ -1047,12 +1111,12 @@ describe Homebrew::Service do
     end
 
     it "replaces placeholders with local paths" do
-      expect(described_class.deserialize(serialized_hash)).to eq(deserialized_hash)
+      expect(described_class.from_hash(serialized_hash)).to eq(deserialized_hash)
     end
 
     describe "run command" do
       it "handles String argument correctly" do
-        expect(described_class.deserialize({
+        expect(described_class.from_hash({
           "run" => "$HOMEBREW_PREFIX/opt/formula_name/bin/beanstalkd",
         })).to eq({
           run: "#{HOMEBREW_PREFIX}/opt/formula_name/bin/beanstalkd",
@@ -1060,7 +1124,7 @@ describe Homebrew::Service do
       end
 
       it "handles Array argument correctly" do
-        expect(described_class.deserialize({
+        expect(described_class.from_hash({
           "run" => ["$HOMEBREW_PREFIX/opt/formula_name/bin/beanstalkd", "--option"],
         })).to eq({
           run: ["#{HOMEBREW_PREFIX}/opt/formula_name/bin/beanstalkd", "--option"],
@@ -1068,7 +1132,7 @@ describe Homebrew::Service do
       end
 
       it "handles Hash argument correctly" do
-        expect(described_class.deserialize({
+        expect(described_class.from_hash({
           "run" => {
             "linux" => "$HOMEBREW_PREFIX/opt/formula_name/bin/beanstalkd",
             "macos" => ["$HOMEBREW_PREFIX/opt/formula_name/bin/beanstalkd", "--option"],

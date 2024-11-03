@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "timeout"
@@ -6,13 +6,15 @@ require "timeout"
 require "utils/user"
 require "cask/artifact/abstract_artifact"
 require "cask/pkg"
+require "extend/hash/keys"
+require "system_command"
 
 module Cask
   module Artifact
     # Abstract superclass for uninstall artifacts.
-    #
-    # @api private
     class AbstractUninstall < AbstractArtifact
+      include SystemCommand::Mixin
+
       ORDERED_DIRECTIVES = [
         :early_script,
         :launchctl,
@@ -36,7 +38,7 @@ module Cask
       def initialize(cask, **directives)
         directives.assert_valid_keys(*ORDERED_DIRECTIVES)
 
-        super(cask, **directives)
+        super
         directives[:signal] = Array(directives[:signal]).flatten.each_slice(2).to_a
         @directives = directives
 
@@ -72,7 +74,7 @@ module Cask
 
         args = directives[directive_sym]
 
-        send("uninstall_#{directive_sym}", *(args.is_a?(Hash) ? [args] : args), **options)
+        send(:"uninstall_#{directive_sym}", *(args.is_a?(Hash) ? [args] : args), **options)
       end
 
       def stanza
@@ -109,7 +111,7 @@ module Cask
             plist_status = command.run(
               "/bin/launchctl",
               args:         ["list", service],
-              sudo:         sudo,
+              sudo:,
               sudo_as_root: sudo,
               print_stderr: false,
             ).stdout
@@ -117,19 +119,19 @@ module Cask
               command.run!(
                 "/bin/launchctl",
                 args:         ["remove", service],
-                sudo:         sudo,
+                sudo:,
                 sudo_as_root: sudo,
               )
               sleep 1
             end
             paths = [
-              +"/Library/LaunchAgents/#{service}.plist",
-              +"/Library/LaunchDaemons/#{service}.plist",
+              "/Library/LaunchAgents/#{service}.plist",
+              "/Library/LaunchDaemons/#{service}.plist",
             ]
             paths.each { |elt| elt.prepend(Dir.home).freeze } unless sudo
             paths = paths.map { |elt| Pathname(elt) }.select(&:exist?)
             paths.each do |path|
-              command.run!("/bin/rm", args: ["-f", "--", path], sudo: sudo, sudo_as_root: sudo)
+              command.run!("/bin/rm", args: ["-f", "--", path], sudo:, sudo_as_root: sudo)
             end
             # undocumented and untested: pass a path to uninstall :launchctl
             next unless Pathname(service).exist?
@@ -137,13 +139,13 @@ module Cask
             command.run!(
               "/bin/launchctl",
               args:         ["unload", "-w", "--", service],
-              sudo:         sudo,
+              sudo:,
               sudo_as_root: sudo,
             )
             command.run!(
               "/bin/rm",
               args:         ["-f", "--", service],
-              sudo:         sudo,
+              sudo:,
               sudo_as_root: sudo,
             )
             sleep 1
@@ -165,10 +167,10 @@ module Cask
         regex = Regexp.escape(search).gsub("\\*", ".*")
         system_command!("/bin/launchctl", args: ["list"])
           .stdout.lines.drop(1) # skip stdout column headers
-          .map do |line|
+          .filter_map do |line|
             pid, _state, id = line.chomp.split(/\s+/)
             id if pid.to_i.nonzero? && id.match?(regex)
-          end.compact
+          end
       end
 
       sig { returns(String) }
@@ -279,8 +281,13 @@ module Cask
           # misapplied "kill" by root could bring down the system. The fact that we
           # learned the pid from AppleScript is already some degree of protection,
           # though indirect.
+          # TODO: check the user that owns the PID and don't try to kill those from other users.
           odebug "Unix ids are #{pids.inspect} for processes with bundle identifier #{bundle_id}"
-          Process.kill(signal, *pids)
+          begin
+            Process.kill(signal, *pids)
+          rescue Errno::EPERM => e
+            opoo "Failed to kill #{bundle_id} PIDs #{pids.join(", ")} with signal #{signal}: #{e}"
+          end
           sleep 3
         end
       end
@@ -450,12 +457,13 @@ module Cask
       def trash_paths(*paths, command: nil, **_)
         return if paths.empty?
 
-        stdout, stderr, = system_command HOMEBREW_LIBRARY_PATH/"cask/utils/trash.swift",
-                                         args:         paths,
-                                         print_stderr: false
+        stdout, = system_command HOMEBREW_LIBRARY_PATH/"cask/utils/trash.swift",
+                                 args:         paths,
+                                 print_stderr: Homebrew::EnvConfig.developer?
 
-        trashed = stdout.split(":").sort
-        untrashable = stderr.split(":").sort
+        trashed, _, untrashable = stdout.partition("\n")
+        trashed = trashed.split(":")
+        untrashable = untrashable.split(":")
 
         return trashed, untrashable if untrashable.empty?
 
@@ -463,7 +471,7 @@ module Cask
           Utils.gain_permissions(path, ["-R"], SystemCommand) do
             system_command! HOMEBREW_LIBRARY_PATH/"cask/utils/trash.swift",
                             args:         [path],
-                            print_stderr: false
+                            print_stderr: Homebrew::EnvConfig.developer?
           end
 
           true
@@ -501,14 +509,14 @@ module Cask
           end
 
           # Directory counts as empty if it only contains a `.DS_Store`.
-          if children.include?(ds_store = resolved_path/".DS_Store")
-            Utils.gain_permissions_remove(ds_store, command: command)
+          if children.include?((ds_store = resolved_path/".DS_Store"))
+            Utils.gain_permissions_remove(ds_store, command:)
             children.delete(ds_store)
           end
 
-          next false unless recursive_rmdir(*children, command: command)
+          next false unless recursive_rmdir(*children, command:)
 
-          Utils.gain_permissions_rmdir(resolved_path, command: command)
+          Utils.gain_permissions_rmdir(resolved_path, command:)
 
           true
         end

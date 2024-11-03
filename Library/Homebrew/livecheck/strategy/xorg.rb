@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 module Homebrew
@@ -42,21 +42,21 @@ module Homebrew
 
         # A `Regexp` used in determining if the strategy applies to the URL and
         # also as part of extracting the module name from the URL basename.
-        MODULE_REGEX = /(?<module_name>.+)-\d+/i.freeze
+        MODULE_REGEX = /(?<module_name>.+)-\d+/i
 
         # A `Regexp` used to extract the module name from the URL basename.
-        FILENAME_REGEX = /^#{MODULE_REGEX.source.strip}/i.freeze
+        FILENAME_REGEX = /^#{MODULE_REGEX.source.strip}/i
 
         # The `Regexp` used to determine if the strategy applies to the URL.
         URL_MATCH_REGEX = %r{
           ^https?://(?:[^/]+?\.)* # Scheme and any leading subdomains
           (?:x\.org/(?:[^/]+/)*individual/(?:[^/]+/)*#{MODULE_REGEX.source.strip}
           |freedesktop\.org/(?:archive|dist|software)/(?:[^/]+/)*#{MODULE_REGEX.source.strip})
-        }ix.freeze
+        }ix
 
         # Used to cache page content, so we don't fetch the same pages
         # repeatedly.
-        @page_data = {}
+        @page_data = T.let({}, T::Hash[String, String])
 
         # Whether the strategy can be applied to the provided URL.
         #
@@ -111,7 +111,7 @@ module Homebrew
           params(
             url:    String,
             regex:  T.nilable(Regexp),
-            unused: T.nilable(T::Hash[Symbol, T.untyped]),
+            unused: T.untyped,
             block:  T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }

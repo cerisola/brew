@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-describe Cask::Config, :cask do
+RSpec.describe Cask::Config, :cask do
   subject(:config) { described_class.new }
 
   describe "::from_json" do
@@ -70,10 +70,6 @@ describe Cask::Config, :cask do
 
     it "returns array of preferred languages" do
       expect(config.explicit[:languages]).to eq(["zh-TW", "en"])
-    end
-
-    it "returns string of explicit config keys and values" do
-      expect(config.explicit_s).to eq('appdir: "/explicit/path/to/apps", language: "zh-TW,en"')
     end
   end
 

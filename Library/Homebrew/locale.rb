@@ -1,29 +1,27 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 # Representation of a system locale.
 #
 # Used to compare the system language and languages defined using the cask `language` stanza.
-#
-# @api private
 class Locale
   # Error when a string cannot be parsed to a `Locale`.
   class ParserError < StandardError
   end
 
   # ISO 639-1 or ISO 639-2
-  LANGUAGE_REGEX = /(?:[a-z]{2,3})/.freeze
+  LANGUAGE_REGEX = /(?:[a-z]{2,3})/
   private_constant :LANGUAGE_REGEX
 
   # ISO 15924
-  SCRIPT_REGEX = /(?:[A-Z][a-z]{3})/.freeze
+  SCRIPT_REGEX = /(?:[A-Z][a-z]{3})/
   private_constant :SCRIPT_REGEX
 
   # ISO 3166-1 or UN M.49
-  REGION_REGEX = /(?:[A-Z]{2}|\d{3})/.freeze
+  REGION_REGEX = /(?:[A-Z]{2}|\d{3})/
   private_constant :REGION_REGEX
 
-  LOCALE_REGEX = /\A((?:#{LANGUAGE_REGEX}|#{REGION_REGEX}|#{SCRIPT_REGEX})(?:-|$)){1,3}\Z/.freeze
+  LOCALE_REGEX = /\A((?:#{LANGUAGE_REGEX}|#{REGION_REGEX}|#{SCRIPT_REGEX})(?:-|$)){1,3}\Z/
   private_constant :LOCALE_REGEX
 
   def self.parse(string)
@@ -41,12 +39,12 @@ class Locale
     scanner = StringScanner.new(string)
 
     if (language = scanner.scan(LANGUAGE_REGEX))
-      sep = scanner.scan(/-/)
+      sep = scanner.scan("-")
       return if (sep && scanner.eos?) || (sep.nil? && !scanner.eos?)
     end
 
     if (script = scanner.scan(SCRIPT_REGEX))
-      sep = scanner.scan(/-/)
+      sep = scanner.scan("-")
       return if (sep && scanner.eos?) || (sep.nil? && !scanner.eos?)
     end
 
@@ -63,13 +61,13 @@ class Locale
     raise ArgumentError, "#{self.class} cannot be empty" if language.nil? && region.nil? && script.nil?
 
     {
-      language: language,
-      script:   script,
-      region:   region,
+      language:,
+      script:,
+      region:,
     }.each do |key, value|
       next if value.nil?
 
-      regex = self.class.const_get("#{key.upcase}_REGEX")
+      regex = self.class.const_get(:"#{key.upcase}_REGEX")
       raise ParserError, "'#{value}' does not match #{regex}" unless value&.match?(regex)
 
       instance_variable_set(:"@#{key}", value)

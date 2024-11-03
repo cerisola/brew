@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "ast_constants"
@@ -14,8 +14,9 @@ module RuboCop
       class ComponentsOrder < FormulaCop
         extend AutoCorrector
 
-        def audit_formula(_node, _class_node, _parent_class_node, body_node)
-          return if body_node.nil?
+        sig { override.params(formula_nodes: FormulaNodes).void }
+        def audit_formula(formula_nodes)
+          return if (body_node = formula_nodes.body_node).nil?
 
           @present_components, @offensive_nodes = check_order(FORMULA_COMPONENT_PRECEDENCE_LIST, body_node)
 
@@ -89,13 +90,13 @@ module RuboCop
               method_name = on_system_block.method_name
               child_nodes = on_system_body.begin_type? ? on_system_body.child_nodes : [on_system_body]
               if child_nodes.all? { |n| n.send_type? || n.block_type? || n.lvasgn_type? }
-                method_names = child_nodes.map do |node|
+                method_names = child_nodes.filter_map do |node|
                   next if node.lvasgn_type?
                   next if node.method_name == :patch
                   next if on_system_methods.include? node.method_name
 
                   node.method_name
-                end.compact
+                end
                 next if method_names.empty? || allowed_methods.include?(method_names)
               end
               offending_node(on_system_block)

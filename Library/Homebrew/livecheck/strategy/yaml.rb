@@ -1,10 +1,10 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 module Homebrew
   module Livecheck
     module Strategy
-      # The {Yaml} strategy fetches content at a URL, parses it as YAML, and
+      # The {Yaml} strategy fetches content at a URL, parses it as YAML and
       # provides the parsed data to a `strategy` block. If a regex is present
       # in the `livecheck` block, it should be passed as the second argument to
       # the `strategy` block.
@@ -31,7 +31,7 @@ module Homebrew
         PRIORITY = 0
 
         # The `Regexp` used to determine if the strategy applies to the URL.
-        URL_MATCH_REGEX = %r{^https?://}i.freeze
+        URL_MATCH_REGEX = %r{^https?://}i
 
         # Whether the strategy can be applied to the provided URL.
         # {Yaml} will technically match any HTTP URL but is only usable with
@@ -102,21 +102,21 @@ module Homebrew
             regex:            T.nilable(Regexp),
             provided_content: T.nilable(String),
             homebrew_curl:    T::Boolean,
-            _unused:          T.nilable(T::Hash[Symbol, T.untyped]),
+            _unused:          T.untyped,
             block:            T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }
         def self.find_versions(url:, regex: nil, provided_content: nil, homebrew_curl: false, **_unused, &block)
           raise ArgumentError, "#{Utils.demodulize(T.must(name))} requires a `strategy` block" if block.blank?
 
-          match_data = { matches: {}, regex: regex, url: url }
+          match_data = { matches: {}, regex:, url: }
           return match_data if url.blank? || block.blank?
 
           content = if provided_content.is_a?(String)
             match_data[:cached] = true
             provided_content
           else
-            match_data.merge!(Strategy.page_content(url, homebrew_curl: homebrew_curl))
+            match_data.merge!(Strategy.page_content(url, homebrew_curl:))
             match_data[:content]
           end
           return match_data if content.blank?

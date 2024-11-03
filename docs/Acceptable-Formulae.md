@@ -19,13 +19,24 @@ We now accept stuff that comes with macOS as long as it uses `keg_only :provided
 
 We now accept versioned formulae as long as they [meet the requirements](Versions.md).
 
+### Not a fork (usually)
+
+We will not add new formulae using forks unless at least one of the following is true:
+
+* the fork has been designated the official successor in the original source repository (e.g. in the README) or in a publicly verifiable way by the original author (e.g. in an issue or pull request comment)
+* the fork has been used as the replacement by at least two other major distributions (e.g. Debian, Fedora, Arch, Gentoo, not smaller Linux distributions that are not widely used)
+
+The fork must still meet all the other acceptable formulae requirements (including those of e.g. popularity and self-submission).
+
+An alternative to the fork replacing the original formula is a new formula. For example, if `MikeMcQuaid` forked `curl` and it was very popular: a `curl-mikemcquaid` formula might make sense.
+
 ### We don’t like tools that upgrade themselves
 
-Software that can upgrade itself does not integrate well with Homebrew's own upgrade functionality. The self-update functionality should be disabled (while minimising complication to the formula).
+Software that can upgrade itself does not integrate well with Homebrew formulae's own upgrade functionality. The self-update functionality should be disabled (while minimising complication to the formula). It's fine (and well-supported) for Casks.
 
 ### We don’t like install scripts that download unversioned things
 
-We don't like install scripts that are pulling from the master branch of Git repositories or unversioned, unchecksummed tarballs. These should use `resource` blocks with specific revisions or checksummed tarballs instead. Note that we now allow tools like `cargo`, `gem` and `pip` to download specifically versioned libraries during installation.
+We don't like install scripts that are pulling from the master branch of Git repositories or unversioned, unchecksummed tarballs. These should ideally use `resource` blocks with specific revisions or checksummed tarballs instead. Note that we now allow tools like `cargo`, `gem` and `pip` to download versioned libraries during installation. There's no need to reproduce the functionality of any language package manager with `resource` blocks when we can call it instead.
 
 ### We don’t like binary formulae
 
@@ -45,7 +56,7 @@ The software in question must:
 
 * be maintained (i.e. the last release wasn't ages ago, it works without patching on all Homebrew-supported OS versions and has no outstanding, unpatched security vulnerabilities)
 * be stable (e.g. not declared "unstable" or "beta" by upstream)
-* be known
+* be known (e.g. GitHub repositories should have >=30 forks, >=30 watchers or >=75 stars)
 * be used
 * have a homepage
 
@@ -73,11 +84,11 @@ Clang is the default C/C++ compiler on macOS (and has been for a long time). Sof
 
 We're a package manager so we want to do things like resolve dependencies and set up applications for our users. If things require too much manual intervention then they aren't useful in a package manager.
 
-### Static libraries
+### Shared vs. static libraries
 
-In general, formulae should not ship static libraries since these cannot be updated without a rebuild of the dependant software.
-If a formula gets a lot of requests to install static libraries, they may be installed by the formula.
-Applications in homebrew/core linking against libraries should link against shared libraries not static versions.
+In general, if formulae have to ship either shared or static libraries: they should ship shared ones.
+If there is interest in static libraries they can ship both.
+Shipping only static libraries should be avoided when possible, particularly when the formula is depended on by other formulae since these dependents cannot be updated without a rebuild.
 
 ### Stuff that requires vendored versions of Homebrew formulae
 
@@ -86,6 +97,8 @@ Homebrew formulae should avoid having multiple, separate, upstream projects bund
 
 For more info see [Debian's](https://www.debian.org/doc/debian-policy/ch-source.html#s-embeddedfiles) and [Fedora's](https://docs.fedoraproject.org/en-US/packaging-guidelines/#bundling) stances on this.
 
+Increasingly, though: this can be (too) hard. Homebrew's primary mission is to be useful rather than ideologically pure. If we cannot package something without using vendored upstream versions: so be it; better to have packaged software in Homebrew than not.
+
 ## Sometimes there are exceptions
 
-Even if all criteria are met we may not accept the formula. Documentation tends to lag behind current decision-making. Although some rejections may seem arbitrary or strange they are based on years of experience making Homebrew work acceptably for our users.
+Even if all criteria are met we may not accept the formula. Even if some criteria are not met we may accept the formula. New formulae are held to a higher standard than existing formulae. Documentation will lag behind current decision-making. Although some rejections may seem arbitrary or strange they are based on years of experience making Homebrew work acceptably for our users.

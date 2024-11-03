@@ -1,13 +1,15 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 module Homebrew
   module_function
 
+  sig { returns(String) }
   def no_changes_message
     "No changes to formulae."
   end
 
+  sig { void }
   def migrate_gcc_dependents_if_needed
     return if Settings.read("gcc-rpaths.fixed") == "true"
 
@@ -23,7 +25,7 @@ module Homebrew
       next unless recursive_runtime_dependencies.map(&:name).include? "gcc"
 
       keg = formula.installed_kegs.last
-      tab = Tab.for_keg(keg)
+      tab = keg.tab
       # Force reinstallation upon `brew upgrade` to fix the bottle RPATH.
       tab.source["versions"]["version_scheme"] = -1
       tab.write

@@ -1,14 +1,14 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
+
+require "system_command"
 
 module OS
   module Mac
     # Class representing a macOS SDK.
-    #
-    # @api private
     class SDK
       # 11.x SDKs are explicitly excluded - we want the MacOSX11.sdk symlink instead.
-      VERSIONED_SDK_REGEX = /MacOSX(10\.\d+|\d+)\.sdk$/.freeze
+      VERSIONED_SDK_REGEX = /MacOSX(10\.\d+|\d+)\.sdk$/
 
       sig { returns(MacOSVersion) }
       attr_reader :version
@@ -28,10 +28,9 @@ module OS
     end
 
     # Base class for SDK locators.
-    #
-    # @api private
     class BaseSDKLocator
       extend T::Helpers
+      include SystemCommand::Mixin
 
       abstract!
 
@@ -138,8 +137,6 @@ module OS
     private_constant :BaseSDKLocator
 
     # Helper class for locating the Xcode SDK.
-    #
-    # @api private
     class XcodeSDKLocator < BaseSDKLocator
       sig { override.returns(Symbol) }
       def source
@@ -154,7 +151,7 @@ module OS
           # Xcode.prefix is pretty smart, so let's look inside to find the sdk
           sdk_prefix = "#{Xcode.prefix}/Platforms/MacOSX.platform/Developer/SDKs"
           # Finally query Xcode itself (this is slow, so check it last)
-          sdk_platform_path = Utils.popen_read(DevelopmentTools.locate("xcrun"), "--show-sdk-platform-path").chomp
+          sdk_platform_path = Utils.popen_read(::DevelopmentTools.locate("xcrun"), "--show-sdk-platform-path").chomp
           sdk_prefix = File.join(sdk_platform_path, "Developer", "SDKs") unless File.directory? sdk_prefix
 
           sdk_prefix
@@ -163,8 +160,6 @@ module OS
     end
 
     # Helper class for locating the macOS Command Line Tools SDK.
-    #
-    # @api private
     class CLTSDKLocator < BaseSDKLocator
       sig { override.returns(Symbol) }
       def source
@@ -178,8 +173,8 @@ module OS
       # using that.
       # As of Xcode 10, the Unix-style headers are installed via a
       # separate package, so we can't rely on their being present.
-      # This will only look up SDKs on Xcode 10 or newer, and still
-      # return nil SDKs for Xcode 9 and older.
+      # This will only look up SDKs on Xcode 10 or newer and still
+      # return `nil` SDKs for Xcode 9 and older.
       sig { override.returns(String) }
       def sdk_prefix
         @sdk_prefix ||= if CLT.provides_sdk?

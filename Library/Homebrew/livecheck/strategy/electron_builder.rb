@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 module Homebrew
@@ -9,8 +9,6 @@ module Homebrew
       #
       # This strategy is not applied automatically and it's necessary to use
       # `strategy :electron_builder` in a `livecheck` block to apply it.
-      #
-      # @api private
       class ElectronBuilder
         NICE_NAME = "electron-builder"
 
@@ -19,7 +17,7 @@ module Homebrew
         PRIORITY = 0
 
         # The `Regexp` used to determine if the strategy applies to the URL.
-        URL_MATCH_REGEX = %r{^https?://.+/[^/]+\.ya?ml(?:\?[^/?]+)?$}i.freeze
+        URL_MATCH_REGEX = %r{^https?://.+/[^/]+\.ya?ml(?:\?[^/?]+)?$}i
 
         # Whether the strategy can be applied to the provided URL.
         #
@@ -42,7 +40,7 @@ module Homebrew
             url:              String,
             regex:            T.nilable(Regexp),
             provided_content: T.nilable(String),
-            unused:           T.nilable(T::Hash[Symbol, T.untyped]),
+            unused:           T.untyped,
             block:            T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }
@@ -53,9 +51,9 @@ module Homebrew
           end
 
           Yaml.find_versions(
-            url:              url,
-            regex:            regex,
-            provided_content: provided_content,
+            url:,
+            regex:,
+            provided_content:,
             **unused,
             &block || proc { |yaml| yaml["version"] }
           )

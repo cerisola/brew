@@ -2,7 +2,7 @@
 
 require "cask/uninstall"
 
-describe Cask::Uninstall, :cask do
+RSpec.describe Cask::Uninstall, :cask do
   it "displays the uninstallation progress" do
     caffeine = Cask::CaskLoader.load(cask_path("local-caffeine"))
 
@@ -60,7 +60,7 @@ describe Cask::Uninstall, :cask do
 
     expect(cask).to be_installed
 
-    cask.config.appdir.join("MyFancyApp.app").rmtree
+    FileUtils.rm_r(cask.config.appdir.join("MyFancyApp.app"))
 
     expect { described_class.uninstall_casks(cask) }
       .to raise_error(Cask::CaskError, /uninstall script .* does not exist/)
@@ -124,7 +124,7 @@ describe Cask::Uninstall, :cask do
     before do
       app.tap(&:mkpath)
          .join("Contents").tap(&:mkpath)
-         .join("Info.plist").tap(&FileUtils.method(:touch))
+         .join("Info.plist").tap { FileUtils.touch(_1) }
 
       caskroom_path.mkpath
 

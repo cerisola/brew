@@ -26,13 +26,9 @@ We maintain separate taps for different types of binaries. Our nomenclature is:
 
 Stable versions live in the main repository at [Homebrew/homebrew-cask](https://github.com/Homebrew/homebrew-cask). They should run on the latest release of macOS or the previous point release (Monterey and Ventura as of late 2022).
 
-#### But there is no Stable version!
-
-When software is only available as a beta, development, or unstable version, its cask can go in the main `homebrew/cask` repository. When stable versions become available, only those will be accepted as subsequent updates.
-
 ### Beta, Unstable, Development, Nightly, or Legacy
 
-Alternative versions should be submitted to [Homebrew/homebrew-cask-versions](https://github.com/Homebrew/homebrew-cask-versions).
+These versions also live in the main repository at [Homebrew/homebrew-cask](https://github.com/Homebrew/homebrew-cask). The filename and token should include `@beta`, `@nightly`, etc. to distinguish them from stable versions.
 
 ### Regional and Localized
 
@@ -54,10 +50,6 @@ For unrelated apps that share a name, the most popular one (usually the one alre
 ### Unofficial, Vendorless, and Walled builds
 
 We do not accept these casks since they involve a higher-than-normal security risk.
-
-### Fonts
-
-Font casks live in the [Homebrew/homebrew-cask-fonts](https://github.com/Homebrew/homebrew-cask-fonts) repository. See the `homebrew/cask-fonts` repository [CONTRIBUTING.md](https://github.com/Homebrew/homebrew-cask-fonts/blob/HEAD/CONTRIBUTING.md) for details.
 
 ## Apps that bundle malware
 
@@ -83,6 +75,17 @@ Casks which do not reach a minimum notability threshold (see [Rejected Casks](#r
 
 Note that none of these exceptions is a guarantee for inclusion, but examples of situations where we may take a second look.
 
+## Not a fork (usually)
+
+We will not add new casks using forks unless at least one of the following is true:
+
+* the fork has been designated the official successor in the original source repository (e.g. in the README) or in a publicly verifiable way by the original author (e.g. in an issue or pull request comment)
+* the fork has been used as the replacement by at least two other major distributions (e.g. Debian, Fedora, Arch, Gentoo, not smaller Linux distributions that are not widely used)
+
+The fork should still meet all the other acceptable casks requirements (including those of e.g. popularity and self-submission).
+
+An alternative to the fork replacing the original cask is a new cask. For example, if `MikeMcQuaid` forked `google-chrome` and it was very popular: a `mikemcquaid-google-chrome` cask might make sense.
+
 ## Homebrew Cask is not a discoverability service
 
 From the inception of Homebrew Cask, various requests have fallen under the umbrella of this reply. Though a somewhat popular request, after careful consideration on multiple occasions we’ve always come back to the same conclusion: we’re not a discoverability service and our users are expected to have reasonable knowledge about the apps they’re installing through us before doing so. For example, [grouping casks by categories](https://github.com/Homebrew/homebrew-cask/issues/5425) is not within the scope of the project.
@@ -99,24 +102,25 @@ Before submitting a cask to any of our repositories, you must read our [document
 
 Common reasons to reject a cask entirely:
 
-* We have strong reasons to believe including the cask can put the whole project at risk. Happened only once so far, [with Popcorn Time](https://github.com/Homebrew/homebrew-cask/pull/3954).
-* Cask is unreasonably difficult to maintain. Examples have included [Audacity](https://github.com/Homebrew/homebrew-cask/pull/27517) and [older Java development casks](https://github.com/Homebrew/homebrew-cask/issues/57387).
-* App is a trial version, and the only way to acquire the full version is through the Mac App Store.
-  * Similarly (and trickier to spot), the app has moved to the Mac App Store but still provides old versions via direct download. We reject these in all official repositories so users don’t get stuck using an old version, wrongly thinking they’re using the most up-to-date one (which, amongst other things, might be a security risk).
-* App is both open-source and CLI-only (i.e. it only uses the `binary` artifact). In that case, and [in the spirit of deduplication](https://github.com/Homebrew/homebrew-cask/issues/15603), submit it first to [homebrew/core](https://github.com/Homebrew/homebrew-core) as a formula that builds from source. If it is rejected, you may then try again as a cask (link to the issue from your pull request so we can see the discussion and reasoning for rejection).
-* App is open-source and has a GUI but no compiled versions (or only old ones) are provided. It’s better to have them in [homebrew/core](https://github.com/Homebrew/homebrew-core) so users don’t get perpetually outdated versions. See [`gedit`](https://github.com/Homebrew/homebrew-cask/pull/23360) for example.
-* Cask has been rejected before due to an issue we cannot fix, and the new submission doesn’t fix that. An example would be the [first submission of `soapui`](https://github.com/Homebrew/homebrew-cask/pull/4939), whose installation problems were not fixed in the two [subsequent](https://github.com/Homebrew/homebrew-cask/pull/9969) [submissions](https://github.com/Homebrew/homebrew-cask/pull/10606).
-* Cask is a duplicate. These submissions mostly occur when the [token reference](https://docs.brew.sh/Cask-Cookbook#token-reference) was not followed.
-* Cask has a download URL that is both behind a login/registration form and from a host that differs from the homepage, meaning users can’t easily verify its authenticity.
-* App is unmaintained, i.e. no releases in the last year, or [explicitly discontinued](https://github.com/Homebrew/homebrew-cask/pull/22699).
+* App fails with GateKeeper enabled on Homebrew supported macOS versions and platforms (e.g. unsigned apps fail on Macs with Apple Silicon/ARM).
 * App is too obscure. Examples:
   * An app from a code repository that is not notable enough (under 30 forks, 30 watchers, 75 stars).
   * [Electronic Identification (eID) software](https://github.com/Homebrew/homebrew-cask/issues/59021).
-* App has no information on its homepage (example: a GitHub repository without a README).
-* The author has [specifically asked us not to include it](https://github.com/Homebrew/homebrew-cask/pull/5342).
 * App requires [SIP to be disabled](https://github.com/Homebrew/homebrew-cask/pull/41890) to be installed and/or used.
 * App installer is a `pkg` that requires [`allow_untrusted: true`](https://docs.brew.sh/Cask-Cookbook#pkg-allow_untrusted).
-* App fails with GateKeeper enabled on Homebrew supported macOS versions and platforms (e.g. unsigned apps fail on Macs with Apple silicon/ARM).
+* App is a trial version, and the only way to acquire the full version is through the Mac App Store.
+  * Similarly (and trickier to spot), the app has moved to the Mac App Store but still provides old versions via direct download. We reject these in all official repositories so users don’t get stuck using an old version, wrongly thinking they’re using the most up-to-date one (which, amongst other things, might be a security risk).
+* App is unmaintained, i.e. no releases in the last year, or [explicitly discontinued](https://github.com/Homebrew/homebrew-cask/pull/22699).
+* App has no information on its homepage (example: a GitHub repository without a README).
+* Cask has no public presence so `brew install` would be the only way to install the software, meaning users can’t easily verify its authenticity.
+  * Or if the Cask has a download URL that is both behind a login/registration form and from a host that differs from the homepage.
+* Cask is unreasonably difficult to maintain. Examples have included [Audacity](https://github.com/Homebrew/homebrew-cask/pull/27517) and [older Java development casks](https://github.com/Homebrew/homebrew-cask/issues/57387).
+* Cask has been rejected before due to an issue we cannot fix, and the new submission doesn’t fix that. An example would be the [first submission of `soapui`](https://github.com/Homebrew/homebrew-cask/pull/4939), whose installation problems were not fixed in the two [subsequent](https://github.com/Homebrew/homebrew-cask/pull/9969) [submissions](https://github.com/Homebrew/homebrew-cask/pull/10606).
+* Cask is a duplicate. These submissions mostly occur when the [token reference](https://docs.brew.sh/Cask-Cookbook#token-reference) was not followed.
+* The author has [specifically asked us not to include it](https://github.com/Homebrew/homebrew-cask/pull/5342).
+* App is both open-source and CLI-only (i.e. it only uses the `binary` artifact). In that case, and [in the spirit of deduplication](https://github.com/Homebrew/homebrew-cask/issues/15603), submit it first to [homebrew/core](https://github.com/Homebrew/homebrew-core) as a formula that builds from source. If it is rejected, you may then try again as a cask (link to the issue from your pull request so we can see the discussion and reasoning for rejection).
+* App is open-source and has a GUI but no compiled versions (or only old ones) are provided. It’s better to have them in [homebrew/core](https://github.com/Homebrew/homebrew-core) so users don’t get perpetually outdated versions. See [`gedit`](https://github.com/Homebrew/homebrew-cask/pull/23360) for example.
+* We have strong reasons to believe including the cask can put the whole project at risk. Happened only once so far, [with Popcorn Time](https://github.com/Homebrew/homebrew-cask/pull/3954).
 
 Common reasons to reject a cask from the main `homebrew/cask` repository:
 

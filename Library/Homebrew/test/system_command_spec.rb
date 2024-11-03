@@ -1,15 +1,17 @@
 # frozen_string_literal: true
 
-describe SystemCommand do
+require "system_command"
+
+RSpec.describe SystemCommand do
   describe "#initialize" do
     subject(:command) do
       described_class.new(
         "env",
         args:         env_args,
-        env:          env,
+        env:,
         must_succeed: true,
-        sudo:         sudo,
-        sudo_as_root: sudo_as_root,
+        sudo:,
+        sudo_as_root:,
       )
     end
 
@@ -19,14 +21,14 @@ describe SystemCommand do
     let(:sudo_as_root) { false }
 
     context "when given some environment variables" do
-      its("run!.stdout") { is_expected.to eq("123") }
+      it("run!.stdout") { expect(command.run!.stdout).to eq("123") }
 
       describe "the resulting command line" do
         it "includes the given variables explicitly" do
-          expect(Open3)
-            .to receive(:popen3)
+          expect(command)
+            .to receive(:exec3)
             .with(
-              an_instance_of(Hash), ["/usr/bin/env", "/usr/bin/env"], "A=1", "B=2", "C=3",
+              an_instance_of(Hash), "/usr/bin/env", "A=1", "B=2", "C=3",
               "env", *env_args,
               pgroup: true
             )
@@ -53,14 +55,14 @@ describe SystemCommand do
 
       describe "the resulting command line" do
         it "includes the given variables explicitly" do
-          expect(Open3)
-            .to receive(:popen3)
+          expect(command)
+            .to receive(:exec3)
             .with(
-              an_instance_of(Hash), ["/usr/bin/sudo", "/usr/bin/sudo"], "-E",
+              an_instance_of(Hash), "/usr/bin/sudo", "-E",
               "A=1", "B=2", "C=3", "--", "env", *env_args, pgroup: nil
             )
-            .and_wrap_original do |original_popen3, *_, &block|
-              original_popen3.call("true", &block)
+            .and_wrap_original do |original_exec3, *_, &block|
+              original_exec3.call({}, "true", &block)
             end
 
           command.run!
@@ -74,14 +76,14 @@ describe SystemCommand do
 
       describe "the resulting command line" do
         it "includes the given variables explicitly" do
-          expect(Open3)
-            .to receive(:popen3)
+          expect(command)
+            .to receive(:exec3)
             .with(
-              an_instance_of(Hash), ["/usr/bin/sudo", "/usr/bin/sudo"], "-u", "root",
+              an_instance_of(Hash), "/usr/bin/sudo", "-u", "root",
               "-E", "A=1", "B=2", "C=3", "--", "env", *env_args, pgroup: nil
             )
-            .and_wrap_original do |original_popen3, *_, &block|
-              original_popen3.call("true", &block)
+            .and_wrap_original do |original_exec3, *_, &block|
+              original_exec3.call({}, "true", &block)
             end
 
           command.run!
@@ -92,10 +94,10 @@ describe SystemCommand do
 
   context "when the exit code is 0" do
     describe "its result" do
-      subject { described_class.run("true") }
+      subject(:result) { described_class.run("true") }
 
       it { is_expected.to be_a_success }
-      its(:exit_status) { is_expected.to eq(0) }
+      it(:exit_status) { expect(result.exit_status).to eq(0) }
     end
   end
 
@@ -112,10 +114,10 @@ describe SystemCommand do
 
     context "with a command that does not have to succeed" do
       describe "its result" do
-        subject { described_class.run(command) }
+        subject(:result) { described_class.run(command) }
 
         it { is_expected.not_to be_a_success }
-        its(:exit_status) { is_expected.to eq(1) }
+        it(:exit_status) { expect(result.exit_status).to eq(1) }
       end
     end
   end
@@ -129,10 +131,10 @@ describe SystemCommand do
     end
 
     describe "its result" do
-      subject { described_class.run(command, args: [path]) }
+      subject(:result) { described_class.run(command, args: [path]) }
 
       it { is_expected.to be_a_success }
-      its(:stdout) { is_expected.to eq("somefile\n") }
+      it(:stdout) { expect(result.stdout).to eq("somefile\n") }
     end
   end
 
@@ -147,11 +149,11 @@ describe SystemCommand do
 
     shared_examples "it returns '1 2 3 4 5 6'" do
       describe "its result" do
-        subject { described_class.run(command, **options) }
+        subject(:result) { described_class.run(command, **options) }
 
         it { is_expected.to be_a_success }
-        its(:stdout) { is_expected.to eq([1, 3, 5, nil].join("\n")) }
-        its(:stderr) { is_expected.to eq([2, 4, 6, nil].join("\n")) }
+        it(:stdout) { expect(result.stdout).to eq([1, 3, 5, nil].join("\n")) }
+        it(:stderr) { expect(result.stderr).to eq([2, 4, 6, nil].join("\n")) }
       end
     end
 
@@ -166,7 +168,7 @@ describe SystemCommand do
       include_examples("it returns '1 2 3 4 5 6'")
     end
 
-    context "with print_stdout" do
+    context "with `print_stdout: true`" do
       before do
         options.merge!(print_stdout: true)
       end
@@ -180,7 +182,40 @@ describe SystemCommand do
       include_examples("it returns '1 2 3 4 5 6'")
     end
 
-    context "without print_stderr" do
+    context "with `print_stdout: :debug`" do
+      before do
+        options.merge!(print_stdout: :debug)
+      end
+
+      it "echoes only STDERR output" do
+        expect { described_class.run(command, **options) }
+          .to output("2\n4\n6\n").to_stderr
+          .and not_to_output.to_stdout
+      end
+
+      context "when `debug?` is true" do
+        include Context
+
+        let(:options) do
+          { args: [
+            "-c",
+            "for i in $(seq 1 2 5); do echo $i; sleep 0.1; echo $(($i + 1)) >&2; sleep 0.1; done",
+          ] }
+        end
+
+        it "echoes the command and all output to STDERR when `debug?` is true" do
+          with_context debug: true do
+            expect { described_class.run(command, **options) }
+              .to output(/\A.*#{Regexp.escape(command)}.*\n1\n2\n3\n4\n5\n6\n\Z/).to_stderr
+              .and not_to_output.to_stdout
+          end
+        end
+      end
+
+      include_examples("it returns '1 2 3 4 5 6'")
+    end
+
+    context "with `print_stderr: false`" do
       before do
         options.merge!(print_stderr: false)
       end
@@ -188,13 +223,13 @@ describe SystemCommand do
       it "echoes nothing" do
         expect do
           described_class.run(command, **options)
-        end.to output("").to_stdout
+        end.not_to output.to_stdout
       end
 
       include_examples("it returns '1 2 3 4 5 6'")
     end
 
-    context "with print_stdout but without print_stderr" do
+    context "with `print_stdout: true` and `print_stderr: false`" do
       before do
         options.merge!(print_stdout: true, print_stderr: false)
       end
@@ -253,7 +288,7 @@ describe SystemCommand do
 
     it 'does not format `stderr` when it starts with \r' do
       expect do
-        system_command \
+        Class.new.extend(SystemCommand::Mixin).system_command \
           "bash",
           args: [
             "-c",
@@ -277,7 +312,7 @@ describe SystemCommand do
       end
 
       it "does not interpret the executable as a shell line" do
-        expect(system_command(executable)).to be_a_success
+        expect(Class.new.extend(SystemCommand::Mixin).system_command(executable)).to be_a_success
       end
     end
 
@@ -289,7 +324,7 @@ describe SystemCommand do
                                args:    %w[--user username:hunter2],
                                verbose: true,
                                secrets: %w[hunter2]
-        end.to raise_error.with_message(redacted_msg).and output(redacted_msg).to_stderr
+        end.to raise_error(ErrorDuringExecution, redacted_msg).and output(redacted_msg).to_stderr
       end
 
       it "does not leak the secrets set by environment" do
@@ -299,7 +334,7 @@ describe SystemCommand do
           described_class.run! "curl",
                                args:    %w[--user username:hunter2],
                                verbose: true
-        end.to raise_error.with_message(redacted_msg).and output(redacted_msg).to_stderr
+        end.to raise_error(ErrorDuringExecution, redacted_msg).and output(redacted_msg).to_stderr
       end
     end
 

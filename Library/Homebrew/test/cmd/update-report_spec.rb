@@ -5,20 +5,20 @@ require "formula_versions"
 require "yaml"
 require "cmd/shared_examples/args_parse"
 
-describe "brew update-report" do
+RSpec.describe Homebrew::Cmd::UpdateReport do
   it_behaves_like "parseable arguments"
 
   describe Reporter do
-    let(:tap) { CoreTap.new }
+    let(:tap) { CoreTap.instance }
     let(:reporter_class) do
       Class.new(described_class) do
         def initialize(tap)
           @tap = tap
 
-          ENV["HOMEBREW_UPDATE_BEFORE#{tap.repo_var}"] = "12345678"
-          ENV["HOMEBREW_UPDATE_AFTER#{tap.repo_var}"] = "abcdef00"
+          ENV["HOMEBREW_UPDATE_BEFORE#{tap.repository_var_suffix}"] = "12345678"
+          ENV["HOMEBREW_UPDATE_AFTER#{tap.repository_var_suffix}"] = "abcdef00"
 
-          super(tap)
+          super
         end
       end
     end
@@ -87,14 +87,14 @@ describe "brew update-report" do
     end
 
     context "when updating a Tap other than the core Tap" do
-      let(:tap) { Tap.new("foo", "bar") }
+      let(:tap) { Tap.fetch("foo", "bar") }
 
       before do
         (tap.path/"Formula").mkpath
       end
 
       after do
-        tap.path.parent.rmtree
+        FileUtils.rm_r(tap.path.parent)
       end
 
       specify "with restructured Tap" do

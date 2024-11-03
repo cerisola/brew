@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "delegate"
@@ -8,8 +8,6 @@ require "requirements/macos_requirement"
 module Cask
   class DSL
     # Class corresponding to the `depends_on` stanza.
-    #
-    # @api private
     class DependsOn < SimpleDelegator
       VALID_KEYS = Set.new([
         :formula,

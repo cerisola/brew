@@ -17,9 +17,11 @@
     },
     "user_agent": ":fake"
   },
-  "appcast": null,
   "version": "1.2.3",
   "installed": null,
+  "installed_time": null,
+  "bundle_version": null,
+  "bundle_short_version": null,
   "outdated": false,
   "sha256": "c64c05bdc0be845505d6e55e69e696a7f50d40846e76155f0c85d5ff5e7bbb84",
   "artifacts": [
@@ -27,10 +29,6 @@
       "uninstall": [
         {
           "launchctl": "com.every.thing.agent",
-          "delete": [
-            "/Library/EverythingHelperTools"
-          ],
-          "kext": "com.every.thing.driver",
           "signal": [
             [
               "TERM",
@@ -40,7 +38,9 @@
               "TERM",
               "com.every.thing.bin"
             ]
-          ]
+          ],
+          "kext": "com.every.thing.driver",
+          "delete": "/Library/EverythingHelperTools"
         }
       ]
     },
@@ -89,13 +89,19 @@
     "type": "naked"
   },
   "auto_updates": true,
-  "tap_git_head": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "tap_git_head": "abcdef1234567890abcdef1234567890abcdef12",
   "languages": [
     "en",
     "eo"
   ],
   "ruby_source_path": "Casks/everything.rb",
   "ruby_source_checksum": {
-    "sha256": "b2707d1952f02c3fa566b7ad2a707a847a959d36f51d3dee642dbe5deec12f27"
+    "sha256": "d8d0d6b2e5ff65388eccb82236fd3aa157b4a29bb043a1f72b97f0e9b70e8320"
   }
 }

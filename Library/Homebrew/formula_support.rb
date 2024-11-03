@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 # Used to track formulae that cannot be installed at the same time.
@@ -37,6 +37,7 @@ class KegOnlyReason
     !by_macos?
   end
 
+  sig { returns(String) }
   def to_s
     return @explanation unless @explanation.empty?
 

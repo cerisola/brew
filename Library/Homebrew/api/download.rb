@@ -1,11 +1,10 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 require "downloadable"
 
 module Homebrew
   module API
-    # @api private
     class DownloadStrategy < CurlDownloadStrategy
       sig { override.returns(Pathname) }
       def symlink_location
@@ -13,8 +12,9 @@ module Homebrew
       end
     end
 
-    # @api private
-    class Download < Downloadable
+    class Download
+      include Downloadable
+
       sig {
         params(
           url:      String,
@@ -25,10 +25,25 @@ module Homebrew
       }
       def initialize(url, checksum, mirrors: [], cache: nil)
         super()
-        @url = URL.new(url, using: API::DownloadStrategy)
+        @url = T.let(URL.new(url, using: API::DownloadStrategy), URL)
         @checksum = checksum
         @mirrors = mirrors
         @cache = cache
+      end
+
+      sig { override.returns(API::DownloadStrategy) }
+      def downloader
+        T.cast(super, API::DownloadStrategy)
+      end
+
+      sig { override.returns(String) }
+      def name
+        download_name
+      end
+
+      sig { override.returns(String) }
+      def download_type
+        "API source"
       end
 
       sig { override.returns(Pathname) }
@@ -38,7 +53,7 @@ module Homebrew
 
       sig { returns(Pathname) }
       def symlink_location
-        T.cast(downloader, API::DownloadStrategy).symlink_location
+        downloader.symlink_location
       end
     end
   end

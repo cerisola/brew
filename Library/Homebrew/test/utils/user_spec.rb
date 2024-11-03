@@ -2,8 +2,8 @@
 
 require "utils/user"
 
-describe User do
-  subject { described_class.current }
+RSpec.describe User do
+  subject(:user) { described_class.current }
 
   it { is_expected.to eq ENV.fetch("USER") }
 
@@ -22,7 +22,7 @@ describe User do
         EOS
       end
 
-      its(:gui?) { is_expected.to be true }
+      it(:gui?) { expect(user.gui?).to be true }
     end
 
     context "when the current user is not in a console session" do
@@ -33,7 +33,7 @@ describe User do
         EOS
       end
 
-      its(:gui?) { is_expected.to be false }
+      it(:gui?) { expect(user.gui?).to be false }
     end
   end
 end

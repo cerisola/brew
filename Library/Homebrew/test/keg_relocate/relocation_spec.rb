@@ -2,7 +2,7 @@
 
 require "keg_relocate"
 
-describe Keg::Relocation do
+RSpec.describe Keg::Relocation do
   let(:prefix) { HOMEBREW_PREFIX.to_s }
   let(:cellar) { HOMEBREW_CELLAR.to_s }
   let(:repository) { HOMEBREW_REPOSITORY.to_s }
@@ -39,7 +39,7 @@ describe Keg::Relocation do
     relocation.replace_text(text)
     expect(text).to eq "foo"
 
-    text = +<<~TEXT
+    text = <<~TEXT
       #{prefix}/foo
       #{cellar}/foo
       foo#{prefix}/bar

@@ -2,7 +2,7 @@
 
 require "rubocops/caveats"
 
-describe RuboCop::Cop::FormulaAudit::Caveats do
+RSpec.describe RuboCop::Cop::FormulaAudit::Caveats do
   subject(:cop) { described_class.new }
 
   context "when auditing `caveats`" do
@@ -13,7 +13,7 @@ describe RuboCop::Cop::FormulaAudit::Caveats do
           url "https://brew.sh/foo-1.0.tgz"
            def caveats
             "setuid"
-            ^^^^^^^^ FormulaAudit/Caveats: Don't recommend setuid in the caveats, suggest sudo instead.
+            ^^^^^^^^ FormulaAudit/Caveats: Don't recommend `setuid` in the caveats, suggest `sudo` instead.
           end
         end
       RUBY

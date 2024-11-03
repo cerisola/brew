@@ -1,53 +1,47 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "context"
 require "erb"
 require "settings"
-require "api"
+require "extend/cachable"
 
 module Utils
   # Helper module for fetching and reporting analytics data.
-  #
-  # @api private
   module Analytics
     INFLUX_BUCKET = "analytics"
     INFLUX_TOKEN = "iVdsgJ_OjvTYGAA79gOfWlA_fX0QCuj4eYUNdb-qVUTrC3tp3JTWCADVNE9HxV0kp2ZjIK9tuthy_teX4szr9A=="
     INFLUX_HOST = "https://eu-central-1-1.aws.cloud2.influxdata.com"
     INFLUX_ORG = "d81a3e6d582d485f"
 
+    extend Cachable
+
     class << self
       include Context
 
       sig {
-        params(measurement: Symbol, package_name: String, tap_name: String, on_request: T::Boolean,
-               options: String).void
+        params(measurement: Symbol,
+               tags:        T::Hash[Symbol, T.any(T::Boolean, String)],
+               fields:      T::Hash[Symbol, T.any(T::Boolean, String)]).void
       }
-      def report_influx(measurement, package_name:, tap_name:, on_request:, options:)
-        return
-        # ensure on_request is a boolean
-        on_request = on_request ? true : false
-
-        # ensure options are removed (by `.compact` below) if empty
-        options = nil if options.blank?
+      def report_influx(measurement, tags, fields)
+        return if not_this_run? || disabled?
 
         # Tags are always implicitly strings and must have low cardinality.
-        tags = default_tags_influx.merge(on_request: on_request)
-                                  .map { |k, v| "#{k}=#{v}" }
-                                  .join(",")
+        tags_string = tags.map { |k, v| "#{k}=#{v}" }
+                          .join(",")
 
         # Fields need explicitly wrapped with quotes and can have high cardinality.
-        fields = default_fields_influx.merge(package: package_name, tap_name: tap_name, options: options)
-                                      .compact
-                                      .map { |k, v| %Q(#{k}="#{v}") }
-                                      .join(",")
+        fields_string = fields.compact
+                              .map { |k, v| %Q(#{k}="#{v}") }
+                              .join(",")
 
         args = [
           "--max-time", "3",
           "--header", "Authorization: Token #{INFLUX_TOKEN}",
           "--header", "Content-Type: text/plain; charset=utf-8",
           "--header", "Accept: application/json",
-          "--data-binary", "#{measurement},#{tags} #{fields} #{Time.now.to_i}"
+          "--data-binary", "#{measurement},#{tags_string} #{fields_string} #{Time.now.to_i}"
         ]
 
         # Second precision is highest we can do and has the lowest performance cost.
@@ -57,14 +51,15 @@ module Utils
 
       sig { params(url: String, args: T::Array[String]).void }
       def deferred_curl(url, args)
+        require "utils/curl"
+
         curl = Utils::Curl.curl_executable
+        args = Utils::Curl.curl_args(*args, "--silent", "--output", "/dev/null", show_error: false)
         if ENV["HOMEBREW_ANALYTICS_DEBUG"]
           puts "#{curl} #{args.join(" ")} \"#{url}\""
           puts Utils.popen_read(curl, *args, url)
         else
-          pid = fork do
-            exec curl, *args, "--silent", "--output", "/dev/null", url
-          end
+          pid = spawn curl, *args, url
           Process.detach T.must(pid)
         end
       end
@@ -73,29 +68,27 @@ module Utils
         params(measurement: Symbol, package_name: String, tap_name: String,
                on_request: T::Boolean, options: String).void
       }
-      def report_event(measurement, package_name:, tap_name:, on_request:, options: "")
-        report_influx_event(measurement, package_name: package_name, tap_name: tap_name, on_request: on_request,
-options: options)
-      end
-
-      sig {
-        params(measurement: Symbol, package_name: String, tap_name: String, on_request: T::Boolean,
-               options: String).void
-      }
-      def report_influx_event(measurement, package_name:, tap_name:, on_request: false, options: "")
+      def report_package_event(measurement, package_name:, tap_name:, on_request: false, options: "")
         return if not_this_run? || disabled?
 
-        report_influx(measurement, package_name: package_name, tap_name: tap_name, on_request: on_request,
-options: options)
+        # ensure on_request is a boolean
+        on_request = on_request ? true : false
+
+        # ensure options are removed (by `.compact` below) if empty
+        options = nil if options.blank?
+
+        # Tags must have low cardinality.
+        tags = default_package_tags.merge(on_request:)
+
+        # Fields can have high cardinality.
+        fields = default_package_fields.merge(package: package_name, tap_name:, options:)
+                                       .compact
+
+        report_influx(measurement, tags, fields)
       end
 
       sig { params(exception: BuildError).void }
       def report_build_error(exception)
-        report_influx_error(exception)
-      end
-
-      sig { params(exception: BuildError).void }
-      def report_influx_error(exception)
         return if not_this_run? || disabled?
 
         formula = exception.formula
@@ -105,8 +98,67 @@ options: options)
         return unless tap
         return unless tap.should_report_analytics?
 
-        options = exception.options.to_a.map(&:to_s).join(" ")
-        report_influx_event(:build_error, package_name: formula.name, tap_name: tap.name, options: options)
+        options = exception.options.to_a.compact.map(&:to_s).sort.uniq.join(" ")
+        report_package_event(:build_error, package_name: formula.name, tap_name: tap.name, options:)
+      end
+
+      sig { params(command_instance: Homebrew::AbstractCommand).void }
+      def report_command_run(command_instance)
+        return if not_this_run? || disabled?
+
+        command = command_instance.class.command_name
+
+        options_array = command_instance.args.options_only.to_a.compact
+
+        # Strip out any flag values to reduce cardinality and preserve privacy.
+        options_array.map! { |option| option.sub(/=.*/m, "=") }
+
+        # Strip out --with-* and --without-* options
+        options_array.reject! { |option| option.match(/^--with(out)?-/) }
+
+        options = options_array.sort.uniq.join(" ")
+
+        # Tags must have low cardinality.
+        tags = {
+          command:,
+          ci:        ENV["CI"].present?,
+          devcmdrun: Homebrew::EnvConfig.devcmdrun?,
+          developer: Homebrew::EnvConfig.developer?,
+        }
+
+        # Fields can have high cardinality.
+        fields = { options: }
+
+        report_influx(:command_run, tags, fields)
+      end
+
+      sig { params(step_command_short: String, passed: T::Boolean).void }
+      def report_test_bot_test(step_command_short, passed)
+        return if not_this_run? || disabled?
+        return if ENV["HOMEBREW_TEST_BOT_ANALYTICS"].blank?
+
+        # ensure passed is a boolean
+        passed = passed ? true : false
+
+        # Tags must have low cardinality.
+        tags = {
+          passed:,
+          arch:   HOMEBREW_PHYSICAL_PROCESSOR,
+          os:     HOMEBREW_SYSTEM,
+        }
+
+        # Strip out any flag values to reduce cardinality and preserve privacy.
+        # Sort options to ensure consistent ordering and improve readability.
+        command_and_package, options =
+          step_command_short.split
+                            .map { |arg| arg.sub(/=.*/, "=") }
+                            .partition { |arg| !arg.start_with?("-") }
+        command = (command_and_package + options.sort).join(" ")
+
+        # Fields can have high cardinality.
+        fields = { command: }
+
+        report_influx(:test_bot_test, tags, fields)
       end
 
       def influx_message_displayed?
@@ -156,6 +208,8 @@ options: options)
       end
 
       def output(args:, filter: nil)
+        require "api"
+
         days = args.days || "30"
         category = args.category || "install"
         begin
@@ -187,7 +241,7 @@ options: options)
           return
         end
 
-        table_output(category, days, results, os_version: os_version, cask_install: cask_install)
+        table_output(category, days, results, os_version:, cask_install:)
       end
 
       def output_analytics(json, args:)
@@ -223,6 +277,8 @@ options: options)
         return unless args.github_packages_downloads?
         return unless formula.core_formula?
 
+        require "utils/curl"
+
         escaped_formula_name = GitHubPackages.image_formula_name(formula.name)
                                              .gsub("/", "%2F")
         formula_url_suffix = "container/core%2F#{escaped_formula_name}/"
@@ -250,7 +306,7 @@ options: options)
 
           last_thirty_days_downloads = last_thirty_days_match.captures.first.tr(",", "")
           thirty_day_download_count += if (millions_match = last_thirty_days_downloads.match(/(\d+\.\d+)M/).presence)
-            millions_match.captures.first.to_i * 1_000_000
+            millions_match.captures.first.to_f * 1_000_000
           else
             last_thirty_days_downloads.to_i
           end
@@ -263,11 +319,13 @@ options: options)
       def formula_output(formula, args:)
         return if Homebrew::EnvConfig.no_analytics? || Homebrew::EnvConfig.no_github_api?
 
+        require "api"
+
         json = Homebrew::API::Formula.fetch formula.name
         return if json.blank? || json["analytics"].blank?
 
-        output_analytics(json, args: args)
-        output_github_packages_downloads(formula, args: args)
+        output_analytics(json, args:)
+        output_github_packages_downloads(formula, args:)
       rescue ArgumentError
         # Ignore failed API requests
         nil
@@ -276,33 +334,30 @@ options: options)
       def cask_output(cask, args:)
         return if Homebrew::EnvConfig.no_analytics? || Homebrew::EnvConfig.no_github_api?
 
+        require "api"
+
         json = Homebrew::API::Cask.fetch cask.token
         return if json.blank? || json["analytics"].blank?
 
-        output_analytics(json, args: args)
+        output_analytics(json, args:)
       rescue ArgumentError
         # Ignore failed API requests
         nil
       end
 
-      def clear_cache
-        remove_instance_variable(:@default_tags_influx) if instance_variable_defined?(:@default_tags_influx)
-        remove_instance_variable(:@default_fields_influx) if instance_variable_defined?(:@default_fields_influx)
-      end
-
       sig { returns(T::Hash[Symbol, String]) }
-      def default_tags_influx
-        @default_tags_influx ||= begin
+      def default_package_tags
+        cache[:default_package_tags] ||= begin
           # Only display default prefixes to reduce cardinality and improve privacy
           prefix = Homebrew.default_prefix? ? HOMEBREW_PREFIX.to_s : "custom-prefix"
 
           # Tags are always strings and must have low cardinality.
           {
             ci:             ENV["CI"].present?,
-            prefix:         prefix,
+            prefix:,
             default_prefix: Homebrew.default_prefix?,
             developer:      Homebrew::EnvConfig.developer?,
-            devcmdrun:      config_true?(:devcmdrun),
+            devcmdrun:      Homebrew::EnvConfig.devcmdrun?,
             arch:           HOMEBREW_PHYSICAL_PROCESSOR,
             os:             HOMEBREW_SYSTEM,
           }
@@ -312,10 +367,14 @@ options: options)
       # remove os_version starting with " or number
       # remove macOS patch release
       sig { returns(T::Hash[Symbol, String]) }
-      def default_fields_influx
-        @default_fields_influx ||= begin
-          version = HOMEBREW_VERSION.match(/^[\d.]+/)[0]
-          version = "#{version}-dev" if HOMEBREW_VERSION.include?("-")
+      def default_package_fields
+        cache[:default_package_fields] ||= begin
+          version = if (match_data = HOMEBREW_VERSION.match(/^[\d.]+/))
+            suffix = "-dev" if HOMEBREW_VERSION.include?("-")
+            match_data[0] + suffix.to_s
+          else
+            ">=4.1.22"
+          end
 
           # Only include OS versions with an actual name.
           os_name_and_version = if (os_version = OS_VERSION.presence) && os_version.downcase.match?(/^[a-z]/)
@@ -323,8 +382,8 @@ options: options)
           end
 
           {
-            version:             version,
-            os_name_and_version: os_name_and_version,
+            version:,
+            os_name_and_version:,
           }
         end
       end
@@ -425,7 +484,7 @@ options: options)
       end
 
       def format_percent(percent)
-        format("%<percent>.2f", percent: percent)
+        format("%<percent>.2f", percent:)
       end
     end
   end

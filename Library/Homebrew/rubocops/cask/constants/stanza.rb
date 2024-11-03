@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 module RuboCop
@@ -19,6 +19,7 @@ module RuboCop
         [:language],
         [:url, :appcast, :name, :desc, :homepage],
         [:livecheck],
+        [:deprecate!, :disable!],
         [
           :auto_updates,
           :conflicts_with,
@@ -64,6 +65,20 @@ module RuboCop
         end.freeze
 
       STANZA_ORDER = STANZA_GROUPS.flatten.freeze
+
+      UNINSTALL_METHODS_ORDER = [
+        :early_script,
+        :launchctl,
+        :quit,
+        :signal,
+        :login_item,
+        :kext,
+        :script,
+        :pkgutil,
+        :delete,
+        :trash,
+        :rmdir,
+      ].freeze
     end
   end
 end

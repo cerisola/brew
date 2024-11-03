@@ -1,6 +1,6 @@
-# Adding Software To Homebrew
+# Adding Software to Homebrew
 
-Is your favorite software missing from Homebrew? Then you're the perfect person to resolve this problem.
+Is your favourite software missing from Homebrew? Then you're the perfect person to resolve this problem.
 
 If you want to add software that is either closed source or a GUI-only program, you will want to follow the guide for [Casks](#casks). Otherwise follow the guide for [Formulae](#formulae) (see also: [Homebrew Terminology](Formula-Cookbook.md#homebrew-terminology)).
 
@@ -14,7 +14,7 @@ If everything checks out, you're ready to get started on a new formula!
 
 ### Writing the formula
 
-1. It's a good idea to find existing formulae in Homebrew that have similarities to the software you want to add. This will help you to understand how specific languages, build methods, etc. are typically handled. Start by tapping `homebrew/core`: first set `HOMEBREW_NO_INSTALL_FROM_API=1` in your shell environment, then run `brew tap homebrew/core` to clone the `homebrew/core` tap to the path returned by `brew --repository homebrew/core`.
+1. It's a good idea to find existing formulae in Homebrew that have similarities to the software you want to add. This will help you to understand how specific languages, build methods, etc. are typically handled. Start by tapping `homebrew/core`: first set `HOMEBREW_NO_INSTALL_FROM_API=1` in your shell environment, then run `brew tap --force homebrew/core` to clone the `homebrew/core` tap to the path returned by `brew --repository homebrew/core`.
 
 1. If you're starting from scratch, you can use the [`brew create` command](Manpage.md#create-options-url) to produce a basic version of your formula. This command accepts a number of options and you may be able to save yourself some work by using an appropriate template option like `--python`.
 
@@ -28,7 +28,7 @@ If you're stuck, ask for help on GitHub or the [Homebrew discussion forum](https
 
 ### Testing and auditing the formula
 
-1. Run `brew audit --strict --new-formula --online <formula>` with your formula. If any errors occur, correct your formula and run the audit again. The audit should finish without any errors by the end of this step.
+1. Run `brew audit --strict --new --online <formula>` with your formula. If any errors occur, correct your formula and run the audit again. The audit should finish without any errors by the end of this step.
 
 1. Run your formula's test using `brew test <formula>`. The test should finish without any errors.
 
@@ -51,70 +51,97 @@ Making a new cask is easy. Follow the directions in [How to Open a Homebrew Pull
 
 #### Examples
 
-Here’s a cask for `shuttle` as an example. Note the `verified` parameter below the `url`, which is needed when [the url and homepage hostnames differ](Cask-Cookbook.md#when-url-and-homepage-domains-differ-add-verified).
+Here’s a cask for `dixa` as an example. Note the `verified` parameter below the `url`, which is needed when [the url and homepage hostnames differ](Cask-Cookbook.md#when-url-and-homepage-domains-differ-add-verified).
 
 ```ruby
-cask "shuttle" do
-  version "1.2.9"
-  sha256 "0b80bf62922291da391098f979683e69cc7b65c4bdb986a431e3f1d9175fba20"
+cask "dixa" do
+  version "4.0.12"
+  sha256 "a4e1a30d074e724ba24e9e2674a72bc4050f00161fb7dc23295a2c189ecda5bb"
 
-  url "https://github.com/fitztrev/shuttle/releases/download/v#{version}/Shuttle.zip",
-      verified: "github.com/fitztrev/shuttle/"
-  name "Shuttle"
-  desc "Simple shortcut menu"
-  homepage "https://fitztrev.github.io/shuttle/"
+  url "https://github.com/dixahq/dixa-desktop-app-release/releases/download/v#{version}/dixa-#{version}.dmg",
+      verified: "github.com/dixahq/dixa-desktop-app-release/"
+  name "Dixa"
+  desc "Customer service platform"
+  homepage "https://dixa.com/"
 
-  app "Shuttle.app"
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
 
-  zap trash: "~/.shuttle.json"
+  app "Dixa.app"
+
+  zap trash: [
+    "~/Library/Application Support/Dixa",
+    "~/Library/Logs/Dixa",
+    "~/Library/Preferences/dixa.plist",
+    "~/Library/Saved Application State/dixa.savedState",
+  ]
 end
 ```
 
-And here is one for `noisy`. Note that it has an unversioned download (the download `url` does not contain the version number, unlike the example above). It also suppresses the checksum with `sha256 :no_check`, which is necessary because since the download `url` does not contain the version number, its checksum will change when a new version is made available.
+And here is one for `pomello`. Note that it has an unversioned download (the download `url` does not contain the version number, unlike the example above). It also suppresses the checksum with `sha256 :no_check`, which is necessary because since the download `url` does not contain the version number, its checksum will change when a new version is made available.
 
 ```ruby
-cask "noisy" do
-  version "1.3"
+cask "pomello" do
+  version "0.10.17"
   sha256 :no_check
 
-  url "https://github.com/downloads/jonshea/Noisy/Noisy.zip"
-  name "Noisy"
-  desc "White noise generator"
-  homepage "https://github.com/jonshea/Noisy"
+  url "https://pomelloapp.com/download/mac/latest"
+  name "Pomello"
+  desc "Turns your Trello cards into Pomodoro tasks"
+  homepage "https://pomelloapp.com/"
 
-  app "Noisy.app"
+  livecheck do
+    url :url
+    strategy :header_match
+  end
 
-  zap trash: "~/Library/Preferences/com.rathertremendous.noisy.plist"
+  app "Pomello.app"
+
+  zap trash: [
+    "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.tinynudge.pomello.*",
+    "~/Library/Application Support/Pomello",
+    "~/Library/Caches/com.tinynudge.pomello",
+    "~/Library/Caches/com.tinynudge.pomello.ShipIt",
+    "~/Library/HTTPStorages/com.tinynudge.pomello",
+    "~/Library/Preferences/com.tinynudge.pomello.plist",
+    "~/Library/Saved Application State/com.tinynudge.pomello.savedState",
+  ]
 end
 ```
 
-Here is a last example for `airdisplay`, which uses a `pkg` installer to install the application instead of a stand-alone application bundle (`.app`). Note the [`uninstall pkgutil` stanza](Cask-Cookbook.md#uninstall-pkgutil), which is needed to uninstall all files that were installed using the installer.
+Here is a last example for `fabfilter-one`, which uses a `pkg` installer to install the application instead of a stand-alone application bundle (`.app`). Note the [`uninstall pkgutil` stanza](Cask-Cookbook.md#uninstall-pkgutil), which is needed to uninstall all files that were installed using the installer.
 
 You will also see how to adapt `version` to the download `url`. Use [our custom `version` methods](Cask-Cookbook.md#version-methods) to do so, resorting to the standard [Ruby String methods](https://ruby-doc.org/core/String.html) when they don’t suffice.
 
 ```ruby
-cask "airdisplay" do
-  version "3.4.2"
-  sha256 "272d14f33b3a4a16e5e0e1ebb2d519db4e0e3da17f95f77c91455b354bee7ee7"
+cask "fabfilter-one" do
+  version "3.37"
+  sha256 "4059594580e365237ded16a213d8d549cbb01c4b8bad80895c61f44bcff7eb68"
 
-  url "https://www.avatron.com/updates/software/airdisplay/ad#{version.no_dots}.zip"
-  name "Air Display"
-  desc "Utility for using a tablet as a second monitor"
-  homepage "https://avatron.com/applications/air-display/"
+  url "https://download.fabfilter.com/ffone#{version.no_dots}.dmg"
+  name "FabFilter One"
+  desc "Synthesizer plug-in"
+  homepage "https://www.fabfilter.com/products/volcano-2-powerful-filter-plug-in"
 
   livecheck do
-    url "https://www.avatron.com/updates/software/airdisplay/appcast.xml"
-    strategy :sparkle, &:short_version
+    url "https://www.fabfilter.com/download"
+    strategy :page_match do |page|
+      match = page.match(/ffone(\d)(\d+)\.dmg/i)
+      next if match.blank?
+
+      "#{match[1]}.#{match[2]}"
+    end
   end
 
-  depends_on macos: ">= :mojave"
+  depends_on macos: ">= :sierra"
 
-  pkg "Air Display Installer.pkg"
+  pkg "FabFilter One #{version} Installer.pkg"
 
-  uninstall pkgutil: [
-    "com.avatron.pkg.AirDisplay",
-    "com.avatron.pkg.AirDisplayHost2",
-  ]
+  uninstall pkgutil: "com.fabfilter.One.#{version.major}"
+
+  # No zap stanza required
 end
 ```
 
@@ -138,27 +165,13 @@ If the `generate_cask_token` script does not work for you, see [Cask Token Detai
 
 #### Creating the cask file
 
-Once you know the token, create your cask with the handy-dandy `brew create --cask` command:
+Once you know the token, create your cask with the `brew create --cask` command:
 
 ```bash
 brew create --cask download-url --set-name my-new-cask
 ```
 
-This will open `EDITOR` with a template for your new cask, to be stored in the file `my-new-cask.rb`. Running the `create` command above will get you a template that looks like this:
-
-```ruby
-cask "my-new-cask" do
-  version ""
-  sha256 ""
-
-  url "download-url"
-  name ""
-  desc ""
-  homepage ""
-
-  app ""
-end
-```
+This will open `EDITOR` with a template for your new cask, to be stored in the file `my-new-cask.rb`.
 
 #### Cask stanzas
 
@@ -172,17 +185,17 @@ Fill in the following stanzas for your cask:
 | `name`             | the full and proper name defined by the vendor, and any useful alternate names (see [`name` Stanza Details](Cask-Cookbook.md#stanza-name)) |
 | `desc`             | one-line description of the software (see [`desc` Stanza Details](Cask-Cookbook.md#stanza-desc)) |
 | `homepage`         | application homepage; used for the `brew home` command |
+| `livecheck`        | Ruby block describing how to find updates for this cask (see [`livecheck` Stanza Details](Cask-Cookbook.md#stanza-livecheck)) |
 | `app`              | relative path to an `.app` bundle that should be moved into the `/Applications` folder on installation (see [`app` Stanza Details](Cask-Cookbook.md#stanza-app)) |
+| `zap`              | additional procedures for a more complete uninstall, including configuration files and shared resources (see [`zap` Stanza Details](Cask-Cookbook.md#stanza-zap)) |
 
 Other commonly used stanzas are:
 
 | name               | value       |
 | ------------------ | ----------- |
-| `livecheck`        | Ruby block describing how to find updates for this cask (see [`livecheck` Stanza Details](Cask-Cookbook.md#stanza-livecheck)) |
 | `pkg`              | relative path to a `.pkg` file containing the distribution (see [`pkg` Stanza Details](Cask-Cookbook.md#stanza-pkg)) |
 | `caveats`          | string or Ruby block providing the user with cask-specific information at install time (see [`caveats` Stanza Details](Cask-Cookbook.md#stanza-caveats)) |
 | `uninstall`        | procedures to uninstall a cask; optional unless the `pkg` stanza is used (see [`uninstall` Stanza Details](Cask-Cookbook.md#stanza-uninstall)) |
-| `zap`              | additional procedures for a more complete uninstall, including configuration files and shared resources (see [`zap` Stanza Details](Cask-Cookbook.md#stanza-zap)) |
 
 Additional [`artifact` stanzas](Cask-Cookbook.md#at-least-one-artifact-stanza-is-also-required) may be needed for special use cases. Even more special-use stanzas are listed at [Optional Stanzas](Cask-Cookbook.md#optional-stanzas).
 
@@ -206,7 +219,7 @@ Example:
 1. So, the `app` stanza should include the subfolder as a relative path:
 
    ```ruby
-   app "Simple Floating Clock/SimpleFloatingClock.app"
+app "Simple Floating Clock/SimpleFloatingClock.app"
    ```
 
 ### Testing and auditing the cask
@@ -215,6 +228,7 @@ Give it a shot with:
 
 ```bash
 export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_INSTALL_FROM_API=1
 brew install my-new-cask
 ```
 
@@ -229,7 +243,7 @@ brew uninstall my-new-cask
 If everything looks good, you’ll also want to make sure your cask passes audit with:
 
 ```bash
-brew audit --new-cask my-new-cask
+brew audit --new --cask my-new-cask
 ```
 
 You should also check stylistic details with `brew style`:
@@ -300,10 +314,10 @@ For cask commits in the Homebrew Cask project, we like to include the applicatio
 
 Examples of good, clear commit summaries:
 
-* `Add Transmission.app v1.0`
-* `Upgrade Transmission.app to v2.82`
-* `Fix checksum in Transmission.app cask`
-* `Add CodeBox Latest`
+* `transmission 1.0 (new cask)`
+* `transmission 2.82`
+* `transmission: fix checksum`
+* `codebox latest (new cask)`
 
 Examples of difficult, unclear commit summaries:
 
@@ -350,8 +364,9 @@ cd "$(brew --repository)"/Library/Taps/homebrew/homebrew-cask
 git checkout master
 ```
 
-If earlier you set the variable `HOMEBREW_NO_AUTO_UPDATE` then clean it up with:
+If earlier you set the variable `HOMEBREW_NO_AUTO_UPDATE` and `HOMEBREW_NO_INSTALL_FROM_API` then clean it up with:
 
 ```bash
 unset HOMEBREW_NO_AUTO_UPDATE
+unset HOMEBREW_NO_INSTALL_FROM_API
 ```

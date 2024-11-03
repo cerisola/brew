@@ -1,4 +1,4 @@
-# How to Organize AGM
+# How To Organize AGM
 
 AGM is our combination of business meeting, yearly work planning session, and opportunity to meet others in our international team in person.
 
@@ -87,7 +87,7 @@ using this quick command:_
 
 **When:** Week 1 of YEAR :date: `2024-01-01`
 
-* [ ] PLC: Solicit changes to [Homebrew Governance](Homebrew-Governance.md) in the form of PRs on the `homebrew-governance-private` repo.
+* [ ] PLC: Solicit changes to [Homebrew Governance](Homebrew-Governance.md) in the form of PRs on the `homebrew-governance-private` repository.
 
 ### Three weeks prior
 

@@ -2,7 +2,7 @@
 
 require "software_spec"
 
-describe SoftwareSpec do
+RSpec.describe SoftwareSpec do
   alias_matcher :have_defined_resource, :be_resource_defined
   alias_matcher :have_defined_option, :be_option_defined
 
@@ -210,7 +210,7 @@ describe SoftwareSpec do
         expect(spec.declared_deps.first).to be_use_macos_install
       end
 
-      it "add a macOS dependency if the OS version doesn't meet requirements" do
+      it "adds a macOS dependency if the OS version doesn't meet requirements" do
         spec.uses_from_macos("foo", since: :high_sierra)
 
         expect(spec.declared_deps).not_to be_empty

@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 module RuboCop
@@ -6,20 +6,13 @@ module RuboCop
     module Cask
       # Common functionality for cops checking casks.
       module CaskHelp
-        prepend CommentsHelp
+        prepend CommentsHelp # Update the rbi file if changing this: https://github.com/sorbet/sorbet/issues/259
 
         sig { overridable.params(cask_block: RuboCop::Cask::AST::CaskBlock).void }
         def on_cask(cask_block); end
 
         sig { overridable.params(cask_stanza_block: RuboCop::Cask::AST::StanzaBlock).void }
         def on_cask_stanza_block(cask_stanza_block); end
-
-        # FIXME: Workaround until https://github.com/rubocop/rubocop/pull/11858 is released.
-        def find_end_line(node)
-          return node.loc.end.line if node.block_type? || node.numblock_type?
-
-          super
-        end
 
         sig { params(block_node: RuboCop::AST::BlockNode).void }
         def on_block(block_node)
@@ -33,6 +26,8 @@ module RuboCop
 
           return unless block_node.cask_block?
 
+          @file_path = processed_source.file_path
+
           cask_block = RuboCop::Cask::AST::CaskBlock.new(block_node, comments)
           on_cask(cask_block)
         end
@@ -45,6 +40,13 @@ module RuboCop
           block_contents = block_node.child_nodes.select(&:begin_type?)
           inner_nodes = block_contents.map(&:child_nodes).flatten.select(&:send_type?)
           inner_nodes.map { |n| RuboCop::Cask::AST::Stanza.new(n, comments) }
+        end
+
+        sig { returns(T.nilable(String)) }
+        def cask_tap
+          return unless (match_obj = @file_path.match(%r{/(homebrew-\w+)/}))
+
+          match_obj[1]
         end
       end
     end

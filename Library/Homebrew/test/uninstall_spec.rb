@@ -2,7 +2,7 @@
 
 require "uninstall"
 
-describe Homebrew::Uninstall do
+RSpec.describe Homebrew::Uninstall do
   let(:dependency) { formula("dependency") { url "f-1" } }
 
   let(:dependent_formula) do
@@ -33,7 +33,7 @@ describe Homebrew::Uninstall do
 
     tab = Tab.empty
     tab.homebrew_version = "1.1.6"
-    tab.tabfile = dependent_formula.latest_installed_prefix/Tab::FILENAME
+    tab.tabfile = dependent_formula.latest_installed_prefix/AbstractTab::FILENAME
     tab.runtime_dependencies = [
       { "full_name" => "dependency", "version" => "1" },
     ]

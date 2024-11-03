@@ -2,7 +2,7 @@
 
 require "livecheck/strategy"
 
-describe Homebrew::Livecheck::Strategy::GithubReleases do
+RSpec.describe Homebrew::Livecheck::Strategy::GithubReleases do
   subject(:github_releases) { described_class }
 
   let(:github_urls) do
@@ -114,7 +114,7 @@ describe Homebrew::Livecheck::Strategy::GithubReleases do
       expect(github_releases.generate_input_values(github_urls[:repository_upload])).to eq(generated)
     end
 
-    it "returns an empty hash for a non-Github URL" do
+    it "returns an empty hash for a non-GitHub URL" do
       expect(github_releases.generate_input_values(non_github_url)).to eq({})
     end
   end

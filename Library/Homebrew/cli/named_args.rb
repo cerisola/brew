@@ -1,15 +1,12 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "delegate"
-require "api"
 require "cli/args"
 
 module Homebrew
   module CLI
     # Helper class for loading formulae/casks from named arguments.
-    #
-    # @api private
     class NamedArgs < Array
       sig {
         params(
@@ -31,12 +28,6 @@ module Homebrew
         cask_options: false,
         without_api: false
       )
-        require "cask/cask"
-        require "cask/cask_loader"
-        require "formulary"
-        require "keg"
-        require "missing_formula"
-
         @args = args
         @override_spec = override_spec
         @force_bottle = force_bottle
@@ -79,8 +70,8 @@ module Homebrew
       )
         @to_formulae_and_casks ||= {}
         @to_formulae_and_casks[only] ||= downcased_unique_named.flat_map do |name|
-          options = { warn: warn }.compact
-          load_formula_or_cask(name, only: only, method: method, **options)
+          options = { warn: }.compact
+          load_formula_or_cask(name, only:, method:, **options)
         rescue FormulaUnreadableError, FormulaClassUnavailableError,
                TapFormulaUnreadableError, TapFormulaClassUnavailableError,
                Cask::CaskUnreadableError
@@ -100,15 +91,37 @@ module Homebrew
 
       def to_formulae_to_casks(only: parent&.only_formula_or_cask, method: nil)
         @to_formulae_to_casks ||= {}
-        @to_formulae_to_casks[[method, only]] = to_formulae_and_casks(only: only, method: method)
+        @to_formulae_to_casks[[method, only]] = to_formulae_and_casks(only:, method:)
                                                 .partition { |o| o.is_a?(Formula) || o.is_a?(Keg) }
                                                 .map(&:freeze).freeze
+      end
+
+      # Returns formulae and casks after validating that a tap is present for each of them.
+      def to_formulae_and_casks_with_taps
+        formulae_and_casks_with_taps, formulae_and_casks_without_taps =
+          to_formulae_and_casks.partition do |formula_or_cask|
+            T.cast(formula_or_cask, T.any(Formula, Cask::Cask)).tap&.installed?
+          end
+
+        return formulae_and_casks_with_taps if formulae_and_casks_without_taps.blank?
+
+        types = []
+        types << "formulae" if formulae_and_casks_without_taps.any?(Formula)
+        types << "casks" if formulae_and_casks_without_taps.any?(Cask::Cask)
+
+        odie <<~ERROR
+          These #{types.join(" and ")} are not in any locally installed taps!
+
+            #{formulae_and_casks_without_taps.sort_by(&:to_s).join("\n  ")}
+
+          You may need to run `brew tap` to install additional taps.
+        ERROR
       end
 
       def to_formulae_and_casks_and_unavailable(only: parent&.only_formula_or_cask, method: nil)
         @to_formulae_casks_unknowns ||= {}
         @to_formulae_casks_unknowns[method] = downcased_unique_named.map do |name|
-          load_formula_or_cask(name, only: only, method: method)
+          load_formula_or_cask(name, only:, method:)
         rescue FormulaOrCaskUnavailableError => e
           e
         end.uniq.freeze
@@ -118,11 +131,11 @@ module Homebrew
         Homebrew.with_no_api_env_if_needed(@without_api) do
           unreadable_error = nil
 
-          if only != :cask
+          formula_or_kegs = if only != :cask
             begin
-              formula = case method
+              case method
               when nil, :factory
-                options = { warn: warn, force_bottle: @force_bottle, flags: @flags }.compact
+                options = { warn:, force_bottle: @force_bottle, flags: @flags }.compact
                 Formulary.factory(name, *@override_spec, **options)
               when :resolve
                 resolve_formula(name)
@@ -136,26 +149,32 @@ module Homebrew
               else
                 raise
               end
-
-              warn_if_cask_conflicts(name, "formula") if only != :formula
-              return formula
             rescue FormulaUnreadableError, FormulaClassUnavailableError,
-                   TapFormulaUnreadableError, TapFormulaClassUnavailableError => e
+                   TapFormulaUnreadableError, TapFormulaClassUnavailableError,
+                   FormulaSpecificationError => e
               # Need to rescue before `FormulaUnavailableError` (superclass of this)
               # The formula was found, but there's a problem with its implementation
               unreadable_error ||= e
+              nil
             rescue NoSuchKegError, FormulaUnavailableError => e
               raise e if only == :formula
+
+              nil
             end
           end
 
-          if only != :formula
+          if only == :formula
+            return formula_or_kegs if formula_or_kegs
+          elsif formula_or_kegs && (!formula_or_kegs.is_a?(Formula) || formula_or_kegs.tap&.core_tap?)
+            warn_if_cask_conflicts(name, "formula")
+            return formula_or_kegs
+          else
             want_keg_like_cask = [:latest_kegs, :default_kegs, :kegs].include?(method)
 
-            begin
+            cask = begin
               config = Cask::Config.from_args(@parent) if @cask_options
-              options = { warn: warn }.compact
-              cask = Cask::CaskLoader.load(name, config: config, **options)
+              options = { warn: }.compact
+              candidate_cask = Cask::CaskLoader.load(name, config:, **options)
 
               if unreadable_error.present?
                 onoe <<~EOS
@@ -167,27 +186,59 @@ module Homebrew
 
               # If we're trying to get a keg-like Cask, do our best to use the same cask
               # file that was used for installation, if possible.
-              if want_keg_like_cask && (installed_caskfile = cask.installed_caskfile) && installed_caskfile.exist?
-                cask = Cask::CaskLoader.load(installed_caskfile)
-              end
+              if want_keg_like_cask &&
+                 (installed_caskfile = candidate_cask.installed_caskfile) &&
+                 installed_caskfile.exist?
+                cask = Cask::CaskLoader.load_from_installed_caskfile(installed_caskfile)
 
-              return cask
+                requested_tap, requested_token = Tap.with_cask_token(name)
+                if requested_tap && requested_token
+                  installed_cask_tap = cask.tab.tap
+
+                  if installed_cask_tap && installed_cask_tap != requested_tap
+                    raise Cask::TapCaskUnavailableError.new(requested_tap, requested_token)
+                  end
+                end
+
+                cask
+              else
+                candidate_cask
+              end
             rescue Cask::CaskUnreadableError, Cask::CaskInvalidError => e
               # If we're trying to get a keg-like Cask, do our best to handle it
               # not being readable and return something that can be used.
               if want_keg_like_cask
-                cask_version = Cask::Cask.new(name, config: config).installed_version
-                cask = Cask::Cask.new(name, config: config) do
+                cask_version = Cask::Cask.new(name, config:).installed_version
+                Cask::Cask.new(name, config:) do
                   version cask_version if cask_version
                 end
-                return cask
+              else
+                # Need to rescue before `CaskUnavailableError` (superclass of this)
+                # The cask was found, but there's a problem with its implementation
+                unreadable_error ||= e
+                nil
               end
-
-              # Need to rescue before `CaskUnavailableError` (superclass of this)
-              # The cask was found, but there's a problem with its implementation
-              unreadable_error ||= e
             rescue Cask::CaskUnavailableError => e
               raise e if only == :cask
+
+              nil
+            end
+
+            # Prioritise formulae unless it's a core tap cask (we already prioritised core tap formulae above)
+            if formula_or_kegs && !cask&.tap&.core_cask_tap?
+              if cask || unreadable_error
+                onoe <<~EOS if unreadable_error
+                  Failed to load cask: #{name}
+                  #{unreadable_error}
+                EOS
+                opoo package_conflicts_message(name, "formula", cask) unless Context.current.quiet?
+              end
+              return formula_or_kegs
+            elsif cask
+              if formula_or_kegs && !Context.current.quiet?
+                opoo package_conflicts_message(name, "cask", formula_or_kegs)
+              end
+              return cask
             end
           end
 
@@ -213,16 +264,16 @@ module Homebrew
 
       sig { params(uniq: T::Boolean).returns(T::Array[Formula]) }
       def to_resolved_formulae(uniq: true)
-        @to_resolved_formulae ||= to_formulae_and_casks(only: :formula, method: :resolve, uniq: uniq)
+        @to_resolved_formulae ||= to_formulae_and_casks(only: :formula, method: :resolve, uniq:)
                                   .freeze
       end
 
       def to_resolved_formulae_to_casks(only: parent&.only_formula_or_cask)
-        to_formulae_to_casks(only: only, method: :resolve)
+        to_formulae_to_casks(only:, method: :resolve)
       end
 
-      LOCAL_PATH_REGEX = %r{^/|[.]|/$}.freeze
-      TAP_NAME_REGEX = %r{^[^./]+/[^./]+$}.freeze
+      LOCAL_PATH_REGEX = %r{^/|[.]|/$}
+      TAP_NAME_REGEX = %r{^[^./]+/[^./]+$}
       private_constant :LOCAL_PATH_REGEX, :TAP_NAME_REGEX
 
       # Keep existing paths and try to convert others to tap, formula or cask paths.
@@ -255,11 +306,15 @@ module Homebrew
               paths = []
 
               if formula_path.exist? ||
-                 (!CoreTap.instance.installed? && Homebrew::API::Formula.all_formulae.key?(path.basename))
+                 (!Homebrew::EnvConfig.no_install_from_api? &&
+                 !CoreTap.instance.installed? &&
+                 Homebrew::API::Formula.all_formulae.key?(path.basename.to_s))
                 paths << formula_path
               end
               if cask_path.exist? ||
-                 (!CoreCaskTap.instance.installed? && Homebrew::API::Cask.all_casks.key?(path.basename))
+                 (!Homebrew::EnvConfig.no_install_from_api? &&
+                 !CoreCaskTap.instance.installed? &&
+                 Homebrew::API::Cask.all_casks.key?(path.basename.to_s))
                 paths << cask_path
               end
 
@@ -271,6 +326,8 @@ module Homebrew
 
       sig { returns(T::Array[Keg]) }
       def to_default_kegs
+        require "missing_formula"
+
         @to_default_kegs ||= begin
           to_formulae_and_casks(only: :formula, method: :default_kegs).freeze
         rescue NoSuchKegError => e
@@ -283,6 +340,8 @@ module Homebrew
 
       sig { returns(T::Array[Keg]) }
       def to_latest_kegs
+        require "missing_formula"
+
         @to_latest_kegs ||= begin
           to_formulae_and_casks(only: :formula, method: :latest_kegs).freeze
         rescue NoSuchKegError => e
@@ -295,6 +354,8 @@ module Homebrew
 
       sig { returns(T::Array[Keg]) }
       def to_kegs
+        require "missing_formula"
+
         @to_kegs ||= begin
           to_formulae_and_casks(only: :formula, method: :kegs).freeze
         rescue NoSuchKegError => e
@@ -313,7 +374,7 @@ module Homebrew
         method = all_kegs ? :kegs : :default_kegs
         @to_kegs_to_casks ||= {}
         @to_kegs_to_casks[method] ||=
-          to_formulae_and_casks(only: only, ignore_unavailable: ignore_unavailable, method: method)
+          to_formulae_and_casks(only:, ignore_unavailable:, method:)
           .partition { |o| o.is_a?(Keg) }
           .map(&:freeze).freeze
       end
@@ -357,6 +418,16 @@ module Homebrew
         rack = Formulary.to_rack(name.downcase)
 
         kegs = rack.directory? ? rack.subdirs.map { |d| Keg.new(d) } : []
+
+        requested_tap, requested_formula = Tap.with_formula_name(name)
+        if requested_tap && requested_formula
+          kegs = kegs.select do |keg|
+            keg.tab.tap == requested_tap
+          end
+
+          raise NoSuchKegError.new(requested_formula, tap: requested_tap) if kegs.none?
+        end
+
         raise NoSuchKegError, name if kegs.none?
 
         [rack, kegs]
@@ -368,15 +439,15 @@ module Homebrew
         # Return keg if it is the only installed keg
         return kegs if kegs.length == 1
 
-        stable_kegs = kegs.reject { |k| k.version.head? }
+        stable_kegs = kegs.reject { |keg| keg.version.head? }
 
         if stable_kegs.blank?
           return kegs.max_by do |keg|
-            [Tab.for_keg(keg).source_modified_time, keg.version.revision]
+            [keg.tab.source_modified_time, keg.version.revision]
           end
         end
 
-        stable_kegs.max_by(&:version)
+        stable_kegs.max_by(&:scheme_and_version)
       end
 
       def resolve_default_keg(name)
@@ -413,11 +484,29 @@ module Homebrew
         end
       end
 
-      def warn_if_cask_conflicts(ref, loaded_type)
+      def package_conflicts_message(ref, loaded_type, package)
         message = "Treating #{ref} as a #{loaded_type}."
-        begin
-          cask = Cask::CaskLoader.load ref
-          message += " For the cask, use #{cask.tap.name}/#{cask.token}" if cask.tap.present?
+        case package
+        when Formula, Keg, Array
+          message += " For the formula, "
+          if package.is_a?(Formula) && (tap = package.tap)
+            message += "use #{tap.name}/#{package.name} or "
+          end
+          message += "specify the `--formula` flag. To silence this message, use the `--cask` flag."
+        when Cask::Cask
+          message += " For the cask, "
+          if (tap = package.tap)
+            message += "use #{tap.name}/#{package.token} or "
+          end
+          message += "specify the `--cask` flag. To silence this message, use the `--formula` flag."
+        end
+        message.freeze
+      end
+
+      def warn_if_cask_conflicts(ref, loaded_type)
+        available = true
+        cask = begin
+          Cask::CaskLoader.load(ref, warn: false)
         rescue Cask::CaskUnreadableError => e
           # Need to rescue before `CaskUnavailableError` (superclass of this)
           # The cask was found, but there's a problem with its implementation
@@ -425,11 +514,16 @@ module Homebrew
             Failed to load cask: #{ref}
             #{e}
           EOS
+          nil
         rescue Cask::CaskUnavailableError
           # No ref conflict with a cask, do nothing
-          return
+          available = false
+          nil
         end
-        opoo message.freeze
+        return unless available
+        return if Context.current.quiet?
+
+        opoo package_conflicts_message(ref, loaded_type, cask)
       end
     end
   end

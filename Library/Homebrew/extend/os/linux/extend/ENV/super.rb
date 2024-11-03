@@ -1,22 +1,31 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 module Superenv
-  # The location of Homebrew's shims on Linux.
+  sig { returns(Pathname) }
   def self.shims_path
     HOMEBREW_SHIMS_PATH/"linux/super"
   end
 
-  # @private
+  sig { returns(T.nilable(Pathname)) }
   def self.bin
     shims_path.realpath
   end
 
-  # @private
+  sig {
+    params(
+      formula:         T.nilable(Formula),
+      cc:              T.nilable(String),
+      build_bottle:    T.nilable(T::Boolean),
+      bottle_arch:     T.nilable(String),
+      testing_formula: T::Boolean,
+      debug_symbols:   T.nilable(T::Boolean),
+    ).void
+  }
   def setup_build_environment(formula: nil, cc: nil, build_bottle: false, bottle_arch: nil, testing_formula: false,
                               debug_symbols: false)
-    generic_setup_build_environment(formula: formula, cc: cc, build_bottle: build_bottle, bottle_arch: bottle_arch,
-                                    testing_formula: testing_formula, debug_symbols: debug_symbols)
+    generic_setup_build_environment(formula:, cc:, build_bottle:, bottle_arch:,
+                                    testing_formula:, debug_symbols:)
     self["HOMEBREW_OPTIMIZATION_LEVEL"] = "O2"
     self["HOMEBREW_DYNAMIC_LINKER"] = determine_dynamic_linker_path
     self["HOMEBREW_RPATH_PATHS"] = determine_rpath_paths(@formula)
@@ -25,12 +34,12 @@ module Superenv
 
   def homebrew_extra_paths
     paths = generic_homebrew_extra_paths
-    paths += %w[binutils make].map do |f|
+    paths += %w[binutils make].filter_map do |f|
       bin = Formulary.factory(f).opt_bin
       bin if bin.directory?
     rescue FormulaUnavailableError
       nil
-    end.compact
+    end
     paths
   end
 

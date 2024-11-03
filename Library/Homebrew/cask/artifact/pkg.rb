@@ -1,16 +1,15 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "plist"
 
 require "utils/user"
 require "cask/artifact/abstract_artifact"
+require "extend/hash/keys"
 
 module Cask
   module Artifact
     # Artifact corresponding to the `pkg` stanza.
-    #
-    # @api private
     class Pkg < AbstractArtifact
       attr_reader :path, :stanza_options
 
@@ -20,7 +19,7 @@ module Cask
       end
 
       def initialize(cask, path, **stanza_options)
-        super(cask, path, **stanza_options)
+        super
         @path = cask.staged_path.join(path)
         @stanza_options = stanza_options
       end
@@ -65,9 +64,9 @@ module Cask
             "/usr/sbin/installer",
             sudo:         true,
             sudo_as_root: true,
-            args:         args,
+            args:,
             print_stdout: true,
-            env:          env,
+            env:,
           )
         end
       end

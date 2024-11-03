@@ -3,7 +3,7 @@
 require "livecheck/strategy/github_releases"
 require "livecheck/strategy/github_latest"
 
-describe Homebrew::Livecheck::Strategy::GithubLatest do
+RSpec.describe Homebrew::Livecheck::Strategy::GithubLatest do
   subject(:github_latest) { described_class }
 
   let(:github_urls) do
@@ -54,7 +54,7 @@ describe Homebrew::Livecheck::Strategy::GithubLatest do
       expect(github_latest.generate_input_values(github_urls[:repository_upload])).to eq(generated)
     end
 
-    it "returns an empty hash for a non-Github URL" do
+    it "returns an empty hash for a non-GitHub URL" do
       expect(github_latest.generate_input_values(non_github_url)).to eq({})
     end
   end

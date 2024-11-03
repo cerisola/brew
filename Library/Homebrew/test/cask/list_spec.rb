@@ -2,7 +2,7 @@
 
 require "cask/list"
 
-describe Cask::List, :cask do
+RSpec.describe Cask::List, :cask do
   it "lists the installed Casks in a pretty fashion" do
     casks = %w[local-caffeine local-transmission].map { |c| Cask::CaskLoader.load(c) }
 
@@ -59,15 +59,23 @@ describe Cask::List, :cask do
   end
 
   describe "lists versions" do
-    let!(:casks) do
-      ["local-caffeine",
-       "local-transmission"].map(&Cask::CaskLoader.method(:load)).each(&InstallHelper.method(:install_with_caskfile))
+    let(:casks) do
+      [
+        "local-caffeine",
+        "local-transmission",
+      ].map { |token| Cask::CaskLoader.load(token) }
     end
     let(:expected_output) do
       <<~EOS
         local-caffeine 1.2.3
         local-transmission 2.61
       EOS
+    end
+
+    before do
+      casks.each do |cask|
+        InstallHelper.install_with_caskfile(cask)
+      end
     end
 
     it "of all installed Casks" do
@@ -89,7 +97,7 @@ describe Cask::List, :cask do
     let(:casks) { [caffeine, transmission] }
 
     it "lists the installed files for those Casks" do
-      casks.each(&InstallHelper.method(:install_without_artifacts_with_caskfile))
+      casks.each { InstallHelper.install_without_artifacts_with_caskfile(_1) }
 
       transmission.artifacts.select { |a| a.is_a?(Cask::Artifact::App) }.each do |artifact|
         artifact.install_phase(command: NeverSudoSystemCommand, force: false)

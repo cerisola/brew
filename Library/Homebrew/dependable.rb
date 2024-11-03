@@ -1,11 +1,9 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "options"
 
 # Shared functions for classes which can be depended upon.
-#
-# @api private
 module Dependable
   # `:run` and `:linked` are no longer used but keep them here to avoid their
   # misuse in future.
@@ -46,7 +44,7 @@ module Dependable
   end
 
   def prune_from_option?(build)
-    return if !optional? && !recommended?
+    return false if !optional? && !recommended?
 
     build.without?(self)
   end

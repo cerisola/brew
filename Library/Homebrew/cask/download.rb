@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "downloadable"
@@ -8,9 +8,9 @@ require "cask/quarantine"
 
 module Cask
   # A download corresponding to a {Cask}.
-  #
-  # @api private
-  class Download < ::Downloadable
+  class Download
+    include Downloadable
+
     include Context
 
     attr_reader :cask
@@ -20,6 +20,11 @@ module Cask
 
       @cask = cask
       @quarantine = quarantine
+    end
+
+    sig { override.returns(String) }
+    def name
+      cask.token
     end
 
     sig { override.returns(T.nilable(::URL)) }
@@ -49,10 +54,10 @@ module Cask
         .returns(Pathname)
     }
     def fetch(quiet: nil, verify_download_integrity: true, timeout: nil)
-      downloader.shutup! if quiet
+      downloader.quiet! if quiet
 
       begin
-        super(verify_download_integrity: false, timeout: timeout)
+        super(verify_download_integrity: false, timeout:)
       rescue DownloadError => e
         error = CaskError.new("Download failed on Cask '#{cask}' with message: #{e.cause}")
         error.set_backtrace e.backtrace
@@ -68,7 +73,7 @@ module Cask
     def time_file_size(timeout: nil)
       raise ArgumentError, "not supported for this download strategy" unless downloader.is_a?(CurlDownloadStrategy)
 
-      T.cast(downloader, CurlDownloadStrategy).resolved_time_file_size(timeout: timeout)
+      T.cast(downloader, CurlDownloadStrategy).resolved_time_file_size(timeout:)
     end
 
     def basename
@@ -88,6 +93,11 @@ module Cask
     sig { override.returns(String) }
     def download_name
       cask.token
+    end
+
+    sig { override.returns(String) }
+    def download_type
+      "cask"
     end
 
     private

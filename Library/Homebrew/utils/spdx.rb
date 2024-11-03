@@ -1,17 +1,16 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "utils/curl"
 require "utils/github"
 
 # Helper module for updating SPDX license data.
-#
-# @api private
 module SPDX
   module_function
 
   DATA_PATH = (HOMEBREW_DATA_PATH/"spdx").freeze
   API_URL = "https://api.github.com/repos/spdx/license-list-data/releases/latest"
+  LICENSEREF_PREFIX = "LicenseRef-Homebrew-"
   ALLOWED_LICENSE_SYMBOLS = [
     :public_domain,
     :cannot_represent,
@@ -44,14 +43,14 @@ module SPDX
       licenses.push license_expression
     when Hash, Array
       if license_expression.is_a? Hash
-        license_expression = license_expression.map do |key, value|
+        license_expression = license_expression.filter_map do |key, value|
           if key.is_a? String
             licenses.push key
             exceptions.push value[:with]
             next
           end
           value
-        end.compact
+        end
       end
 
       license_expression.each do |license|
@@ -92,17 +91,17 @@ module SPDX
     when String
       license_expression
     when Symbol
-      license_expression.to_s.tr("_", " ").gsub(/\b(?<!\w['’`()])[a-z]/, &:capitalize)
+      LICENSEREF_PREFIX + license_expression.to_s.tr("_", "-")
     when Hash
       expressions = []
 
       if license_expression.keys.length == 1
         hash_type = license_expression.keys.first
         if hash_type.is_a? String
-          expressions.push "#{hash_type} with #{license_expression[hash_type][:with]}"
+          expressions.push "#{hash_type} WITH #{license_expression[hash_type][:with]}"
         else
           expressions += license_expression[hash_type].map do |license|
-            license_expression_to_string license, bracket: true, hash_type: hash_type
+            license_expression_to_string license, bracket: true, hash_type:
           end
         end
       else
@@ -113,9 +112,9 @@ module SPDX
       end
 
       operator = if hash_type == :any_of
-        " or "
+        " OR "
       else
-        " and "
+        " AND "
       end
 
       if bracket
@@ -132,12 +131,12 @@ module SPDX
     result = string
     result_type = nil
 
-    and_parts = string.split(/ and (?![^(]*\))/)
+    and_parts = string.split(/ and (?![^(]*\))/i)
     if and_parts.length > 1
       result = and_parts
       result_type = :all_of
     else
-      or_parts = string.split(/ or (?![^(]*\))/)
+      or_parts = string.split(/ or (?![^(]*\))/i)
       if or_parts.length > 1
         result = or_parts
         result_type = :any_of
@@ -151,11 +150,12 @@ module SPDX
       end
       { result_type => result }
     else
-      with_parts = string.split(" with ", 2)
+      with_parts = string.split(/ with /i, 2)
       if with_parts.length > 1
         { with_parts.first => { with: with_parts.second } }
       else
-        result
+        license_sym = result[/^#{LICENSEREF_PREFIX}(.+)/o, 1]&.downcase&.tr("-", "_")&.to_sym
+        ALLOWED_LICENSE_SYMBOLS.include?(license_sym) ? license_sym : result
       end
     end
   end
@@ -196,7 +196,7 @@ module SPDX
 
     name, version, = license_version_info license
 
-    forbidden_licenses.each do |_, license_info|
+    forbidden_licenses.each_value do |license_info|
       forbidden_name, forbidden_version, forbidden_or_later = *license_info
       next if forbidden_name != name
 
