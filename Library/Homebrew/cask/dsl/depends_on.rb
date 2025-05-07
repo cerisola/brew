@@ -63,6 +63,7 @@ module Cask
             MacOSRequirement.new([T.must(md[:version]).to_sym], comparator: md[:comparator])
           elsif (md = /^\s*(?<comparator><|>|[=<>]=)\s*(?<version>\S+)\s*$/.match(first_arg))
             MacOSRequirement.new([md[:version]], comparator: md[:comparator])
+          # This is not duplicate of the first case: see `args.first` and a different comparator.
           else # rubocop:disable Lint/DuplicateBranch
             MacOSRequirement.new([args.first], comparator: "==")
           end
@@ -81,6 +82,12 @@ module Cask
 
         @arch.concat(arches.map { |arch| VALID_ARCHES[arch] })
       end
+
+      sig { returns(T::Boolean) }
+      def empty? = T.let(__getobj__, T::Hash[Symbol, T.untyped]).empty?
+
+      sig { returns(T::Boolean) }
+      def present? = !empty?
     end
   end
 end

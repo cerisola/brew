@@ -363,8 +363,7 @@ module Homebrew
 
           # we want to allow uses_from_macos for aliases but not bare dependencies.
           # we also allow `pkg-config` for backwards compatibility in external taps.
-          # TODO: after migrating all `pkg-config` usage to `pkgconf`, do not allow `pkg-config` in core tap
-          if self.class.aliases.include?(dep.name) && !dep.uses_from_macos? && dep.name != "pkg-config"
+          if self.class.aliases.include?(dep.name) && !dep.uses_from_macos? && (dep.name != "pkg-config" || @core_tap)
             problem "Dependency '#{dep.name}' is an alias; use the canonical name '#{dep.to_formula.full_name}'."
           end
 
@@ -516,11 +515,8 @@ module Homebrew
     RELICENSED_FORMULAE_VERSIONS = {
       "boundary"           => "0.14",
       "consul"             => "1.17",
-      "elasticsearch"      => "7.11",
-      "kibana"             => "7.11",
       "nomad"              => "1.7",
       "packer"             => "1.10",
-      "redis"              => "7.4",
       "terraform"          => "1.6",
       "vagrant"            => "2.4",
       "vagrant-completion" => "2.4",
@@ -563,6 +559,11 @@ module Homebrew
       return if formula.tap&.audit_exception :cert_error_allowlist, formula.name, homepage
 
       return unless DevelopmentTools.curl_handles_most_https_certificates?
+
+      # Skip gnu.org and nongnu.org audit on GitHub runners
+      # See issue: https://github.com/Homebrew/homebrew-core/issues/206757
+      github_runner = ENV.fetch("GITHUB_ACTIONS", nil) && !ENV["GITHUB_ACTIONS_HOMEBREW_SELF_HOSTED"]
+      return if homepage.match?(%r{^https?://www\.(?:non)?gnu\.org/.+}) && github_runner
 
       use_homebrew_curl = [:stable, :head].any? do |spec_name|
         next false unless (spec = formula.send(spec_name))
@@ -609,11 +610,10 @@ module Homebrew
       metadata = SharedAudits.eol_data(name, formula.version.major.to_s)
       metadata ||= SharedAudits.eol_data(name, formula.version.major_minor.to_s)
 
-      return if metadata.blank? || (eol = metadata["eol"]).blank?
+      return if metadata.blank? || (metadata.dig("result", "isEol") != true)
 
-      is_eol = eol == true
-      is_eol ||= eol.is_a?(String) && (eol_date = Date.parse(eol)) <= Date.today
-      return unless is_eol
+      eol_from = metadata.dig("result", "eolFrom")
+      eol_date = Date.parse(eol_from) if eol_from.present?
 
       message = "Product is EOL"
       message += " since #{eol_date}" if eol_date.present?

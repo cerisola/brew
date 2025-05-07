@@ -3,6 +3,7 @@
 
 require "abstract_command"
 require "utils/git"
+require "fileutils"
 
 module Homebrew
   module DevCmd
@@ -28,6 +29,7 @@ module Homebrew
         Homebrew.install_bundler!
 
         ENV["BUNDLE_WITH"] = Homebrew.valid_gem_groups.join(":")
+        ENV["BUNDLER_VERSION"] = HOMEBREW_BUNDLER_VERSION
 
         ohai "cd #{HOMEBREW_LIBRARY_PATH}"
         HOMEBREW_LIBRARY_PATH.cd do

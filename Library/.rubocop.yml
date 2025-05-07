@@ -1,10 +1,16 @@
 ---
+plugins:
+  - rubocop-md:
+      plugin_class_name: RuboCop::Markdown::Plugin
+  - rubocop-performance:
+      plugin_class_name: RuboCop::Performance::Plugin
+  - rubocop-rspec:
+      plugin_class_name: RuboCop::RSpec::Plugin
+  - rubocop-sorbet:
+      plugin_class_name: RuboCop::Sorbet::Plugin
+
 require:
   - ./Homebrew/rubocops.rb
-  - rubocop-md
-  - rubocop-performance
-  - rubocop-rspec
-  - rubocop-sorbet
 
 inherit_mode:
   merge:
@@ -12,12 +18,16 @@ inherit_mode:
     - Exclude
 
 AllCops:
+  # TODO: This is the default parser in Ruby >= 3.4
+  # https://github.com/rubocop/rubocop-ast/blob/6b9136235219e9448ee4f369e17cf69bcd9db621/lib/rubocop/ast/processed_source.rb#L385
+  ParserEngine: parser_prism
   TargetRubyVersion: 3.3
   NewCops: enable
   Include:
     - "**/*.rbi"
   Exclude:
     - "Homebrew/sorbet/rbi/{dsl,gems}/**/*.rbi"
+    - "Homebrew/sorbet/rbi/parser*.rbi"
     - "Homebrew/bin/*"
     - "Homebrew/vendor/**/*"
     - "Taps/*/*/vendor/**/*"
@@ -230,6 +240,8 @@ RSpec:
 # Intentionally disabled as it doesn't fit with our code style.
 RSpec/AnyInstance:
   Enabled: false
+RSpec/IncludeExamples:
+  Enabled: false
 RSpec/SpecFilePathFormat:
   Enabled: false
 RSpec/StubbedMock:
@@ -254,6 +266,11 @@ RSpec/Focus:
 # We use `allow(:foo).to receive(:bar)` everywhere.
 RSpec/MessageSpies:
   EnforcedStyle: receive
+
+# These are legacy violations that we should try to fix.
+Sorbet/AllowIncompatibleOverride:
+  Exclude:
+    - "Homebrew/livecheck/strategy/*.rb"
 
 # Try getting rid of these.
 Sorbet/ConstantsFromStrings:
@@ -284,8 +301,10 @@ Sorbet/StrictSigil:
     - "Taps/**/*"
     - "/**/{Formula,Casks}/**/*.rb"
     - "**/{Formula,Casks}/**/*.rb"
+    - "Homebrew/utils/ruby_check_version_script.rb" # A standalone script.
     - "Homebrew/{standalone,startup}/*.rb" # These are loaded before sorbet-runtime
     - "Homebrew/test/**/*.rb"
+    - "Homebrew/bundle/{brew_dumper,checker,commands/exec}.rb" # These aren't typed: true yet.
 
 Sorbet/TrueSigil:
   Enabled: true
@@ -398,20 +417,14 @@ Style/MutableConstant:
 Style/NumericLiteralPrefix:
   EnforcedOctalStyle: zero_only
 
-# Only use this for numbers >= `1_000_000`.
+# Only require this for numbers >= `10_000_000_000`.
 Style/NumericLiterals:
-  MinDigits: 7
+  MinDigits: 11
   Strict: true
-  Exclude:
-    - "**/Brewfile"
 
 Style/OpenStructUse:
   Exclude:
     - "Taps/**/*"
-    # TODO: This is a pre-existing violation and should be corrected
-    #   to define methods so that call sites can be type-checked.
-    - "Homebrew/cli/args.rb"
-    - "Homebrew/cli/args.rbi"
 
 Style/OptionalBooleanParameter:
   AllowedMethods:
@@ -419,6 +432,11 @@ Style/OptionalBooleanParameter:
     # see https://ruby-doc.org/3.3.4/Object.html#method-i-respond_to-3F
     - respond_to?
     - respond_to_missing?
+
+# Broken in RuboCop 1.68.0 so tries to fix line continuations in inline patch blocks:
+# https://github.com/Homebrew/brew/actions/runs/11653110391/job/32460881827?pr=18682
+Style/RedundantLineContinuation:
+  Enabled: false
 
 # Rescuing `StandardError` is an understood default.
 Style/RescueStandardError:

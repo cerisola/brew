@@ -4,7 +4,7 @@
 #####
 
 case "${MACHTYPE}" in
-  arm64-*)
+  arm64-* | aarch64-*)
     HOMEBREW_PROCESSOR="arm64"
     ;;
   x86_64-*)
@@ -65,7 +65,12 @@ else
   CACHE_HOME="${HOMEBREW_XDG_CACHE_HOME:-${HOME}/.cache}"
   HOMEBREW_DEFAULT_CACHE="${CACHE_HOME}/Homebrew"
   HOMEBREW_DEFAULT_LOGS="${CACHE_HOME}/Homebrew/Logs"
-  HOMEBREW_DEFAULT_TEMP="/tmp"
+  if [[ -r "/var/tmp" && -w "/var/tmp" ]]
+  then
+    HOMEBREW_DEFAULT_TEMP="/var/tmp"
+  else
+    HOMEBREW_DEFAULT_TEMP="/tmp"
+  fi
 fi
 
 realpath() {
@@ -104,6 +109,10 @@ HOMEBREW_CASKROOM="${HOMEBREW_PREFIX}/Caskroom"
 HOMEBREW_CACHE="${HOMEBREW_CACHE:-${HOMEBREW_DEFAULT_CACHE}}"
 HOMEBREW_LOGS="${HOMEBREW_LOGS:-${HOMEBREW_DEFAULT_LOGS}}"
 HOMEBREW_TEMP="${HOMEBREW_TEMP:-${HOMEBREW_DEFAULT_TEMP}}"
+if [[ ! -w "${HOMEBREW_TEMP}" ]]
+then
+  HOMEBREW_TEMP="${HOMEBREW_DEFAULT_TEMP}"
+fi
 
 # commands that take a single or no arguments.
 # HOMEBREW_LIBRARY set by bin/brew
@@ -125,12 +134,6 @@ case "$1" in
     source "${HOMEBREW_LIBRARY}/Homebrew/cmd/shellenv.sh"
     shift
     homebrew-shellenv "$1"
-    exit 0
-    ;;
-  setup-ruby)
-    source "${HOMEBREW_LIBRARY}/Homebrew/cmd/setup-ruby.sh"
-    shift
-    homebrew-setup-ruby "$1"
     exit 0
     ;;
 esac
@@ -184,10 +187,65 @@ case "$@" in
     ;;
 esac
 
-#####
-##### Next, define all helper functions.
-#####
+# Include some helper functions.
 source "${HOMEBREW_LIBRARY}/Homebrew/utils/helpers.sh"
+
+# Require HOMEBREW_BREW_WRAPPER to be set if HOMEBREW_FORCE_BREW_WRAPPER is set
+# (and HOMEBREW_NO_FORCE_BREW_WRAPPER is not set) for all non-trivial commands
+# (i.e. not defined above this line e.g. formulae or --cellar).
+if [[ -z "${HOMEBREW_NO_FORCE_BREW_WRAPPER:-}" && -n "${HOMEBREW_FORCE_BREW_WRAPPER:-}" ]]
+then
+  HOMEBREW_FORCE_BREW_WRAPPER_WITHOUT_BREW="${HOMEBREW_FORCE_BREW_WRAPPER%/brew}"
+  if [[ -z "${HOMEBREW_BREW_WRAPPER:-}" ]]
+  then
+    odie <<EOS
+conflicting Homebrew wrapper configuration!
+HOMEBREW_FORCE_BREW_WRAPPER was set to ${HOMEBREW_FORCE_BREW_WRAPPER}
+but   HOMEBREW_BREW_WRAPPER was unset.
+
+$(bold "Ensure you run ${HOMEBREW_FORCE_BREW_WRAPPER} directly (not ${HOMEBREW_BREW_FILE})")!
+
+Manually setting your PATH can interfere with Homebrew wrappers.
+Ensure your shell configuration contains:
+  eval "\$(${HOMEBREW_BREW_FILE} shellenv)"
+or that ${HOMEBREW_FORCE_BREW_WRAPPER_WITHOUT_BREW} comes before ${HOMEBREW_PREFIX}/bin in your PATH:
+  export PATH="${HOMEBREW_FORCE_BREW_WRAPPER_WITHOUT_BREW}:${HOMEBREW_PREFIX}/bin:\$PATH"
+EOS
+  elif [[ "${HOMEBREW_FORCE_BREW_WRAPPER}" != "${HOMEBREW_BREW_WRAPPER}" ]]
+  then
+    odie <<EOS
+conflicting Homebrew wrapper configuration!
+HOMEBREW_FORCE_BREW_WRAPPER was set to ${HOMEBREW_FORCE_BREW_WRAPPER}
+but HOMEBREW_BREW_WRAPPER   was set to ${HOMEBREW_BREW_WRAPPER}
+
+$(bold "Ensure you run ${HOMEBREW_FORCE_BREW_WRAPPER} directly (not ${HOMEBREW_BREW_FILE})")!
+
+Manually setting your PATH can interfere with Homebrew wrappers.
+Ensure your shell configuration contains:
+  eval "\$(${HOMEBREW_BREW_FILE} shellenv)"
+or that ${HOMEBREW_FORCE_BREW_WRAPPER_WITHOUT_BREW} comes before ${HOMEBREW_PREFIX}/bin in your PATH:
+  export PATH="${HOMEBREW_FORCE_BREW_WRAPPER_WITHOUT_BREW}:${HOMEBREW_PREFIX}/bin:\$PATH"
+EOS
+  fi
+fi
+
+# commands that take a single or no arguments and need to write to HOMEBREW_PREFIX.
+# HOMEBREW_LIBRARY set by bin/brew
+# shellcheck disable=SC2154
+# doesn't need a default case as other arguments handled elsewhere.
+# shellcheck disable=SC2249
+case "$1" in
+  setup-ruby)
+    source "${HOMEBREW_LIBRARY}/Homebrew/cmd/setup-ruby.sh"
+    shift
+    homebrew-setup-ruby "$1"
+    exit 0
+    ;;
+esac
+
+#####
+##### Next, define all other helper functions.
+#####
 
 check-run-command-as-root() {
   [[ "${EUID}" == 0 || "${UID}" == 0 ]] || return
@@ -197,8 +255,15 @@ check-run-command-as-root() {
   [[ -f /run/.containerenv ]] && return
   [[ -f /proc/1/cgroup ]] && grep -E "azpl_job|actions_job|docker|garden|kubepods" -q /proc/1/cgroup && return
 
-  # Homebrew Services may need `sudo` for system-wide daemons.
-  [[ "${HOMEBREW_COMMAND}" == "services" ]] && return
+  # `brew services` may need `sudo` for system-wide daemons.
+  if [[ "${HOMEBREW_COMMAND}" == "services" ]]
+  then
+    # Need to disable Bootsnap when running as root to avoid permission errors:
+    # https://github.com/Homebrew/brew/issues/19904
+    export HOMEBREW_NO_BOOTSNAP="1"
+
+    return
+  fi
 
   # It's fine to run this as root as it's not changing anything.
   [[ "${HOMEBREW_COMMAND}" == "--prefix" ]] && return
@@ -324,8 +389,11 @@ auto-update() {
     unset HOMEBREW_AUTO_UPDATING
     unset HOMEBREW_AUTO_UPDATE_TAP
 
-    # exec a new process to set any new environment variables.
-    exec "${HOMEBREW_BREW_FILE}" "$@"
+    if [[ $# -gt 0 ]]
+    then
+      # exec a new process to set any new environment variables.
+      exec "${HOMEBREW_BREW_FILE}" "$@"
+    fi
   fi
 
   unset AUTO_UPDATE_COMMANDS
@@ -334,6 +402,22 @@ auto-update() {
   unset HOMEBREW_AUTO_UPDATE_CORE_TAP
   unset HOMEBREW_AUTO_UPDATE_CASK_TAP
 }
+
+# Only `brew update-if-needed` should be handled here.
+# We want it as fast as possible but it needs auto-update() defined above.
+# HOMEBREW_LIBRARY set by bin/brew
+# shellcheck disable=SC2154
+# doesn't need a default case as other arguments handled elsewhere.
+# shellcheck disable=SC2249
+# Don't need to pass through any arguments.
+# shellcheck disable=SC2119
+case "$@" in
+  update-if-needed)
+    source "${HOMEBREW_LIBRARY}/Homebrew/cmd/update-if-needed.sh"
+    homebrew-update-if-needed
+    exit 0
+    ;;
+esac
 
 #####
 ##### Setup output so e.g. odie looks as nice as possible.
@@ -388,7 +472,7 @@ fi
 #####
 
 # Docker image deprecation
-if [[ -f "${HOMEBREW_REPOSITORY}/.docker-deprecate" ]]
+if [[ -f "${HOMEBREW_REPOSITORY}/.docker-deprecate" && -z "${HOMEBREW_TESTS}" ]]
 then
   read -r DOCKER_DEPRECATION_MESSAGE <"${HOMEBREW_REPOSITORY}/.docker-deprecate"
   if [[ -n "${GITHUB_ACTIONS}" ]]
@@ -920,13 +1004,6 @@ then
   export HOMEBREW_DEVELOPER_COMMAND="1"
 fi
 
-# Provide a (temporary, undocumented) way to disable Sorbet globally if needed
-# to avoid reverting the above.
-if [[ -n "${HOMEBREW_NO_SORBET_RUNTIME}" ]]
-then
-  unset HOMEBREW_SORBET_RUNTIME
-fi
-
 if [[ -n "${HOMEBREW_DEVELOPER_COMMAND}" && -z "${HOMEBREW_DEVELOPER}" ]]
 then
   if [[ -z "${HOMEBREW_DEV_CMD_RUN}" ]]
@@ -948,6 +1025,13 @@ if [[ -n "${HOMEBREW_DEVELOPER}" || -n "${HOMEBREW_DEV_CMD_RUN}" ]]
 then
   # Always run with Sorbet for Homebrew developers or when a Homebrew developer command has been run.
   export HOMEBREW_SORBET_RUNTIME="1"
+fi
+
+# Provide a (temporary, undocumented) way to disable Sorbet globally if needed
+# to avoid reverting the above.
+if [[ -n "${HOMEBREW_NO_SORBET_RUNTIME}" ]]
+then
+  unset HOMEBREW_SORBET_RUNTIME
 fi
 
 if [[ -f "${HOMEBREW_LIBRARY}/Homebrew/cmd/${HOMEBREW_COMMAND}.sh" ]]

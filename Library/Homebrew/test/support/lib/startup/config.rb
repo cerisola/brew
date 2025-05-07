@@ -3,6 +3,7 @@
 
 raise "HOMEBREW_BREW_FILE was not exported! Please call bin/brew directly!" unless ENV["HOMEBREW_BREW_FILE"]
 
+HOMEBREW_ORIGINAL_BREW_FILE = Pathname.new(ENV.fetch("HOMEBREW_ORIGINAL_BREW_FILE")).freeze
 HOMEBREW_BREW_FILE = Pathname.new(ENV.fetch("HOMEBREW_BREW_FILE")).freeze
 
 TEST_TMPDIR = ENV.fetch("HOMEBREW_TEST_TMPDIR") do |k|
@@ -23,14 +24,15 @@ HOMEBREW_DATA_PATH = (HOMEBREW_LIBRARY_PATH/"data").freeze
 
 # Paths redirected to a temporary directory and wiped at the end of the test run
 HOMEBREW_PREFIX        = (Pathname(TEST_TMPDIR)/"prefix").freeze
+HOMEBREW_ALIASES       = (Pathname(TEST_TMPDIR)/"aliases").freeze
 HOMEBREW_REPOSITORY    = HOMEBREW_PREFIX.dup.freeze
 HOMEBREW_LIBRARY       = (HOMEBREW_REPOSITORY/"Library").freeze
 HOMEBREW_CACHE         = (HOMEBREW_PREFIX.parent/"cache").freeze
 HOMEBREW_CACHE_FORMULA = (HOMEBREW_PREFIX.parent/"formula_cache").freeze
-HOMEBREW_LINKED_KEGS   = (HOMEBREW_PREFIX.parent/"linked").freeze
-HOMEBREW_PINNED_KEGS   = (HOMEBREW_PREFIX.parent/"pinned").freeze
-HOMEBREW_LOCKS         = (HOMEBREW_PREFIX.parent/"locks").freeze
-HOMEBREW_CELLAR        = (HOMEBREW_PREFIX.parent/"cellar").freeze
+HOMEBREW_LINKED_KEGS   = (HOMEBREW_PREFIX/"var/homebrew/linked").freeze
+HOMEBREW_PINNED_KEGS   = (HOMEBREW_PREFIX/"var/homebrew/pinned").freeze
+HOMEBREW_LOCKS         = (HOMEBREW_PREFIX/"var/homebrew/locks").freeze
+HOMEBREW_CELLAR        = (HOMEBREW_PREFIX/"Cellar").freeze
 HOMEBREW_LOGS          = (HOMEBREW_PREFIX.parent/"logs").freeze
 HOMEBREW_TEMP          = (HOMEBREW_PREFIX.parent/"temp").freeze
 HOMEBREW_TAP_DIRECTORY = (HOMEBREW_LIBRARY/"Taps").freeze

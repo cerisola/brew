@@ -18,6 +18,9 @@ class Homebrew::DevCmd::DispatchBuildBottle::Args < Homebrew::CLI::Args
   def linux?; end
 
   sig { returns(T::Boolean) }
+  def linux_arm64?; end
+
+  sig { returns(T::Boolean) }
   def linux_self_hosted?; end
 
   sig { returns(T::Boolean) }
@@ -25,9 +28,6 @@ class Homebrew::DevCmd::DispatchBuildBottle::Args < Homebrew::CLI::Args
 
   sig { returns(T.nilable(T::Array[String])) }
   def macos; end
-
-  sig { returns(T.nilable(String)) }
-  def tap; end
 
   sig { returns(T.nilable(String)) }
   def timeout; end

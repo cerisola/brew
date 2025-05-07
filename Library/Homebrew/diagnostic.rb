@@ -16,10 +16,10 @@ require "system_command"
 module Homebrew
   # Module containing diagnostic checks.
   module Diagnostic
-    def self.missing_deps(formulae, hide = nil)
+    def self.missing_deps(formulae, hide = [])
       missing = {}
       formulae.each do |f|
-        missing_dependencies = f.missing_dependencies(hide:)
+        missing_dependencies = f.missing_dependencies(hide: hide)
         next if missing_dependencies.empty?
 
         yield f.full_name, missing_dependencies if block_given?
@@ -63,7 +63,7 @@ module Homebrew
         end
       end
 
-      sig { params(list: T::Array[String], string: String).returns(String) }
+      sig { params(list: T::Array[T.any(Formula, Pathname, String)], string: String).returns(String) }
       def inject_file_list(list, string)
         list.reduce(string.dup) { |acc, elem| acc << "  #{elem}\n" }
             .freeze
@@ -111,17 +111,21 @@ module Homebrew
         supported_configuration_checks + build_from_source_checks
       end
 
-      def please_create_pull_requests(what = "unsupported configuration")
+      sig { params(tier: T.any(Integer, String, Symbol)).returns(T.nilable(String)) }
+      def support_tier_message(tier:)
+        return if tier.to_s == "1"
+
+        tier_title, tier_slug = if tier.to_s == "unsupported"
+          ["Unsupported", "unsupported"]
+        else
+          ["Tier #{tier}", "tier-#{tier.to_s.downcase}"]
+        end
+
         <<~EOS
-          It is expected behaviour that some formulae will fail to build in this #{what}.
-          It is expected behaviour that Homebrew will be buggy and slow.
-          Do not create any issues about this on Homebrew's GitHub repositories.
-          Do not create any issues even if you think this message is unrelated.
-          Any opened issues will be immediately closed without response.
-          Do not ask for help from Homebrew or its maintainers on social media.
-          You may ask for help in Homebrew's discussions but are unlikely to receive a response.
-          Try to figure out the problem yourself and submit a fix as a pull request.
-          We will review it but may or may not accept it.
+          This is a #{tier_title} configuration:
+            #{Formatter.url("https://docs.brew.sh/Support-Tiers##{tier_slug}")}
+          #{Formatter.bold("Do not report any issues to Homebrew/* repositories!")}
+          Read the above document instead before opening any issues or PRs.
         EOS
       end
 
@@ -188,11 +192,15 @@ module Homebrew
         files = Dir.chdir(dir) do
           (Dir.glob(pattern) - Dir.glob(allow_list))
             .select { |f| File.file?(f) && !File.symlink?(f) }
-            .map { |f| File.join(dir, f) }
+            .map do |f|
+              f.sub!(%r{/.*}, "/*") unless @verbose
+              File.join(dir, f)
+            end
+            .sort.uniq
         end
         return if files.empty?
 
-        inject_file_list(files.sort, message)
+        inject_file_list(files, message)
       end
 
       def check_for_stray_dylibs
@@ -200,6 +208,7 @@ module Homebrew
         # with a short description of the software they come with.
         allow_list = [
           "libfuse.2.dylib", # MacFuse
+          "libfuse3.*.dylib", # MacFuse
           "libfuse_ino64.2.dylib", # MacFuse
           "libmacfuse_i32.2.dylib", # OSXFuse MacFuse compatibility layer
           "libmacfuse_i64.2.dylib", # OSXFuse MacFuse compatibility layer
@@ -257,6 +266,7 @@ module Homebrew
         # with a short description of the software they come with.
         allow_list = [
           "fuse.pc", # OSXFuse/MacFuse
+          "fuse3.pc", # OSXFuse/MacFuse
           "macfuse.pc", # OSXFuse MacFuse compatibility layer
           "osxfuse.pc", # OSXFuse
           "libntfs-3g.pc", # NTFS-3G
@@ -297,6 +307,7 @@ module Homebrew
         allow_list = [
           "fuse.h", # MacFuse
           "fuse/**/*.h", # MacFuse
+          "fuse3/**/*.h", # MacFuse
           "macfuse/**/*.h", # OSXFuse MacFuse compatibility layer
           "osxfuse/**/*.h", # OSXFuse
           "ntfs/**/*.h", # NTFS-3G
@@ -422,10 +433,12 @@ module Homebrew
           end
         end
 
+        @user_path_1_done = true
         message unless message.empty?
       end
 
       def check_user_path_2
+        check_user_path_1 unless defined?(@user_path_1_done)
         return if @seen_prefix_bin
 
         <<~EOS
@@ -436,6 +449,7 @@ module Homebrew
       end
 
       def check_user_path_3
+        check_user_path_1 unless defined?(@user_path_1_done)
         return if @seen_prefix_sbin
 
         # Don't complain about sbin not being in the path if it doesn't exist
@@ -561,6 +575,10 @@ module Homebrew
       def check_deprecated_official_taps
         tapped_deprecated_taps =
           Tap.select(&:official?).map(&:repository) & DEPRECATED_OFFICIAL_TAPS
+
+        # TODO: remove this once it's no longer in the default GitHub Actions image
+        tapped_deprecated_taps -= ["bundle"] if GitHub::Actions.env_set?
+
         return if tapped_deprecated_taps.empty?
 
         <<~EOS
@@ -744,14 +762,12 @@ module Homebrew
 
       def check_for_unlinked_but_not_keg_only
         unlinked = Formula.racks.reject do |rack|
-          if (HOMEBREW_LINKED_KEGS/rack.basename).directory?
-            true
-          else
-            begin
-              Formulary.from_rack(rack).keg_only?
-            rescue FormulaUnavailableError, TapFormulaAmbiguityError
-              false
-            end
+          next true if (HOMEBREW_LINKED_KEGS/rack.basename).directory?
+
+          begin
+            Formulary.from_rack(rack).keg_only?
+          rescue FormulaUnavailableError, TapFormulaAmbiguityError
+            false
           end
         end.map(&:basename)
         return if unlinked.empty?
@@ -822,9 +838,10 @@ module Homebrew
         <<~EOS
           Your Homebrew's prefix is not #{Homebrew::DEFAULT_PREFIX}.
 
-          Many of Homebrew's bottles (binary packages) can only be used with the default prefix.
+          Most of Homebrew's bottles (binary packages) can only be used with the default prefix.
           Consider uninstalling Homebrew and reinstalling into the default prefix.
-          #{please_create_pull_requests}
+
+          #{support_tier_message(tier: 3)}
         EOS
       end
 
@@ -1034,6 +1051,64 @@ module Homebrew
         else
           "No Cask quarantine support available: unknown reason."
         end
+      end
+
+      def non_core_taps
+        @non_core_taps ||= Tap.installed.reject(&:core_tap?).reject(&:core_cask_tap?)
+      end
+
+      def check_for_duplicate_formulae
+        return if ENV["HOMEBREW_TEST_BOT"].present?
+
+        core_formula_names = CoreTap.instance.formula_names
+        shadowed_formula_full_names = non_core_taps.flat_map do |tap|
+          tap_formula_names = tap.formula_names.map { |s| s.delete_prefix("#{tap.name}/") }
+          (core_formula_names & tap_formula_names).map { |f| "#{tap.name}/#{f}" }
+        end.compact.sort
+        return if shadowed_formula_full_names.empty?
+
+        installed_formula_tap_names = Formula.installed.filter_map(&:tap).uniq.reject(&:official?).map(&:name)
+        shadowed_formula_tap_names = shadowed_formula_full_names.map { |s| s.rpartition("/").first }.uniq
+        unused_shadowed_formula_tap_names = (shadowed_formula_tap_names - installed_formula_tap_names).sort
+
+        resolution = if unused_shadowed_formula_tap_names.empty?
+          "Their taps are in use, so you must use these full names throughout Homebrew."
+        else
+          "Some of these can be resolved with:\n  brew untap #{unused_shadowed_formula_tap_names.join(" ")}"
+        end
+
+        <<~EOS
+          The following formulae have the same name as core formulae:
+            #{shadowed_formula_full_names.join("\n  ")}
+          #{resolution}
+        EOS
+      end
+
+      def check_for_duplicate_casks
+        return if ENV["HOMEBREW_TEST_BOT"].present?
+
+        core_cask_names = CoreCaskTap.instance.cask_tokens
+        shadowed_cask_full_names = non_core_taps.flat_map do |tap|
+          tap_cask_names = tap.cask_tokens.map { |s| s.delete_prefix("#{tap.name}/") }
+          (core_cask_names & tap_cask_names).map { |f| "#{tap.name}/#{f}" }
+        end.compact.sort
+        return if shadowed_cask_full_names.empty?
+
+        installed_cask_tap_names = Cask::Caskroom.casks.filter_map(&:tap).uniq.reject(&:official?).map(&:name)
+        shadowed_cask_tap_names = shadowed_cask_full_names.map { |s| s.rpartition("/").first }.uniq
+        unused_shadowed_cask_tap_names = (shadowed_cask_tap_names - installed_cask_tap_names).sort
+
+        resolution = if unused_shadowed_cask_tap_names.empty?
+          "Their taps are in use, so you must use these full names throughout Homebrew."
+        else
+          "Some of these can be resolved with:\n  brew untap #{unused_shadowed_cask_tap_names.join(" ")}"
+        end
+
+        <<~EOS
+          The following casks have the same name as core casks:
+            #{shadowed_cask_full_names.join("\n  ")}
+          #{resolution}
+        EOS
       end
 
       def all

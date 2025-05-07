@@ -47,7 +47,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         uses: Homebrew/actions/setup-commit-signing@master
         with:
-          signing_key: ${{ secrets.BREWTESTBOT_GPG_SIGNING_SUBKEY }}
+          signing_key: ${{ secrets.BREWTESTBOT_SSH_SIGNING_KEY }}
 
       - name: Check out pull request
         id: checkout
@@ -66,8 +66,6 @@ jobs:
         working-directory: ${{ steps.set-up-homebrew.outputs.repository-path }}
 
       - name: Vendor Gems
-        env:
-          HOMEBREW_GPG_PASSPHRASE: ${{ secrets.BREWTESTBOT_GPG_SIGNING_SUBKEY_PASSPHRASE }}
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]
           then
@@ -83,7 +81,6 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           GEM_NAME: ${{ steps.checkout.outputs.gem_name }}
-          HOMEBREW_GPG_PASSPHRASE: ${{ secrets.BREWTESTBOT_GPG_SIGNING_SUBKEY_PASSPHRASE }}
         working-directory: ${{ steps.set-up-homebrew.outputs.repository-path }}
         run: |
           if ! git diff --stat --exit-code "Library/Homebrew/sorbet"
@@ -94,7 +91,7 @@ jobs:
           fi
 
       - name: Generate push token
-        uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1
+        uses: actions/create-github-app-token@df432ceedc7162793a195dd1713ff69aefc7379e # v2.0.6
         id: app-token
         if: github.event_name == 'workflow_dispatch'
         with:

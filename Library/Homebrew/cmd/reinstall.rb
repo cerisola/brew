@@ -22,10 +22,10 @@ module Homebrew
           Uninstall and then reinstall a <formula> or <cask> using the same options it was
           originally installed with, plus any appended options specific to a <formula>.
 
-          Unless `HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK` is set, `brew upgrade` or `brew reinstall` will be run for
+          Unless `$HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK` is set, `brew upgrade` or `brew reinstall` will be run for
           outdated dependents and dependents with broken linkage, respectively.
 
-          Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for the
+          Unless `$HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for the
           reinstalled formulae or, every 30 days, for all formulae.
         EOS
         switch "-d", "--debug",
@@ -62,6 +62,11 @@ module Homebrew
           }],
           [:switch, "-g", "--git", {
             description: "Create a Git repository, useful for creating patches to the software.",
+          }],
+          [:switch, "--ask", {
+            description: "Ask for confirmation before downloading and upgrading formulae. " \
+                         "Print bottles and dependencies download size, install and net install size.",
+            env:         :ask,
           }],
         ].each do |args|
           options = args.pop
@@ -108,10 +113,7 @@ module Homebrew
 
       sig { override.void }
       def run
-        formulae, casks = T.cast(
-          args.named.to_resolved_formulae_to_casks,
-          [T::Array[Formula], T::Array[Cask::Cask]],
-        )
+        formulae, casks = args.named.to_resolved_formulae_to_casks
 
         if args.build_from_source?
           unless DevelopmentTools.installed?
@@ -129,6 +131,9 @@ module Homebrew
         unless formulae.empty?
           Install.perform_preinstall_checks_once
 
+          # If asking the user is enabled, show dependency and size information.
+          Install.ask(formulae, args: args) if args.ask?
+
           formulae.each do |formula|
             if formula.pinned?
               onoe "#{formula.full_name} is pinned. You must unpin it to reinstall."
@@ -138,7 +143,6 @@ module Homebrew
             Homebrew::Reinstall.reinstall_formula(
               formula,
               flags:                      args.flags_only,
-              installed_on_request:       args.named.present?,
               force_bottle:               args.force_bottle?,
               build_from_source_formulae: args.build_from_source_formulae,
               interactive:                args.interactive?,
@@ -156,7 +160,6 @@ module Homebrew
           Upgrade.check_installed_dependents(
             formulae,
             flags:                      args.flags_only,
-            installed_on_request:       args.named.present?,
             force_bottle:               args.force_bottle?,
             build_from_source_formulae: args.build_from_source_formulae,
             interactive:                args.interactive?,

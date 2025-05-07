@@ -1,7 +1,7 @@
 # typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
-require "attrable"
+require "autobump_constants"
 require "locale"
 require "lazy_object"
 require "livecheck"
@@ -54,6 +54,9 @@ module Cask
       Artifact::Suite,
       Artifact::VstPlugin,
       Artifact::Vst3Plugin,
+      Artifact::ZshCompletion,
+      Artifact::FishCompletion,
+      Artifact::BashCompletion,
       Artifact::Uninstall,
       Artifact::Zap,
     ].freeze
@@ -78,6 +81,7 @@ module Cask
       :homepage,
       :language,
       :name,
+      :os,
       :sha256,
       :staged_path,
       :url,
@@ -87,13 +91,21 @@ module Cask
       :deprecated?,
       :deprecation_date,
       :deprecation_reason,
+      :deprecation_replacement_cask,
+      :deprecation_replacement_formula,
       :disable!,
       :disabled?,
       :disable_date,
       :disable_reason,
+      :disable_replacement_cask,
+      :disable_replacement_formula,
       :discontinued?, # TODO: remove once discontinued? is removed (4.5.0)
       :livecheck,
-      :livecheckable?,
+      :livecheck_defined?,
+      :livecheckable?, # TODO: remove once `#livecheckable?` is removed
+      :no_autobump!,
+      :autobump?,
+      :no_autobump_message,
       :on_system_blocks_exist?,
       :on_system_block_min_os,
       :depends_on_set_in_block?,
@@ -102,18 +114,69 @@ module Cask
       *ARTIFACT_BLOCK_CLASSES.flat_map { |klass| [klass.dsl_key, klass.uninstall_dsl_key] },
     ]).freeze
 
-    extend Attrable
-    include OnSystem::MacOSOnly
+    include OnSystem::MacOSAndLinux
 
-    attr_reader :cask, :token, :deprecation_date, :deprecation_reason, :disable_date, :disable_reason,
-                :on_system_block_min_os
+    attr_reader :cask, :token, :no_autobump_message, :artifacts, :deprecation_date, :deprecation_reason,
+                :deprecation_replacement_cask, :deprecation_replacement_formula,
+                :disable_date, :disable_reason, :disable_replacement_cask,
+                :disable_replacement_formula, :on_system_block_min_os
 
-    attr_predicate :deprecated?, :disabled?, :livecheckable?, :on_system_blocks_exist?, :depends_on_set_in_block?
-
+    sig { params(cask: Cask).void }
     def initialize(cask)
-      @cask = cask
-      @token = cask.token
+      # NOTE: Variables set by `set_unique_stanza` must be initialized to `nil`.
+      @auto_updates = T.let(nil, T.nilable(T::Boolean))
+      @arch = T.let(nil, T.nilable(String))
+      @artifacts = T.let(ArtifactSet.new, ArtifactSet)
+      @called_in_on_system_block = T.let(false, T::Boolean)
+      @cask = T.let(cask, Cask)
+      @caveats = T.let(DSL::Caveats.new(cask), DSL::Caveats)
+      @conflicts_with = T.let(nil, T.nilable(DSL::ConflictsWith))
+      @container = T.let(nil, T.nilable(DSL::Container))
+      @depends_on = T.let(DSL::DependsOn.new, DSL::DependsOn)
+      @depends_on_set_in_block = T.let(false, T::Boolean)
+      @deprecated = T.let(false, T::Boolean)
+      @deprecation_date = T.let(nil, T.nilable(Date))
+      @deprecation_reason = T.let(nil, T.nilable(T.any(String, Symbol)))
+      @deprecation_replacement_cask = T.let(nil, T.nilable(String))
+      @deprecation_replacement_formula = T.let(nil, T.nilable(String))
+      @desc = T.let(nil, T.nilable(String))
+      @disable_date = T.let(nil, T.nilable(Date))
+      @disable_reason = T.let(nil, T.nilable(T.any(String, Symbol)))
+      @disable_replacement_cask = T.let(nil, T.nilable(String))
+      @disable_replacement_formula = T.let(nil, T.nilable(String))
+      @disabled = T.let(false, T::Boolean)
+      @homepage = T.let(nil, T.nilable(String))
+      @language_blocks = T.let({}, T::Hash[T::Array[String], Proc])
+      @language_eval = T.let(nil, T.nilable(String))
+      @livecheck = T.let(Livecheck.new(cask), Livecheck)
+      @livecheck_defined = T.let(false, T::Boolean)
+      @name = T.let([], T::Array[String])
+      @autobump = T.let(true, T::Boolean)
+      @no_autobump_defined = T.let(false, T::Boolean)
+      @on_system_blocks_exist = T.let(false, T::Boolean)
+      @os = T.let(nil, T.nilable(String))
+      @on_system_block_min_os = T.let(nil, T.nilable(MacOSVersion))
+      @sha256 = T.let(nil, T.nilable(T.any(Checksum, Symbol)))
+      @staged_path = T.let(nil, T.nilable(Pathname))
+      @token = T.let(cask.token, String)
+      @url = T.let(nil, T.nilable(URL))
+      @version = T.let(nil, T.nilable(DSL::Version))
     end
+
+    sig { returns(T::Boolean) }
+    def depends_on_set_in_block? = @depends_on_set_in_block
+
+    sig { returns(T::Boolean) }
+    def deprecated? = @deprecated
+
+    sig { returns(T::Boolean) }
+    def disabled? = @disabled
+
+    sig { returns(T::Boolean) }
+    def livecheck_defined? = @livecheck_defined
+
+    sig { returns(T::Boolean) }
+    def on_system_blocks_exist? = @on_system_blocks_exist
 
     # Specifies the cask's name.
     #
@@ -127,7 +190,6 @@ module Cask
     #
     # @api public
     def name(*args)
-      @name ||= []
       return @name if args.empty?
 
       @name.concat(args.flatten)
@@ -150,7 +212,7 @@ module Cask
       return instance_variable_get(:"@#{stanza}") if should_return
 
       unless @cask.allow_reassignment
-        if instance_variable_defined?(:"@#{stanza}") && !@called_in_on_system_block
+        if !instance_variable_get(:"@#{stanza}").nil? && !@called_in_on_system_block
           raise CaskInvalidError.new(cask, "'#{stanza}' stanza may only appear once.")
         end
 
@@ -184,7 +246,6 @@ module Cask
       if args.empty?
         language_eval
       elsif block
-        @language_blocks ||= {}
         @language_blocks[args] = block
 
         return unless default
@@ -200,11 +261,13 @@ module Cask
     end
 
     def language_eval
-      return @language_eval if defined?(@language_eval)
+      return @language_eval unless @language_eval.nil?
 
-      return @language_eval = nil if @language_blocks.blank?
+      return @language_eval = nil if @language_blocks.empty?
 
-      raise CaskInvalidError.new(cask, "No default language specified.") if @language_blocks.default.nil?
+      if (language_blocks_default = @language_blocks.default).nil?
+        raise CaskInvalidError.new(cask, "No default language specified.")
+      end
 
       locales = cask.config.languages
                     .filter_map do |language|
@@ -215,18 +278,15 @@ module Cask
 
       locales.each do |locale|
         key = locale.detect(@language_blocks.keys)
+        next if key.nil? || (language_block = @language_blocks[key]).nil?
 
-        next if key.nil?
-
-        return @language_eval = @language_blocks[key].call
+        return @language_eval = language_block.call
       end
 
-      @language_eval = @language_blocks.default.call
+      @language_eval = language_blocks_default.call
     end
 
     def languages
-      return [] if @language_blocks.nil?
-
       @language_blocks.keys.flatten
     end
 
@@ -284,6 +344,7 @@ module Cask
     #
     # @see DSL::Version
     # @api public
+    sig { params(arg: T.nilable(T.any(String, Symbol))).returns(T.nilable(DSL::Version)) }
     def version(arg = nil)
       set_unique_stanza(:version, arg.nil?) do
         if !arg.is_a?(String) && arg != :latest
@@ -307,18 +368,36 @@ module Cask
     # For architecture-dependent downloads:
     #
     # ```ruby
-    # sha256 arm:   "7bdb497080ffafdfd8cc94d8c62b004af1be9599e865e5555e456e2681e150ca",
-    #         intel: "b3c1c2442480a0219b9e05cf91d03385858c20f04b764ec08a3fa83d1b27e7b2"
+    # sha256 arm:          "7bdb497080ffafdfd8cc94d8c62b004af1be9599e865e5555e456e2681e150ca",
+    #        x86_64:       "b3c1c2442480a0219b9e05cf91d03385858c20f04b764ec08a3fa83d1b27e7b2"
+    #        x86_64_linux: "1a2aee7f1ddc999993d4d7d42a150c5e602bc17281678050b8ed79a0500cc90f"
+    #        arm64_linux:  "bd766af7e692afceb727a6f88e24e6e68d9882aeb3e8348412f6c03d96537c75"
     # ```
     #
     # @api public
-    def sha256(arg = nil, arm: nil, intel: nil)
-      should_return = arg.nil? && arm.nil? && intel.nil?
+    sig {
+      params(
+        arg:          T.nilable(T.any(String, Symbol)),
+        arm:          T.nilable(String),
+        intel:        T.nilable(String),
+        x86_64:       T.nilable(String),
+        x86_64_linux: T.nilable(String),
+        arm64_linux:  T.nilable(String),
+      ).returns(T.nilable(T.any(Symbol, Checksum)))
+    }
+    def sha256(arg = nil, arm: nil, intel: nil, x86_64: nil, x86_64_linux: nil, arm64_linux: nil)
+      should_return = arg.nil? && arm.nil? && (intel.nil? || x86_64.nil?) && x86_64_linux.nil? && arm64_linux.nil?
 
+      x86_64 ||= intel if intel.present? && x86_64.nil?
       set_unique_stanza(:sha256, should_return) do
-        @on_system_blocks_exist = true if arm.present? || intel.present?
+        if arm.present? || x86_64.present? || x86_64_linux.present? || arm64_linux.present?
+          @on_system_blocks_exist = true
+        end
 
-        val = arg || on_arch_conditional(arm:, intel:)
+        val = arg || on_system_conditional(
+          macos: on_arch_conditional(arm:, intel: x86_64),
+          linux: on_arch_conditional(arm: arm64_linux, intel: x86_64_linux),
+        )
         case val
         when :no_check
           val
@@ -349,13 +428,37 @@ module Cask
       end
     end
 
+    # Sets the cask's os strings.
+    #
+    # ### Example
+    #
+    # ```ruby
+    # os macos: "darwin", linux: "tux"
+    # ```
+    #
+    # @api public
+    sig {
+      params(
+        macos: T.nilable(String),
+        linux: T.nilable(String),
+      ).returns(T.nilable(String))
+    }
+    def os(macos: nil, linux: nil)
+      should_return = macos.nil? && linux.nil?
+
+      set_unique_stanza(:os, should_return) do
+        @on_system_blocks_exist = true
+
+        on_system_conditional(macos:, linux:)
+      end
+    end
+
     # Declare dependencies and requirements for a cask.
     #
     # NOTE: Multiple dependencies can be specified.
     #
     # @api public
     def depends_on(**kwargs)
-      @depends_on ||= DSL::DependsOn.new
       @depends_on_set_in_block = true if @called_in_on_system_block
       return @depends_on if kwargs.empty?
 
@@ -367,6 +470,13 @@ module Cask
       @depends_on
     end
 
+    # @api private
+    def add_implicit_macos_dependency
+      return if (cask_depends_on = @depends_on).present? && cask_depends_on.macos.present?
+
+      depends_on macos: ">= :#{MacOSVersion::SYMBOLS.key MacOSVersion::SYMBOLS.values.min}"
+    end
+
     # Declare conflicts that keep a cask from installing or working correctly.
     #
     # @api public
@@ -375,10 +485,7 @@ module Cask
       set_unique_stanza(:conflicts_with, kwargs.empty?) { DSL::ConflictsWith.new(**kwargs) }
     end
 
-    def artifacts
-      @artifacts ||= ArtifactSet.new
-    end
-
+    sig { returns(Pathname) }
     def caskroom_path
       cask.caskroom_path
     end
@@ -386,6 +493,7 @@ module Cask
     # The staged location for this cask, including version number.
     #
     # @api public
+    sig { returns(Pathname) }
     def staged_path
       return @staged_path if @staged_path
 
@@ -397,7 +505,6 @@ module Cask
     #
     # @api public
     def caveats(*strings, &block)
-      @caveats ||= DSL::Caveats.new(cask)
       if block
         @caveats.eval_caveats(&block)
       elsif strings.any?
@@ -408,11 +515,6 @@ module Cask
         return @caveats.to_s
       end
       @caveats
-    end
-
-    def discontinued?
-      odisabled "`discontinued?`", "`deprecated?` or `disabled?`"
-      @caveats&.discontinued? == true
     end
 
     # Asserts that the cask artifacts auto-update.
@@ -426,15 +528,53 @@ module Cask
     #
     # @api public
     def livecheck(&block)
-      @livecheck ||= Livecheck.new(cask)
       return @livecheck unless block
 
-      if !@cask.allow_reassignment && @livecheckable
+      if !@cask.allow_reassignment && @livecheck_defined
         raise CaskInvalidError.new(cask, "'livecheck' stanza may only appear once.")
       end
 
-      @livecheckable = true
+      @livecheck_defined = true
       @livecheck.instance_eval(&block)
+    end
+
+    # Whether the cask contains a `livecheck` block. This is a legacy alias
+    # for `#livecheck_defined?`.
+    sig { returns(T::Boolean) }
+    def livecheckable?
+      odeprecated "`livecheckable?`", "`livecheck_defined?`"
+      @livecheck_defined == true
+    end
+
+    # Excludes the cask from autobump list.
+    #
+    # TODO: limit this method to the official taps only (f.e. raise
+    # an error if `!tap.official?`)
+    #
+    # @api public
+    sig { params(because: T.any(String, Symbol)).void }
+    def no_autobump!(because:)
+      if because.is_a?(Symbol) && !NO_AUTOBUMP_REASONS_LIST.key?(because)
+        raise ArgumentError, "'because' argument should use valid symbol or a string!"
+      end
+
+      if !@cask.allow_reassignment && @no_autobump_defined
+        raise CaskInvalidError.new(cask, "'no_autobump_defined' stanza may only appear once.")
+      end
+
+      @no_autobump_defined = true
+      @no_autobump_message = because
+      @autobump = false
+    end
+
+    # Is the cask in autobump list?
+    def autobump?
+      @autobump == true
+    end
+
+    # Is no_autobump! method defined?
+    def no_autobump_defined?
+      @no_autobump_defined == true
     end
 
     # Declare that a cask is no longer functional or supported.
@@ -442,11 +582,24 @@ module Cask
     # NOTE: A warning will be shown when trying to install this cask.
     #
     # @api public
-    def deprecate!(date:, because:)
+    def deprecate!(date:, because:, replacement: nil, replacement_formula: nil, replacement_cask: nil)
+      if [replacement, replacement_formula, replacement_cask].filter_map(&:presence).length > 1
+        raise ArgumentError, "more than one of replacement, replacement_formula and/or replacement_cask specified!"
+      end
+
+      if replacement
+        odeprecated(
+          "deprecate!(:replacement)",
+          "deprecate!(:replacement_formula) or deprecate!(:replacement_cask)",
+        )
+      end
+
       @deprecation_date = Date.parse(date)
       return if @deprecation_date > Date.today
 
       @deprecation_reason = because
+      @deprecation_replacement_formula = replacement_formula.presence || replacement
+      @deprecation_replacement_cask = replacement_cask.presence || replacement
       @deprecated = true
     end
 
@@ -455,16 +608,31 @@ module Cask
     # NOTE: An error will be thrown when trying to install this cask.
     #
     # @api public
-    def disable!(date:, because:)
+    def disable!(date:, because:, replacement: nil, replacement_formula: nil, replacement_cask: nil)
+      if [replacement, replacement_formula, replacement_cask].filter_map(&:presence).length > 1
+        raise ArgumentError, "more than one of replacement, replacement_formula and/or replacement_cask specified!"
+      end
+
+      if replacement
+        odeprecated(
+          "disable!(:replacement)",
+          "disable!(:replacement_formula) or disable!(:replacement_cask)",
+        )
+      end
+
       @disable_date = Date.parse(date)
 
       if @disable_date > Date.today
         @deprecation_reason = because
+        @deprecation_replacement_formula = replacement_formula.presence || replacement
+        @deprecation_replacement_cask = replacement_cask.presence || replacement
         @deprecated = true
         return
       end
 
       @disable_reason = because
+      @disable_replacement_formula = replacement_formula.presence || replacement
+      @disable_replacement_cask = replacement_cask.presence || replacement
       @disabled = true
     end
 
@@ -506,9 +674,15 @@ module Cask
       true
     end
 
+    sig { returns(T.nilable(MacOSVersion)) }
+    def os_version
+      nil
+    end
+
     # The directory `app`s are installed into.
     #
     # @api public
+    sig { returns(T.any(Pathname, String)) }
     def appdir
       return HOMEBREW_CASK_APPDIR_PLACEHOLDER if Cask.generating_hash?
 

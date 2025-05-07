@@ -1,4 +1,4 @@
-# typed: true # rubocop:todo Sorbet/StrictSigil
+# typed: strict
 # frozen_string_literal: true
 
 require "rubocops/extend/formula_cop"
@@ -149,37 +149,48 @@ module RuboCop
             end
           end
 
-          arm64_nodes = []
-          intel_nodes = []
+          arm64_macos_nodes = []
+          intel_macos_nodes = []
+          arm64_linux_nodes = []
+          intel_linux_nodes = []
 
           sha256_nodes.each do |node|
             version = sha256_bottle_tag node
-            if version.to_s.start_with? "arm64"
-              arm64_nodes << node
+            if version == :arm64_linux
+              arm64_linux_nodes << node
+            elsif version.to_s.start_with?("arm64")
+              arm64_macos_nodes << node
+            elsif version.to_s.end_with?("_linux")
+              intel_linux_nodes << node
             else
-              intel_nodes << node
+              intel_macos_nodes << node
             end
           end
 
-          return if sha256_order(sha256_nodes) == sha256_order(arm64_nodes + intel_nodes)
+          sorted_nodes = arm64_macos_nodes + intel_macos_nodes + arm64_linux_nodes + intel_linux_nodes
+          return if sha256_order(sha256_nodes) == sha256_order(sorted_nodes)
 
           offending_node(bottle_node)
           problem "ARM bottles should be listed before Intel bottles" do |corrector|
             lines = ["bottle do"]
             lines += non_sha256_nodes.map { |node| "    #{node.source}" }
-            lines += arm64_nodes.map { |node| "    #{node.source}" }
-            lines += intel_nodes.map { |node| "    #{node.source}" }
+            lines += arm64_macos_nodes.map { |node| "    #{node.source}" }
+            lines += intel_macos_nodes.map { |node| "    #{node.source}" }
+            lines += arm64_linux_nodes.map { |node| "    #{node.source}" }
+            lines += intel_linux_nodes.map { |node| "    #{node.source}" }
             lines << "  end"
             corrector.replace(bottle_node.source_range, lines.join("\n"))
           end
         end
 
+        sig { params(nodes: T::Array[RuboCop::AST::SendNode]).returns(T::Array[T.any(String, Symbol)]) }
         def sha256_order(nodes)
           nodes.map do |node|
             sha256_bottle_tag node
           end
         end
 
+        sig { params(node: AST::SendNode).returns(T.any(String, Symbol)) }
         def sha256_bottle_tag(node)
           hash_pair = node.last_argument.pairs.last
           if hash_pair.key.sym_type?

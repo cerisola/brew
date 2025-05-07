@@ -1,9 +1,7 @@
 {
   "token": "everything",
   "full_token": "everything",
-  "old_tokens": [
-
-  ],
+  "old_tokens": [],
   "tap": "homebrew/cask",
   "name": [
     "Everything"
@@ -18,6 +16,9 @@
     "user_agent": ":fake"
   },
   "version": "1.2.3",
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
   "installed": null,
   "installed_time": null,
   "bundle_version": null,
@@ -78,7 +79,12 @@
   "depends_on": {
     "cask": [
       "something"
-    ]
+    ],
+    "macos": {
+      ">=": [
+        "10.11"
+      ]
+    }
   },
   "conflicts_with": {
     "formula": [
@@ -92,9 +98,13 @@
   "deprecated": false,
   "deprecation_date": null,
   "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
   "disabled": false,
   "disable_date": null,
   "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
   "tap_git_head": "abcdef1234567890abcdef1234567890abcdef12",
   "languages": [
     "en",

@@ -19,10 +19,10 @@ module Homebrew
           installed with, plus any appended brew formula options. If <cask> or <formula> are specified,
           upgrade only the given <cask> or <formula> kegs (unless they are pinned; see `pin`, `unpin`).
 
-          Unless `HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK` is set, `brew upgrade` or `brew reinstall` will be run for
+          Unless `$HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK` is set, `brew upgrade` or `brew reinstall` will be run for
           outdated dependents and dependents with broken linkage, respectively.
 
-          Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for the
+          Unless `$HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for the
           upgraded formulae or, every 30 days, for all formulae.
         EOS
         switch "-d", "--debug",
@@ -70,6 +70,11 @@ module Homebrew
           }],
           [:switch, "--overwrite", {
             description: "Delete files that already exist in the prefix while linking.",
+          }],
+          [:switch, "--ask", {
+            description: "Ask for confirmation before downloading and upgrading formulae. " \
+                         "Print bottles and dependencies download size, install and net install size.",
+            env:         :ask,
           }],
         ].each do |args|
           options = args.pop
@@ -211,16 +216,18 @@ module Homebrew
               "#{f.full_specified_name} #{f.pkg_version}"
             end
           end
-          puts formulae_upgrades.join("\n")
+          puts formulae_upgrades.join("\n") unless args.ask?
         end
 
         Install.perform_preinstall_checks_once
+
+        # Main block: if asking the user is enabled, show dependency and size information.
+        Install.ask(formulae_to_install, args: args) if args.ask?
 
         Upgrade.upgrade_formulae(
           formulae_to_install,
           flags:                      args.flags_only,
           dry_run:                    args.dry_run?,
-          installed_on_request:       args.named.present?,
           force_bottle:               args.force_bottle?,
           build_from_source_formulae: args.build_from_source_formulae,
           interactive:                args.interactive?,
@@ -237,7 +244,6 @@ module Homebrew
           formulae_to_install,
           flags:                      args.flags_only,
           dry_run:                    args.dry_run?,
-          installed_on_request:       args.named.present?,
           force_bottle:               args.force_bottle?,
           build_from_source_formulae: args.build_from_source_formulae,
           interactive:                args.interactive?,

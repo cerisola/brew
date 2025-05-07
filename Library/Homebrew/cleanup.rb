@@ -3,7 +3,6 @@
 
 require "utils/bottles"
 
-require "attrable"
 require "formula"
 require "cask/cask_loader"
 
@@ -11,7 +10,8 @@ module Homebrew
   # Helper class for cleaning up the Homebrew cache.
   class Cleanup
     CLEANUP_DEFAULT_DAYS = Homebrew::EnvConfig.cleanup_periodic_full_days.to_i.freeze
-    private_constant :CLEANUP_DEFAULT_DAYS
+    GH_ACTIONS_ARTIFACT_CLEANUP_DAYS = 3
+    private_constant :CLEANUP_DEFAULT_DAYS, :GH_ACTIONS_ARTIFACT_CLEANUP_DAYS
 
     class << self
       sig { params(pathname: Pathname).returns(T::Boolean) }
@@ -69,8 +69,6 @@ module Homebrew
 
       private
 
-      GH_ACTIONS_ARTIFACT_CLEANUP_DAYS = 3
-
       sig { params(pathname: Pathname, scrub: T::Boolean).returns(T::Boolean) }
       def stale_gh_actions_artifact?(pathname, scrub)
         scrub || prune?(pathname, GH_ACTIONS_ARTIFACT_CLEANUP_DAYS)
@@ -99,6 +97,15 @@ module Homebrew
         return true if package.nil?
 
         package.tap_git_head != git_head
+      end
+
+      sig { params(formula: Formula).returns(T::Set[String]) }
+      def excluded_versions_from_cleanup(formula)
+        @excluded_versions_from_cleanup ||= {}
+        @excluded_versions_from_cleanup[formula.name] ||= begin
+          eligible_kegs_for_cleanup = formula.eligible_kegs_for_cleanup(quiet: true)
+          Set.new((formula.installed_kegs - eligible_kegs_for_cleanup).map { |keg| keg.version.to_s })
+        end
       end
 
       sig { params(pathname: Pathname, scrub: T::Boolean).returns(T::Boolean) }
@@ -131,6 +138,7 @@ module Homebrew
           nil
         end
 
+        formula_excluded_versions_from_cleanup = nil
         if formula.blank? && formula_name.delete_suffix!("_bottle_manifest")
           formula = begin
             Formulary.from_rack(HOMEBREW_CELLAR/formula_name)
@@ -139,6 +147,15 @@ module Homebrew
           end
 
           return false if formula.blank?
+
+          formula_excluded_versions_from_cleanup = excluded_versions_from_cleanup(formula)
+          return false if formula_excluded_versions_from_cleanup.include?(version.to_s)
+
+          if pathname.to_s.include?("_bottle_manifest")
+            excluded_version = version.to_s
+            excluded_version.sub!(/-\d+$/, "")
+            return false if formula_excluded_versions_from_cleanup.include?(excluded_version)
+          end
 
           # We can't determine an installed rebuild and parsing manifest version cannot be reliably done.
           return false unless formula.latest_version_installed?
@@ -152,11 +169,15 @@ module Homebrew
 
         resource_name = basename_str[/\A.*?--(.*?)--?(?:#{Regexp.escape(version.to_s)})/, 1]
 
+        stable = formula.stable
         if resource_name == "patch"
-          patch_hashes = formula.stable&.patches&.select(&:external?)&.map(&:resource)&.map(&:version)
+          patch_hashes = stable&.patches&.filter_map { _1.resource.version if _1.external? }
           return true unless patch_hashes&.include?(Checksum.new(version.to_s))
-        elsif resource_name && (resource_version = formula.stable&.resources&.dig(resource_name)&.version)
+        elsif resource_name && stable && (resource_version = stable.resources[resource_name]&.version)
           return true if resource_version != version
+        elsif (formula_excluded_versions_from_cleanup ||= excluded_versions_from_cleanup(formula).presence) &&
+              formula_excluded_versions_from_cleanup.include?(version.to_s)
+          return false
         elsif (formula.latest_version_installed? && formula.pkg_version.to_s != version) ||
               formula.pkg_version.to_s > version
           return true
@@ -192,11 +213,8 @@ module Homebrew
       end
     end
 
-    extend Attrable
-
     PERIODIC_CLEAN_FILE = (HOMEBREW_CACHE/".cleaned").freeze
 
-    attr_predicate :dry_run?, :scrub?, :prune?
     attr_reader :args, :days, :cache, :disk_cleanup_size
 
     def initialize(*args, dry_run: false, scrub: false, days: nil, cache: HOMEBREW_CACHE)
@@ -209,6 +227,15 @@ module Homebrew
       @cache = cache
       @cleaned_up_paths = Set.new
     end
+
+    sig { returns(T::Boolean) }
+    def dry_run? = @dry_run
+
+    sig { returns(T::Boolean) }
+    def prune? = @prune
+
+    sig { returns(T::Boolean) }
+    def scrub? = @scrub
 
     def self.install_formula_clean!(formula, dry_run: false)
       return if Homebrew::EnvConfig.no_install_cleanup?
@@ -531,7 +558,7 @@ module Homebrew
       return unless bootsnap.directory?
 
       bootsnap.each_child do |subdir|
-        cleanup_path(subdir) { FileUtils.rm_r(subdir) } if subdir.basename.to_s != Homebrew.bootsnap_key
+        cleanup_path(subdir) { FileUtils.rm_r(subdir) } if subdir.basename.to_s != Homebrew::Bootsnap.key
       end
     end
 

@@ -5,6 +5,10 @@ require "test_runner_formula"
 require "github_runner"
 
 class GitHubRunnerMatrix
+  NEWEST_HOMEBREW_CORE_MACOS_RUNNER = :sequoia
+  OLDEST_HOMEBREW_CORE_MACOS_RUNNER = :ventura
+  NEWEST_HOMEBREW_CORE_INTEL_MACOS_RUNNER = :sonoma
+
   RunnerSpec = T.type_alias { T.any(LinuxRunnerSpec, MacOSRunnerSpec) }
   private_constant :RunnerSpec
 
@@ -77,13 +81,18 @@ class GitHubRunnerMatrix
   # https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners#usage-limits
   GITHUB_ACTIONS_LONG_TIMEOUT = 2160 # 36 hours
   GITHUB_ACTIONS_SHORT_TIMEOUT = 60
+  private_constant :SELF_HOSTED_LINUX_RUNNER, :GITHUB_ACTIONS_LONG_TIMEOUT, :GITHUB_ACTIONS_SHORT_TIMEOUT
 
-  sig { returns(LinuxRunnerSpec) }
-  def linux_runner_spec
-    linux_runner = ENV.fetch("HOMEBREW_LINUX_RUNNER")
+  sig { params(arch: Symbol).returns(LinuxRunnerSpec) }
+  def linux_runner_spec(arch)
+    linux_runner = case arch
+    when :arm64 then "ubuntu-22.04-arm"
+    when :x86_64 then ENV.fetch("HOMEBREW_LINUX_RUNNER")
+    else raise "Unknown Linux architecture: #{arch}"
+    end
 
     LinuxRunnerSpec.new(
-      name:      "Linux",
+      name:      "Linux #{arch}",
       runner:    linux_runner,
       container: {
         image:   "ghcr.io/homebrew/ubuntu22.04:master",
@@ -97,32 +106,31 @@ class GitHubRunnerMatrix
 
   VALID_PLATFORMS = T.let([:macos, :linux].freeze, T::Array[Symbol])
   VALID_ARCHES = T.let([:arm64, :x86_64].freeze, T::Array[Symbol])
+  private_constant :VALID_PLATFORMS, :VALID_ARCHES
 
   sig {
     params(
       platform:      Symbol,
       arch:          Symbol,
-      spec:          RunnerSpec,
+      spec:          T.nilable(RunnerSpec),
       macos_version: T.nilable(MacOSVersion),
     ).returns(GitHubRunner)
   }
-  def create_runner(platform, arch, spec, macos_version = nil)
+  def create_runner(platform, arch, spec = nil, macos_version = nil)
     raise "Unexpected platform: #{platform}" if VALID_PLATFORMS.exclude?(platform)
     raise "Unexpected arch: #{arch}" if VALID_ARCHES.exclude?(arch)
+    raise "Missing `spec` argument" if spec.nil? && platform != :linux
 
+    spec ||= linux_runner_spec(arch)
     runner = GitHubRunner.new(platform:, arch:, spec:, macos_version:)
     runner.spec.testing_formulae += testable_formulae(runner)
     runner.active = active_runner?(runner)
     runner.freeze
   end
 
-  NEWEST_HOMEBREW_CORE_MACOS_RUNNER = :sequoia
-  OLDEST_HOMEBREW_CORE_MACOS_RUNNER = :ventura
-  NEWEST_HOMEBREW_CORE_INTEL_MACOS_RUNNER = :sonoma
-
   sig { params(macos_version: MacOSVersion).returns(T::Boolean) }
   def runner_enabled?(macos_version)
-    macos_version <= NEWEST_HOMEBREW_CORE_MACOS_RUNNER && macos_version >= OLDEST_HOMEBREW_CORE_MACOS_RUNNER
+    macos_version.between?(OLDEST_HOMEBREW_CORE_MACOS_RUNNER, NEWEST_HOMEBREW_CORE_MACOS_RUNNER)
   end
 
   NEWEST_GITHUB_ACTIONS_INTEL_MACOS_RUNNER = :ventura
@@ -130,13 +138,21 @@ class GitHubRunnerMatrix
   NEWEST_GITHUB_ACTIONS_ARM_MACOS_RUNNER = :sequoia
   OLDEST_GITHUB_ACTIONS_ARM_MACOS_RUNNER = :sonoma
   GITHUB_ACTIONS_RUNNER_TIMEOUT = 360
+  private_constant :NEWEST_GITHUB_ACTIONS_INTEL_MACOS_RUNNER, :OLDEST_GITHUB_ACTIONS_INTEL_MACOS_RUNNER,
+                   :NEWEST_GITHUB_ACTIONS_ARM_MACOS_RUNNER, :OLDEST_GITHUB_ACTIONS_ARM_MACOS_RUNNER,
+                   :GITHUB_ACTIONS_RUNNER_TIMEOUT
 
   sig { void }
   def generate_runners!
     return if @runners.present?
 
     if !@all_supported || ENV.key?("HOMEBREW_LINUX_RUNNER")
-      @runners << create_runner(:linux, :x86_64, linux_runner_spec)
+      @runners << create_runner(:linux, :x86_64)
+
+      if !@dependent_matrix &&
+         @testing_formulae.any? { |tf| tf.formula.bottle_specification.tag?(Utils::Bottles.tag(:arm64_linux)) }
+        @runners << create_runner(:linux, :arm64)
+      end
     end
 
     github_run_id      = ENV.fetch("GITHUB_RUN_ID")
@@ -158,8 +174,8 @@ class GitHubRunnerMatrix
       macos_version = MacOSVersion.new(version)
       next unless runner_enabled?(macos_version)
 
-      github_runner_available = macos_version <= NEWEST_GITHUB_ACTIONS_ARM_MACOS_RUNNER &&
-                                macos_version >= OLDEST_GITHUB_ACTIONS_ARM_MACOS_RUNNER
+      github_runner_available = macos_version.between?(OLDEST_GITHUB_ACTIONS_ARM_MACOS_RUNNER,
+                                                       NEWEST_GITHUB_ACTIONS_ARM_MACOS_RUNNER)
 
       runner, timeout = if use_github_runner && github_runner_available
         ["macos-#{version}", GITHUB_ACTIONS_RUNNER_TIMEOUT]
@@ -179,10 +195,14 @@ class GitHubRunnerMatrix
       )
       @runners << create_runner(:macos, :arm64, spec, macos_version)
 
-      next if !@all_supported && macos_version > NEWEST_HOMEBREW_CORE_INTEL_MACOS_RUNNER
+      skip_intel_runner = !@all_supported && macos_version > NEWEST_HOMEBREW_CORE_INTEL_MACOS_RUNNER
+      skip_intel_runner &&= @dependent_matrix || @testing_formulae.none? do |testing_formula|
+        testing_formula.formula.bottle_specification.tag?(Utils::Bottles.tag(macos_version.to_sym))
+      end
+      next if skip_intel_runner
 
-      github_runner_available = macos_version <= NEWEST_GITHUB_ACTIONS_INTEL_MACOS_RUNNER &&
-                                macos_version >= OLDEST_GITHUB_ACTIONS_INTEL_MACOS_RUNNER
+      github_runner_available = macos_version.between?(OLDEST_GITHUB_ACTIONS_INTEL_MACOS_RUNNER,
+                                                       NEWEST_GITHUB_ACTIONS_INTEL_MACOS_RUNNER)
 
       runner, timeout = if use_github_runner && github_runner_available
         ["macos-#{version}", GITHUB_ACTIONS_RUNNER_TIMEOUT]
@@ -235,8 +255,18 @@ class GitHubRunnerMatrix
       @testing_formulae.select do |formula|
         next false if macos_version && !formula.compatible_with?(macos_version)
 
-        formula.public_send(:"#{platform}_compatible?") &&
-          formula.public_send(:"#{arch}_compatible?")
+        simulate_arch = case arch
+        when :x86_64
+          :intel
+        when :arm64
+          :arm
+        else
+          :dunno
+        end
+        Homebrew::SimulateSystem.with(os: platform, arch: simulate_arch) do
+          formula.public_send(:"#{platform}_compatible?") &&
+            formula.public_send(:"#{arch}_compatible?")
+        end
       end
     end
   end

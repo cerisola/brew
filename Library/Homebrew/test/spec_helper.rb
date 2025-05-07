@@ -63,6 +63,7 @@ TEST_DIRECTORIES = [
   HOMEBREW_LOCKS,
   HOMEBREW_LOGS,
   HOMEBREW_TEMP,
+  HOMEBREW_ALIASES,
 ].freeze
 
 # Make `instance_double` and `class_double`
@@ -91,9 +92,9 @@ RSpec.configure do |config|
   # Use rspec-retry to handle flaky tests.
   config.default_sleep_interval = 1
 
-  # Don't want the nicer default retry behaviour when using BuildPulse to
+  # Don't want the nicer default retry behaviour when using CodeCov to
   # identify flaky tests.
-  config.default_retry_count = 2 unless ENV["BUILDPULSE"]
+  config.default_retry_count = 2 unless ENV["CODECOV_TOKEN"]
 
   config.expect_with :rspec do |expectations|
     # This option will default to `true` in RSpec 4. It makes the `description`
@@ -122,9 +123,9 @@ RSpec.configure do |config|
   config.around(:each, :needs_network) do |example|
     example.metadata[:timeout] ||= 120
 
-    # Don't want the nicer default retry behaviour when using BuildPulse to
+    # Don't want the nicer default retry behaviour when using CodeCov to
     # identify flaky tests.
-    example.metadata[:retry] ||= 4 unless ENV["BUILDPULSE"]
+    example.metadata[:retry] ||= 4 unless ENV["CODECOV_TOKEN"]
 
     example.metadata[:retry_wait] ||= 2
     example.metadata[:exponential_backoff] ||= true
@@ -168,6 +169,14 @@ RSpec.configure do |config|
   config.before(:each, :needs_homebrew_core) do
     core_tap_path = "#{ENV.fetch("HOMEBREW_LIBRARY")}/Taps/homebrew/homebrew-core"
     skip "Requires homebrew/core to be tapped." unless Dir.exist?(core_tap_path)
+  end
+
+  config.before(:each, :needs_systemd) do
+    skip "No SystemD found." unless which("systemctl")
+  end
+
+  config.before(:each, :needs_daemon_manager) do
+    skip "No LaunchCTL or SystemD found." if !which("systemctl") && !which("launchctl")
   end
 
   config.before do |example|
@@ -279,14 +288,12 @@ RSpec.configure do |config|
         *Keg.must_exist_subdirectories,
         HOMEBREW_LINKED_KEGS,
         HOMEBREW_PINNED_KEGS,
-        HOMEBREW_PREFIX/"var",
         HOMEBREW_PREFIX/"Caskroom",
         HOMEBREW_PREFIX/"Frameworks",
         HOMEBREW_LIBRARY/"Taps/homebrew/homebrew-cask",
         HOMEBREW_LIBRARY/"Taps/homebrew/homebrew-bar",
-        HOMEBREW_LIBRARY/"Taps/homebrew/homebrew-bundle",
         HOMEBREW_LIBRARY/"Taps/homebrew/homebrew-foo",
-        HOMEBREW_LIBRARY/"Taps/homebrew/homebrew-services",
+        HOMEBREW_LIBRARY/"Taps/homebrew/homebrew-test-bot",
         HOMEBREW_LIBRARY/"Taps/homebrew/homebrew-shallow",
         HOMEBREW_LIBRARY/"PinnedTaps",
         HOMEBREW_REPOSITORY/".git",
@@ -298,6 +305,9 @@ RSpec.configure do |config|
         CoreTap.instance.path/"style_exceptions",
         CoreTap.instance.path/"pypi_formula_mappings.json",
         *Pathname.glob("#{HOMEBREW_CELLAR}/*/"),
+        HOMEBREW_LIBRARY_PATH/"test/.vscode",
+        HOMEBREW_LIBRARY_PATH/"test/.cursor",
+        HOMEBREW_LIBRARY_PATH/"test/Library",
       ]
 
       files_after_test = Test::Helper::Files.find_files

@@ -1,3 +1,7 @@
+---
+last_review_date: "1970-01-01"
+---
+
 # Common Issues
 
 This is a list of commonly encountered problems, known issues, and their solutions.
@@ -123,7 +127,7 @@ This is an issue in the connection between your machine and GitHub, rather than 
 
 Upgrading macOS can cause errors like the following:
 
-* `dyld: Library not loaded: /usr/local/opt/icu4c/lib/libicui18n.54.dylib`
+* `dyld: Library not loaded: /opt/homebrew/opt/icu4c/lib/libicui18n.76.dylib`
 * `configure: error: Cannot find libz`
 
 Following a macOS upgrade it may be necessary to reinstall the Xcode Command Line Tools and then `brew upgrade` all installed formulae:
@@ -135,7 +139,7 @@ brew upgrade
 
 ## Unintentional dual Homebrew installations
 
-When using tools such as Apple's _Migration Assistant_ (MA), it's possible to have two Homebrew installations unintentionally.
+When using tools such as Apple's *Migration Assistant* (MA), it's possible to have two Homebrew installations unintentionally.
 This most commonly results in MA copying `/usr/local` and `/Applications` from an Intel-based Mac to these same paths on an Apple Silicon-based Mac.
 This is problematic because `/Applications` may contain x86_64-only apps.
 Using an x86_64 terminal emulator will cause the shell to use the `/usr/local` installation of Homebrew
@@ -153,7 +157,7 @@ Follow these steps to do this.
 1. Install Homebrew under the correct prefix (`/opt/homebrew`),
    which will happen by default when the terminal is running in arm64 mode.
 
-   **Follow the _Next Steps_ instructions** listed at the end of the installation process;
+   **Follow the *Next Steps* instructions** listed at the end of the installation process;
     failing to adjust your shell configuration accordingly could break your Homebrew installation.
 
 1. Run `/opt/homebrew/bin/brew bundle install --global` to replicate your original formulae installation using your new Homebrew installation in `/opt/homebrew`.
@@ -254,4 +258,11 @@ Help us by [submitting a fix](https://github.com/Homebrew/homebrew-cask/blob/HEA
 
 ## Other local issues
 
-If your Homebrew installation gets messed up (and fixing the issues found by `brew doctor` doesn't solve the problem), reinstalling Homebrew may help to reset to a normal state. To easily reinstall Homebrew, use [Homebrew Bundle](https://github.com/Homebrew/homebrew-bundle) to automatically restore your installed formulae and casks. To do so, run `brew bundle dump`, [uninstall](https://docs.brew.sh/FAQ#how-do-i-uninstall-homebrew), [reinstall](https://docs.brew.sh/Installation) and run `brew bundle install`.
+If your Homebrew installation gets messed up (and fixing the issues found by `brew doctor` doesn't solve the problem), reinstalling Homebrew may help to reset to a normal state. To easily reinstall Homebrew, use `brew bundle` to automatically restore your installed formulae and casks. To do so, run `brew bundle dump`, [uninstall](https://docs.brew.sh/FAQ#how-do-i-uninstall-homebrew), [reinstall](https://docs.brew.sh/Installation) and run `brew bundle install`.
+
+## Possible `curl` issues
+
+Sometimes, the user's computer, configuration or network connection may cause issues downloading with `curl` which are outside Homebrew's control. Homebrew requires good internet connectivity and correct configuration to function correctly. Here some links that could help you identify cURL issues based on `curl`'s and `libcurl`'s exit codes:
+
+* <https://everything.curl.dev/cmdline/exitcode.html>
+* <https://curl.se/libcurl/c/libcurl-errors.html>

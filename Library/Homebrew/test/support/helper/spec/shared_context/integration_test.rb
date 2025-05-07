@@ -6,6 +6,7 @@ require "formula_installer"
 
 RSpec::Matchers.define_negated_matcher :be_a_failure, :be_a_success
 
+# These shared contexts starting with `when` don't make sense.
 RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWording
   extend RSpec::Matchers::DSL
 
@@ -133,11 +134,21 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
                          bottle_block: nil, tab_attributes: nil)
     case name
     when /^testball/
-      tarball = if OS.linux?
-        TEST_FIXTURE_DIR/"tarballs/testball-0.1-linux.tbz"
+      case name
+      when "testball4", "testball5"
+        prefix = name
+        program_name = name
+      when "testball2"
+        prefix = name
+        program_name = "test"
       else
-        TEST_FIXTURE_DIR/"tarballs/testball-0.1.tbz"
+        prefix = "testball"
+        program_name = "test"
       end
+
+      tarball_name = "#{prefix}-0.1#{"-linux" if OS.linux?}.tbz"
+      tarball = TEST_FIXTURE_DIR / "tarballs/#{tarball_name}"
+
       content = <<~RUBY
         desc "Some test"
         homepage "https://brew.sh/#{name}"
@@ -147,12 +158,12 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
         option "with-foo", "Build with foo"
         #{bottle_block}
         def install
-          (prefix/"foo"/"test").write("test") if build.with? "foo"
+          (prefix/"foo"/"#{program_name}").write("#{program_name}") if build.with? "foo"
           prefix.install Dir["*"]
-          (buildpath/"test.c").write \
-            "#include <stdio.h>\\nint main(){printf(\\"test\\");return 0;}"
+          (buildpath/"#{program_name}.c").write \
+            "#include <stdio.h>\\nint main(){printf(\\"#{program_name}\\");return 0;}"
           bin.mkpath
-          system ENV.cc, "test.c", "-o", bin/"test"
+          system ENV.cc, "#{program_name}.c", "-o", bin/"#{program_name}"
         end
 
         #{content}
@@ -202,7 +213,7 @@ RSpec.shared_context "integration test" do # rubocop:disable RSpec/ContextWordin
 
   def install_test_formula(name, content = nil, build_bottle: false)
     setup_test_formula(name, content)
-    fi = FormulaInstaller.new(Formula[name], build_bottle:)
+    fi = FormulaInstaller.new(Formula[name], build_bottle:, installed_on_request: true)
     fi.prelude
     fi.fetch
     fi.install

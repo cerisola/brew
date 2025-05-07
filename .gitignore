@@ -40,7 +40,7 @@
 # Ignore Ruby gems for versions other than we explicitly vendor.
 # Keep this in sync with the list in standalone/init.rb.
 **/vendor/bundle/ruby/*/
-!**/vendor/bundle/ruby/3.3.0/
+!**/vendor/bundle/ruby/3.4.0/
 
 # Ignore Bundler binary files
 **/vendor/bundle/ruby/*/gems/**/*.bundle
@@ -71,6 +71,7 @@
 
 # Ignore dependencies we don't wish to vendor
 **/vendor/bundle/ruby/*/gems/ast-*/
+**/vendor/bundle/ruby/*/gems/benchmark-*/
 **/vendor/bundle/ruby/*/gems/bigdecimal-*/
 **/vendor/bundle/ruby/*/gems/bootsnap-*/
 **/vendor/bundle/ruby/*/gems/bundler-*/
@@ -78,6 +79,7 @@
 **/vendor/bundle/ruby/*/gems/coderay-*/
 **/vendor/bundle/ruby/*/gems/colorize-*/
 **/vendor/bundle/ruby/*/gems/commander-*/
+**/vendor/bundle/ruby/*/gems/csv-*/
 **/vendor/bundle/ruby/*/gems/diff-lcs-*/
 **/vendor/bundle/ruby/*/gems/docile-*/
 **/vendor/bundle/ruby/*/gems/ecma-re-validator-*/
@@ -89,6 +91,7 @@
 **/vendor/bundle/ruby/*/gems/json_schemer-*/
 **/vendor/bundle/ruby/*/gems/kramdown-*/
 **/vendor/bundle/ruby/*/gems/language_server-protocol-*/
+**/vendor/bundle/ruby/*/gems/lint_roller-*/
 **/vendor/bundle/ruby/*/gems/logger-*/
 **/vendor/bundle/ruby/*/gems/method_source-*/
 **/vendor/bundle/ruby/*/gems/mini_portile2-*/
@@ -105,6 +108,7 @@
 **/vendor/bundle/ruby/*/gems/prism-*/
 **/vendor/bundle/ruby/*/gems/psych-*/
 **/vendor/bundle/ruby/*/gems/pry-*/
+**/vendor/bundle/ruby/*/gems/pycall-*/
 **/vendor/bundle/ruby/*/gems/racc-*/
 **/vendor/bundle/ruby/*/gems/rainbow-*/
 **/vendor/bundle/ruby/*/gems/rbi-*/
@@ -138,6 +142,7 @@
 **/vendor/bundle/ruby/*/gems/tapioca-*/
 **/vendor/bundle/ruby/*/gems/thor-*/
 **/vendor/bundle/ruby/*/gems/unicode-display_width-*/
+**/vendor/bundle/ruby/*/gems/unicode-emoji-*/
 **/vendor/bundle/ruby/*/gems/unparser-*/
 **/vendor/bundle/ruby/*/gems/uri_template-*/
 **/vendor/bundle/ruby/*/gems/vernier-*/
@@ -166,7 +171,6 @@
 
 # Ignore generated documentation site
 /docs/_site
-/docs/bin
 /docs/.jekyll-metadata
 /docs/vendor
 /docs/Gemfile.lock

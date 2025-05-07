@@ -3,7 +3,7 @@
 require "download_strategy"
 
 RSpec.describe AbstractDownloadStrategy do
-  subject(:strategy) { described_class.new(url, name, version, **specs) }
+  subject(:strategy) { Class.new(described_class).new(url, name, version, **specs) }
 
   let(:specs) { {} }
   let(:name) { "foo" }
@@ -12,7 +12,7 @@ RSpec.describe AbstractDownloadStrategy do
   let(:args) { %w[foo bar baz] }
 
   specify "#source_modified_time" do
-    Mktemp.new("mtime") do
+    mktmpdir("mtime").cd do
       FileUtils.touch "foo", mtime: Time.now - 10
       FileUtils.touch "bar", mtime: Time.now - 100
       FileUtils.ln_s "not-exist", "baz"

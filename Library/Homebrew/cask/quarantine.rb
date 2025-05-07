@@ -216,11 +216,11 @@ module Cask
       # including both file ownership and whether system permissions are granted.
       # Here we just want to check whether sudo would be needed.
       looks_writable_without_sudo = if app.owned?
-        (app.lstat.mode & 0200) != 0
+        app.lstat.mode.anybits?(0200)
       elsif app.grpowned?
-        (app.lstat.mode & 0020) != 0
+        app.lstat.mode.anybits?(0020)
       else
-        (app.lstat.mode & 0002) != 0
+        app.lstat.mode.anybits?(0002)
       end
 
       if looks_writable_without_sudo
@@ -256,13 +256,18 @@ module Cask
         end
       end
 
-      opoo <<~EOF
-        Your terminal does not have App Management permissions, so Homebrew will delete and reinstall the app.
-        This may result in some configurations (like notification settings or location in the Dock/Launchpad) being lost.
-        To fix this, go to System Settings > Privacy & Security > App Management and add or enable your terminal.
-      EOF
+      # Allow undocumented way to skip the prompt.
+      if ENV["HOMEBREW_NO_APP_MANAGEMENT_PERMISSIONS_PROMPT"]
+        opoo <<~EOF
+          Your terminal does not have App Management permissions, so Homebrew will delete and reinstall the app.
+          This may result in some configurations (like notification settings or location in the Dock/Launchpad) being lost.
+          To fix this, go to System Settings → Privacy & Security → App Management and add or enable your terminal.
+        EOF
+      end
 
       false
     end
   end
 end
+
+require "extend/os/cask/quarantine"

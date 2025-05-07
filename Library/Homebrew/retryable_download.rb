@@ -1,4 +1,4 @@
-# typed: true # rubocop:todo Sorbet/StrictSigil
+# typed: strict
 # frozen_string_literal: true
 
 module Homebrew
@@ -9,7 +9,7 @@ module Homebrew
     attr_reader :downloadable
     private :downloadable
 
-    sig { override.returns(T.nilable(URL)) }
+    sig { override.returns(T.any(NilClass, String, URL)) }
     def url = downloadable.url
 
     sig { override.returns(T.nilable(Checksum)) }
@@ -23,7 +23,7 @@ module Homebrew
       super()
 
       @downloadable = downloadable
-      @try = 0
+      @try = T.let(0, Integer)
       @tries = tries
     end
 
@@ -42,7 +42,7 @@ module Homebrew
     sig { override.returns(T.nilable(Version)) }
     def version = downloadable.version
 
-    sig { override.returns(T.class_of(AbstractDownloadStrategy)) }
+    sig { override.returns(T::Class[AbstractDownloadStrategy]) }
     def download_strategy = downloadable.download_strategy
 
     sig { override.returns(AbstractDownloadStrategy) }

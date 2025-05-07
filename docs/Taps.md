@@ -1,3 +1,7 @@
+---
+last_review_date: "1970-01-01"
+---
+
 # Taps (Third-Party Repositories)
 
 The `brew tap` command adds more repositories to the list of formulae that Homebrew tracks, updates,
@@ -27,8 +31,7 @@ but the command isn't limited to any one location.
 * `brew tap <user>/<repo> <URL>` makes a clone of the repository at _URL_.
   Unlike the one-argument version, _URL_ is not assumed to be GitHub, and it
   doesn't have to be HTTP. Any location and any protocol that Git can handle is
-  fine, although non-GitHub taps require running `brew tap --force-auto-update <user>/<repo>`
-  to enable automatic updating.
+  fine.
 
 * `brew tap --repair` migrates tapped formulae from a symlink-based to
   directory-based structure. (This should only need to be run once.)

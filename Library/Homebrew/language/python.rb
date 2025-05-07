@@ -112,7 +112,7 @@ module Language
       module_function
 
       # A regex to match potential shebang permutations.
-      PYTHON_SHEBANG_REGEX = %r{^#! ?/usr/bin/(?:env )?python(?:[23](?:\.\d{1,2})?)?( |$)}
+      PYTHON_SHEBANG_REGEX = %r{^#! ?(?:/usr/bin/(?:env )?)?python(?:[23](?:\.\d{1,2})?)?( |$)}
 
       # The length of the longest shebang matching `SHEBANG_REGEX`.
       PYTHON_SHEBANG_MAX_LENGTH = T.let("#! /usr/bin/env pythonx.yyy ".length, Integer)
@@ -240,7 +240,7 @@ module Language
         ).returns(Virtualenv)
       }
       def virtualenv_install_with_resources(using: nil, system_site_packages: true, without_pip: true,
-                                            link_manpages: false, without: nil, start_with: nil, end_with: nil)
+                                            link_manpages: true, without: nil, start_with: nil, end_with: nil)
         python = using
         if python.nil?
           wanted = python_names.select { |py| needs_python?(py) }
@@ -340,7 +340,10 @@ module Language
             version = rp.match %r{^#{HOMEBREW_CELLAR}/python@(.*?)/}o
             version = "@#{version.captures.first}" unless version.nil?
 
-            new_target = rp.sub %r{#{HOMEBREW_CELLAR}/python#{version}/[^/]+}, Formula["python#{version}"].opt_prefix
+            new_target = rp.sub(
+              %r{#{HOMEBREW_CELLAR}/python#{version}/[^/]+},
+              Formula["python#{version}"].opt_prefix.to_s,
+            )
             f.unlink
             f.make_symlink new_target
           end
@@ -351,7 +354,10 @@ module Language
             version = prefix_path.match %r{^#{HOMEBREW_CELLAR}/python@(.*?)/}o
             version = "@#{version.captures.first}" unless version.nil?
 
-            prefix_path.sub! %r{^#{HOMEBREW_CELLAR}/python#{version}/[^/]+}, Formula["python#{version}"].opt_prefix
+            prefix_path.sub!(
+              %r{^#{HOMEBREW_CELLAR}/python#{version}/[^/]+},
+              Formula["python#{version}"].opt_prefix.to_s,
+            )
             prefix_file.atomic_write prefix_path
           end
 
@@ -362,7 +368,7 @@ module Language
             cfg = cfg_file.read
             framework = "Frameworks/Python.framework/Versions"
             cfg.match(%r{= *(#{HOMEBREW_CELLAR}/(python@[\d.]+)/[^/]+(?:/#{framework}/[\d.]+)?/bin)}) do |match|
-              cfg.sub! match[1].to_s, Formula[match[2]].opt_bin
+              cfg.sub! match[1].to_s, Formula[T.must(match[2])].opt_bin.to_s
               cfg_file.atomic_write cfg
             end
           end
@@ -415,7 +421,7 @@ module Language
             build_isolation: T::Boolean,
           ).void
         }
-        def pip_install_and_link(targets, link_manpages: false, build_isolation: true)
+        def pip_install_and_link(targets, link_manpages: true, build_isolation: true)
           bin_before = Dir[@venv_root/"bin/*"].to_set
           man_before = Dir[@venv_root/"share/man/man*/*"].to_set if link_manpages
 

@@ -110,10 +110,12 @@ module OS
           return if Homebrew::EnvConfig.developer?
           return if ENV["HOMEBREW_INTEGRATION_TEST"]
 
+          tier = 2
           who = +"We"
           what = if OS::Mac.version.prerelease?
             "pre-release version"
           elsif OS::Mac.version.outdated_release?
+            tier = 3
             who << " (and Apple)"
             "old version"
           end
@@ -124,7 +126,32 @@ module OS
           <<~EOS
             You are using macOS #{MacOS.version}.
             #{who} do not provide support for this #{what}.
-            #{please_create_pull_requests(what)}
+
+            #{support_tier_message(tier:)}
+          EOS
+        end
+
+        def check_for_opencore
+          return if ::Hardware::CPU.physical_cpu_arm64?
+
+          # https://dortania.github.io/OpenCore-Legacy-Patcher/UPDATE.html#checking-oclp-and-opencore-versions
+          begin
+            opencore_version = Utils.safe_popen_read("/usr/sbin/nvram",
+                                                     "4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102:opencore-version").split[1]
+            oclp_version = Utils.safe_popen_read("/usr/sbin/nvram",
+                                                 "4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102:OCLP-Version").split[1]
+            return if opencore_version.blank? || oclp_version.blank?
+          rescue ErrorDuringExecution
+            return
+          end
+
+          oclp_support_tier = Hardware::CPU.features.include?(:pclmulqdq) ? 2 : 3
+
+          <<~EOS
+            You have booted macOS using OpenCore Legacy Patcher.
+            We do not provide support for this configuration.
+
+            #{support_tier_message(tier: oclp_support_tier)}
           EOS
         end
 
@@ -148,6 +175,8 @@ module OS
             Your Xcode (#{MacOS::Xcode.version}) is outdated.
             Please update to Xcode #{MacOS::Xcode.latest_version} (or delete it).
             #{MacOS::Xcode.update_instructions}
+
+            #{support_tier_message(tier: 2)}
           EOS
 
           if OS::Mac.version.prerelease?
@@ -177,6 +206,8 @@ module OS
           <<~EOS
             A newer Command Line Tools release is available.
             #{MacOS::CLT.update_instructions}
+
+            #{support_tier_message(tier: 2)}
           EOS
         end
 
@@ -388,6 +419,8 @@ module OS
 
             You should set the "HOMEBREW_TEMP" environment variable to a suitable
             directory on the same volume as your Cellar.
+
+            #{support_tier_message(tier: 2)}
           EOS
         end
 

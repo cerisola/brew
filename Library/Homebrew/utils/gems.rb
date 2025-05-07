@@ -5,12 +5,12 @@
 # work as the first item in `brew.rb` so we can load gems with Bundler when
 # needed before anything else is loaded (e.g. `json`).
 
-require "English"
+Homebrew::FastBootRequire.from_rubylibdir("English")
 
 module Homebrew
   # Keep in sync with the `Gemfile.lock`'s BUNDLED WITH.
   # After updating this, run `brew vendor-gems --update=--bundler`.
-  HOMEBREW_BUNDLER_VERSION = "2.5.20"
+  HOMEBREW_BUNDLER_VERSION = "2.6.7"
 
   # Bump this whenever a committed vendored gem is later added to or exclusion removed from gitignore.
   # This will trigger it to reinstall properly if `brew install-bundler-gems` needs it.
@@ -303,6 +303,7 @@ module Homebrew
           exec bundle, "install", out: :err
         end)
         if $CHILD_STATUS.success?
+          Homebrew::Bootsnap.reset! if defined?(Homebrew::Bootsnap) # Gem install can run before Bootsnap loads
           true
         else
           message = <<~EOS

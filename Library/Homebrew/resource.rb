@@ -25,15 +25,19 @@ class Resource
   sig { params(name: T.nilable(String), block: T.nilable(T.proc.bind(Resource).void)).void }
   def initialize(name = nil, &block)
     super()
-    # Ensure this is synced with `initialize_dup` and `freeze` (excluding simple objects like integers and booleans)
+    # Generally ensure this is synced with `initialize_dup` and `freeze`
+    # (excluding simple objects like integers & booleans, weak refs like `owner` or permafrozen objects)
     @name = name
+    @source_modified_time = nil
     @patches = []
+    @owner = nil
     @livecheck = Livecheck.new(self)
-    @livecheckable = false
+    @livecheck_defined = false
     @insecure = false
     instance_eval(&block) if block
   end
 
+  sig { params(other: Object).void }
   def initialize_dup(other)
     super
     @name = @name.dup
@@ -51,20 +55,6 @@ class Resource
   def owner=(owner)
     @owner = owner
     patches.each { |p| p.owner = owner }
-
-    return if !owner.respond_to?(:full_name) || owner.full_name != "ca-certificates"
-    return if Homebrew::EnvConfig.no_insecure_redirect?
-
-    @insecure = !specs[:bottle] && (DevelopmentTools.ca_file_substitution_required? ||
-                                    DevelopmentTools.curl_substitution_required?)
-    return if @url.nil?
-
-    specs = if @insecure
-      @url.specs.merge({ insecure: true })
-    else
-      @url.specs.except(:insecure)
-    end
-    @url = URL.new(@url.to_s, specs)
   end
 
   # Removes /s from resource names; this allows Go package names
@@ -88,7 +78,7 @@ class Resource
   #
   # @api public
   def stage(target = nil, debug_symbols: false, &block)
-    raise ArgumentError, "Target directory or block is required" if !target && block.blank?
+    raise ArgumentError, "Target directory or block is required" if !target && !block_given?
 
     prepare_patches
     fetch_patches(skip_downloaded: true)
@@ -122,7 +112,7 @@ class Resource
     current_working_directory = Pathname.pwd
     stage_resource(download_name, debug_symbols:) do |staging|
       downloader.stage do
-        @source_modified_time = downloader.source_modified_time
+        @source_modified_time = downloader.source_modified_time.freeze
         apply_patches
         if block_given?
           yield ResourceStageContext.new(self, staging)
@@ -156,7 +146,7 @@ class Resource
   end
 
   # {Livecheck} can be used to check for newer versions of the software.
-  # This method evaluates the DSL specified in the livecheck block of the
+  # This method evaluates the DSL specified in the `livecheck` block of the
   # {Resource} (if it exists) and sets the instance variables of a {Livecheck}
   # object accordingly. This is used by `brew livecheck` to check for newer
   # versions of the software.
@@ -169,26 +159,38 @@ class Resource
   #   regex /foo-(\d+(?:\.\d+)+)\.tar/
   # end
   # ```
-  #
-  # @!attribute [w] livecheck
   def livecheck(&block)
     return @livecheck unless block
 
-    @livecheckable = true
+    @livecheck_defined = true
     @livecheck.instance_eval(&block)
   end
 
   # Whether a livecheck specification is defined or not.
-  # It returns true when a `livecheck` block is present in the {Resource} and
-  # false otherwise and is used by livecheck.
+  #
+  # It returns `true` when a `livecheck` block is present in the {Resource}
+  # and `false` otherwise.
+  sig { returns(T::Boolean) }
+  def livecheck_defined?
+    @livecheck_defined == true
+  end
+
+  # Whether a livecheck specification is defined or not. This is a legacy alias
+  # for `#livecheck_defined?`.
+  #
+  # It returns `true` when a `livecheck` block is present in the {Resource}
+  # and `false` otherwise.
+  sig { returns(T::Boolean) }
   def livecheckable?
-    @livecheckable == true
+    odeprecated "`livecheckable?`", "`livecheck_defined?`"
+    @livecheck_defined == true
   end
 
   def sha256(val)
     @checksum = Checksum.new(val)
   end
 
+  sig { override.params(val: T.nilable(String), specs: T.anything).returns(T.nilable(String)) }
   def url(val = nil, **specs)
     return @url&.to_s if val.nil?
 
@@ -201,6 +203,7 @@ class Resource
     @url = URL.new(val, specs)
     @downloader = nil
     @download_strategy = @url.download_strategy
+    @url.to_s
   end
 
   sig { override.params(val: T.nilable(T.any(String, Version))).returns(T.nilable(Version)) }
@@ -242,6 +245,7 @@ class Resource
 
   def determine_url_mirrors
     extra_urls = []
+    url = T.must(self.url)
 
     # glibc-bootstrap
     if url.start_with?("https://github.com/Homebrew/glibc-bootstrap/releases/download")

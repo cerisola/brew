@@ -35,6 +35,11 @@ RSpec.describe Utils::Shell do
       ENV["SHELL"] = "/bin/ksh"
       expect(described_class.profile).to eq("~/.kshrc")
     end
+
+    it "returns ~/.config/powershell/Microsoft.PowerShell_profile.ps1 for PowerShell" do
+      ENV["SHELL"] = "/usr/bin/pwsh"
+      expect(described_class.profile).to eq("~/.config/powershell/Microsoft.PowerShell_profile.ps1")
+    end
   end
 
   describe "::from_path" do
@@ -98,6 +103,28 @@ RSpec.describe Utils::Shell do
       ENV["fish_user_paths"] = "/some/path"
       expect(described_class.prepend_path_in_profile(path))
         .to eq("fish_add_path #{path}")
+    end
+  end
+
+  describe "::shell_with_prompt" do
+    it "returns zsh-specific prompt configuration" do
+      ENV["SHELL"] = "/bin/zsh"
+      expect(described_class.shell_with_prompt("test", preferred_path: "/bin/zsh", notice: "")).to eq(
+        "PROMPT='%B%F{green}test%f %F{blue}$%f%b ' RPROMPT='[%B%F{red}%~%f%b]' /bin/zsh -f",
+      )
+    end
+
+    it "returns generic shell prompt configuration" do
+      ENV["SHELL"] = "/bin/bash"
+      expect(described_class.shell_with_prompt("test", preferred_path: "/bin/bash", notice: "")).to eq(
+        "PS1=\"\\[\\033[1;32m\\]brew \\[\\033[1;31m\\]\\w \\[\\033[1;34m\\]$\\[\\033[0m\\] \" /bin/bash",
+      )
+    end
+
+    it "outputs notice when provided" do
+      notice = "Test Notice"
+      expect { described_class.shell_with_prompt("test", preferred_path: "/bin/bash", notice: notice) }
+        .to output("#{notice}\n").to_stdout
     end
   end
 end

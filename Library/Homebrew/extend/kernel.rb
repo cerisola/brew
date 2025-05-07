@@ -8,7 +8,15 @@ module Kernel
   def require?(path)
     return false if path.nil?
 
-    require path
+    if defined?(Warnings)
+      # Work around require warning when done repeatedly:
+      # https://bugs.ruby-lang.org/issues/21091
+      Warnings.ignore(/already initialized constant/, /previous definition of/) do
+        require path
+      end
+    else
+      require path
+    end
     true
   rescue LoadError => e
     # we should raise on syntax errors but not if the file doesn't exist.
@@ -163,7 +171,7 @@ module Kernel
 
       tap = Tap.fetch(match[:user], match[:repository])
       tap_message = "\nPlease report this issue to the #{tap.full_name} tap"
-      tap_message += " (not Homebrew/brew or Homebrew/homebrew-core)" unless tap.official?
+      tap_message += " (not Homebrew/* repositories)" unless tap.official?
       tap_message += ", or even better, submit a PR to fix it" if replacement
       tap_message << ":\n  #{line.sub(/^(.*:\d+):.*$/, '\1')}\n\n"
       break
@@ -285,8 +293,8 @@ module Kernel
     Homebrew._system(cmd, *args) do
       # Redirect output streams to `/dev/null` instead of closing as some programs
       # will fail to execute if they can't write to an open stream.
-      $stdout.reopen("/dev/null")
-      $stderr.reopen("/dev/null")
+      $stdout.reopen(File::NULL)
+      $stderr.reopen(File::NULL)
     end
   end
 
@@ -324,8 +332,8 @@ module Kernel
     editor = Homebrew::EnvConfig.editor
     return editor if editor
 
-    # Find VS Code, Sublime Text, Textmate, BBEdit, or vim
-    editor = %w[code subl mate bbedit vim].find do |candidate|
+    # Find VS Code variants, Sublime Text, Textmate, BBEdit, or vim
+    editor = %w[code codium cursor code-insiders subl mate bbedit vim].find do |candidate|
       candidate if which(candidate, ORIGINAL_PATHS)
     end
     editor ||= "vim"
@@ -451,13 +459,13 @@ module Kernel
   end
 
   def disk_usage_readable(size_in_bytes)
-    if size_in_bytes >= 1_073_741_824
+    if size_in_bytes.abs >= 1_073_741_824
       size = size_in_bytes.to_f / 1_073_741_824
       unit = "GB"
-    elsif size_in_bytes >= 1_048_576
+    elsif size_in_bytes.abs >= 1_048_576
       size = size_in_bytes.to_f / 1_048_576
       unit = "MB"
-    elsif size_in_bytes >= 1_024
+    elsif size_in_bytes.abs >= 1_024
       size = size_in_bytes.to_f / 1_024
       unit = "KB"
     else

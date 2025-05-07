@@ -116,12 +116,15 @@ module Cask
               print_stderr: false,
             ).stdout
             if plist_status.start_with?("{")
-              command.run!(
+              result = command.run(
                 "/bin/launchctl",
                 args:         ["remove", service],
+                must_succeed: sudo,
                 sudo:,
                 sudo_as_root: sudo,
               )
+              next if !sudo && !result.success?
+
               sleep 1
             end
             paths = [
@@ -408,7 +411,7 @@ module Cask
             next
           end
 
-          if MacOS.undeletable?(resolved_path)
+          if undeletable?(resolved_path)
             opoo "Skipping #{Formatter.identifier(action)} for undeletable path '#{path}'."
             next
           end
@@ -461,13 +464,11 @@ module Cask
                                  args:         paths,
                                  print_stderr: Homebrew::EnvConfig.developer?
 
-        trashed, _, untrashable = stdout.partition("\n")
-        trashed = trashed.split(":")
-        untrashable = untrashable.split(":")
+        trashed, = stdout.partition("\n")
+        trashed = trashed.split(":") & paths
+        untrashable = paths - trashed
 
-        return trashed, untrashable if untrashable.empty?
-
-        untrashable.delete_if do |path|
+        trashed_with_permissions, untrashable = untrashable.partition do |path|
           Utils.gain_permissions(path, ["-R"], SystemCommand) do
             system_command! HOMEBREW_LIBRARY_PATH/"cask/utils/trash.swift",
                             args:         [path],
@@ -478,6 +479,10 @@ module Cask
         rescue
           false
         end
+
+        trashed += trashed_with_permissions
+
+        return trashed, untrashable if untrashable.empty?
 
         opoo "The following files could not be trashed, please do so manually:"
         $stderr.puts untrashable
@@ -509,7 +514,7 @@ module Cask
           end
 
           # Directory counts as empty if it only contains a `.DS_Store`.
-          if children.include?((ds_store = resolved_path/".DS_Store"))
+          if children.include?(ds_store = resolved_path/".DS_Store")
             Utils.gain_permissions_remove(ds_store, command:)
             children.delete(ds_store)
           end
@@ -533,6 +538,10 @@ module Cask
           recursive_rmdir(*resolved_paths, **kwargs)
         end
       end
+
+      def undeletable?(target); end
     end
   end
 end
+
+require "extend/os/cask/artifact/abstract_uninstall"

@@ -82,12 +82,18 @@ module Homebrew
           r = Resource.new
           r.url(@url)
           r.owner = self
-          @sha256 = r.fetch.sha256 if r.download_strategy == CurlDownloadStrategy
+          filepath = r.fetch
+          html_doctype_prefix = "<!doctype html"
+          if File.read(filepath, html_doctype_prefix.length).downcase.start_with?(html_doctype_prefix)
+            raise "Downloaded URL is not archive"
+          end
+
+          @sha256 = filepath.sha256
         end
 
         if @github
           @desc = @github["description"]
-          @homepage = @github["homepage"]
+          @homepage = @github["homepage"].presence || "https://github.com/#{@github["full_name"]}"
           @license = @github["license"]["spdx_id"] if @github["license"]
         end
       end
@@ -95,6 +101,14 @@ module Homebrew
       path.dirname.mkpath
       path.write ERB.new(template, trim_mode: ">").result(binding)
       path
+    end
+
+    sig { params(name: String).returns(String) }
+    def latest_versioned_formula(name)
+      name_prefix = "#{name}@"
+      CoreTap.instance.formula_names
+             .select { |f| f.start_with?(name_prefix) }
+             .max_by { |v| Gem::Version.new(v.sub(name_prefix, "")) } || "python"
     end
 
     sig { returns(String) }
@@ -138,16 +152,18 @@ module Homebrew
         <% elsif @mode == :perl %>
           uses_from_macos "perl"
         <% elsif @mode == :python %>
-          depends_on "python"
+          depends_on "#{latest_versioned_formula("python")}"
         <% elsif @mode == :ruby %>
           uses_from_macos "ruby"
         <% elsif @mode == :rust %>
           depends_on "rust" => :build
+        <% elsif @mode == :zig %>
+          depends_on "zig" => :build
         <% elsif @mode.nil? %>
           # depends_on "cmake" => :build
         <% end %>
 
-        <% if @mode == :perl %>
+        <% if @mode == :perl || :python || :ruby %>
           # Additional dependency
           # resource "" do
           #   url ""
@@ -201,12 +217,16 @@ module Homebrew
             virtualenv_install_with_resources
         <% elsif @mode == :ruby %>
             ENV["GEM_HOME"] = libexec
+
+            system "bundle", "install", "-without", "development", "test"
             system "gem", "build", "\#{name}.gemspec"
-            system "gem", "install", "\#{name}-\#{@version}.gem"
+            system "gem", "install", "\#{name}-\#{version}.gem"
             bin.install libexec/"bin/\#{name}"
             bin.env_script_all_files(libexec/"bin", GEM_HOME: ENV["GEM_HOME"])
         <% elsif @mode == :rust %>
             system "cargo", "install", *std_cargo_args
+        <% elsif @mode == :zig %>
+            system "zig", "build", *std_zig_args
         <% else %>
             # Remove unrecognized options if they cause configure to fail
             # https://rubydoc.brew.sh/Formula.html#std_configure_args-instance_method

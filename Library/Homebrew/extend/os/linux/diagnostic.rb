@@ -74,12 +74,14 @@ module OS
         end
 
         def check_supported_architecture
-          return if Hardware::CPU.arch == :x86_64
+          return if Hardware::CPU.intel?
+          return if Homebrew::EnvConfig.developer? && ENV["HOMEBREW_ARM64_TESTING"].present? && Hardware::CPU.arm?
 
           <<~EOS
             Your CPU architecture (#{Hardware::CPU.arch}) is not supported. We only support
             x86_64 CPU architectures. You will be unable to use binary packages (bottles).
-            #{please_create_pull_requests}
+
+            #{support_tier_message(tier: 2)}
           EOS
         end
 
@@ -89,10 +91,30 @@ module OS
           <<~EOS
             Your system glibc #{OS::Linux::Glibc.system_version} is too old.
             We only support glibc #{OS::Linux::Glibc.minimum_version} or later.
-            #{please_create_pull_requests}
+
             We recommend updating to a newer version via your distribution's
             package manager, upgrading your distribution to the latest version,
             or changing distributions.
+
+            #{support_tier_message(tier: :unsupported)}
+          EOS
+        end
+
+        def check_glibc_version
+          return unless OS::Linux::Glibc.below_ci_version?
+
+          # We want to bypass this check in some tests.
+          return if ENV["HOMEBREW_GLIBC_TESTING"]
+
+          <<~EOS
+            Your system glibc #{OS::Linux::Glibc.system_version} is too old.
+            We will need to automatically install a newer version.
+
+            We recommend updating to a newer version via your distribution's
+            package manager, upgrading your distribution to the latest version,
+            or changing distributions.
+
+            #{support_tier_message(tier: 2)}
           EOS
         end
 
@@ -103,10 +125,12 @@ module OS
             Your Linux kernel #{OS.kernel_version} is too old.
             We only support kernel #{OS::Linux::Kernel.minimum_version} or later.
             You will be unable to use binary packages (bottles).
-            #{please_create_pull_requests}
+
             We recommend updating to a newer version via your distribution's
             package manager, upgrading your distribution to the latest version,
             or changing distributions.
+
+            #{support_tier_message(tier: 3)}
           EOS
         end
 
@@ -142,7 +166,14 @@ module OS
           return if gcc_dependents.empty?
 
           badly_linked = gcc_dependents.select do |dependent|
-            keg = Keg.new(dependent.prefix)
+            dependent_prefix = dependent.any_installed_prefix
+            # Keg.new() may raise an error if it is not a directory.
+            # As the result `brew doctor` may display `Error: <keg> is not a directory`
+            # instead of proper `doctor` information.
+            # There are other checks that test that, we can skip broken kegs.
+            next if dependent_prefix.nil? || !dependent_prefix.exist? || !dependent_prefix.directory?
+
+            keg = Keg.new(dependent_prefix)
             keg.binary_executable_or_library_files.any? do |binary|
               paths = binary.rpaths
               versioned_linkage = paths.any? { |path| path.match?(%r{lib/gcc/\d+$}) }

@@ -10,6 +10,7 @@
 -S
 -v
 abv
+alias
 analytics
 audit
 autoremove
@@ -19,6 +20,7 @@ bump-cask-pr
 bump-formula-pr
 bump-revision
 bump-unversioned-casks
+bundle
 casks
 cat
 cleanup
@@ -42,8 +44,11 @@ environment
 extract
 fetch
 formula
+formula-analytics
 formulae
+generate-analytics-api
 generate-cask-api
+generate-cask-ci-matrix
 generate-formula-api
 generate-man-completions
 gist-logs
@@ -87,6 +92,7 @@ rubocop
 ruby
 rubydoc
 search
+services
 setup-ruby
 sh
 shellenv
@@ -99,6 +105,7 @@ tc
 test
 tests
 typecheck
+unalias
 unbottled
 uninstall
 unlink
@@ -107,6 +114,7 @@ unpin
 untap
 up
 update
+update-if-needed
 update-license-data
 update-maintainers
 update-python-resources
@@ -117,3 +125,4 @@ upgrade
 uses
 vendor-gems
 vendor-install
+verify

@@ -5,9 +5,9 @@ source "https://rubygems.org"
 # The default case (no envs), should always be a restrictive bound on the lowest supported minor version.
 # This is the branch that Dependabot will use.
 if ENV.fetch("HOMEBREW_USE_RUBY_FROM_PATH", "").empty?
-  ruby "~> 3.3.0"
+  ruby "~> 3.4.0"
 else
-  ruby ">= 3.3.0"
+  ruby ">= 3.4.0"
 end
 
 # disallowed gems (should not be used)
@@ -53,6 +53,8 @@ end
 group :tests, optional: true do
   gem "parallel_tests", require: false
   gem "rspec", require: false
+  gem "rspec-core", require: false
+  gem "rspec-expectations", require: false
   gem "rspec-github", require: false
   gem "rspec_junit_formatter", require: false
   gem "rspec-retry", require: false
@@ -69,6 +71,12 @@ end
 group :vscode, optional: true do
   gem "ruby-lsp", require: false
 end
+group :formula_analytics, optional: true do
+  gem "pycall", require: false
+end
+group :contributions, optional: true do
+  gem "csv", require: false
+end
 
 # shared gems (used by multiple groups)
 group :audit, :bump_unversioned_casks, :livecheck, optional: true do
@@ -77,6 +85,7 @@ end
 
 # vendored gems (no group)
 gem "addressable"
+gem "base64"
 gem "concurrent-ruby"
 gem "patchelf"
 gem "plist"
