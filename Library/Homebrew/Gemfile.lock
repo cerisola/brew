@@ -32,7 +32,7 @@ GEM
     minitest (5.25.5)
     netrc (0.11.0)
     parallel (1.27.0)
-    parallel_tests (5.1.0)
+    parallel_tests (5.2.0)
       parallel
     parser (3.3.8.0)
       ast (~> 2.4.1)
@@ -161,7 +161,6 @@ GEM
 
 PLATFORMS
   aarch64-linux
-  arm-linux
   arm64-darwin
   x86_64-darwin
   x86_64-linux
