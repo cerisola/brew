@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Ruby
-        uses: ruby/setup-ruby@eaecf785f6a34567a6d97f686bbb7bccc1ac1e5c # v1.237.0
+        uses: ruby/setup-ruby@829114fc20da43a41d27359103ec7a63020954d4 # v1.255.0
         with:
           bundler-cache: true
           working-directory: rubydoc
