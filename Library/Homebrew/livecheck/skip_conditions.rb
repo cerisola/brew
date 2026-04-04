@@ -120,6 +120,7 @@ module Homebrew
       }
       private_class_method def self.cask_deprecated(cask, livecheck_defined, full_name: false, verbose: false)
         return {} if !cask.deprecated? || livecheck_defined
+        return {} if cask.disable_date && cask.deprecation_reason == :fails_gatekeeper_check
 
         Livecheck.status_hash(cask, "deprecated", full_name:, verbose:)
       end
@@ -197,8 +198,8 @@ module Homebrew
       FORMULA_CHECKS = T.let([
         :package_or_resource_skip,
         :formula_head_only,
-        :formula_deprecated,
         :formula_disabled,
+        :formula_deprecated,
         :formula_versioned,
       ].freeze, T::Array[Symbol])
       private_constant :FORMULA_CHECKS
@@ -206,8 +207,8 @@ module Homebrew
       # Skip conditions for casks.
       CASK_CHECKS = T.let([
         :package_or_resource_skip,
-        :cask_deprecated,
         :cask_disabled,
+        :cask_deprecated,
         :cask_extract_plist,
         :cask_version_latest,
         :cask_url_unversioned,
@@ -323,12 +324,12 @@ module Homebrew
         end
         return unless name
 
-        if skip_hash[:messages].is_a?(Array) && skip_hash[:messages].count.positive?
-          # TODO: Handle multiple messages, only if needed in the future
+        if skip_hash[:messages].is_a?(Array) && skip_hash[:messages].any?
+          messages = skip_hash[:messages].join("; ")
           if skip_hash[:status] == "skipped"
-            puts "#{Tty.red}#{name}#{Tty.reset}: skipped - #{skip_hash[:messages][0]}"
+            puts "#{Tty.red}#{name}#{Tty.reset}: skipped - #{messages}"
           else
-            puts "#{Tty.red}#{name}#{Tty.reset}: #{skip_hash[:messages][0]}"
+            puts "#{Tty.red}#{name}#{Tty.reset}: #{messages}"
           end
         elsif skip_hash[:status].present?
           puts "#{Tty.red}#{name}#{Tty.reset}: #{skip_hash[:status]}"

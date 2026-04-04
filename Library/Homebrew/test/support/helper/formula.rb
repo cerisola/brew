@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "formulary"
@@ -15,7 +16,7 @@ module Test
       def stub_formula_loader(formula, ref = formula.full_name, call_original: false)
         allow(Formulary).to receive(:loader_for).and_call_original if call_original
 
-        loader = instance_double(Formulary::FormulaLoader, get_formula: formula)
+        loader = instance_double(Formulary::FormulaLoader, get_formula: formula, name: formula.name)
         allow(Formulary).to receive(:loader_for).with(ref, any_args).and_return(loader)
       end
     end

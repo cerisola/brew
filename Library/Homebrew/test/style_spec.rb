@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "style"
@@ -47,6 +48,99 @@ RSpec.describe Homebrew::Style do
       style_result = described_class.check_style_and_print([target_file])
 
       expect(style_result).to be true
+    end
+  end
+
+  describe ".run_actionlint!" do
+    before do
+      allow(described_class).to receive_messages(actionlint: "actionlint", shellcheck: "shellcheck")
+      allow(described_class).to receive(:system).and_return(true)
+    end
+
+    it "uses a tap's actionlint config when present" do
+      tap_path = HOMEBREW_TAP_DIRECTORY/"homebrew/homebrew-foo"
+      workflows_dir = tap_path/".github/workflows"
+      workflows_dir.mkpath
+      workflow = workflows_dir/"ci.yml"
+      workflow.write "name: CI"
+
+      tap_config = tap_path/".github/actionlint.yaml"
+      tap_config.write "self-hosted-runner:\n  labels: []\n"
+
+      expect(described_class).to receive(:system).with(
+        "actionlint", "-shellcheck", "shellcheck",
+        "-config-file", tap_config,
+        "-ignore", "image: string; options: string",
+        "-ignore", "label .* is unknown",
+        workflow
+      )
+
+      described_class.run_actionlint!([workflow])
+    end
+
+    it "falls back to HOMEBREW_REPOSITORY config when no tap config exists" do
+      tap_path = HOMEBREW_TAP_DIRECTORY/"homebrew/homebrew-foo"
+      workflows_dir = tap_path/".github/workflows"
+      workflows_dir.mkpath
+      workflow = workflows_dir/"ci.yml"
+      workflow.write "name: CI"
+
+      expect(described_class).to receive(:system).with(
+        "actionlint", "-shellcheck", "shellcheck",
+        "-config-file", HOMEBREW_REPOSITORY/".github/actionlint.yaml",
+        "-ignore", "image: string; options: string",
+        "-ignore", "label .* is unknown",
+        workflow
+      )
+
+      described_class.run_actionlint!([workflow])
+    end
+
+    it "falls back to HOMEBREW_REPOSITORY config when files span multiple taps" do
+      tap1_path = HOMEBREW_TAP_DIRECTORY/"homebrew/homebrew-foo"
+      (tap1_path/".github/workflows").mkpath
+      (tap1_path/".github/actionlint.yaml").write "self-hosted-runner:\n  labels: []\n"
+      workflow1 = tap1_path/".github/workflows/ci.yml"
+      workflow1.write "name: CI"
+
+      tap2_path = HOMEBREW_TAP_DIRECTORY/"homebrew/homebrew-bar"
+      (tap2_path/".github/workflows").mkpath
+      (tap2_path/".github/actionlint.yaml").write "self-hosted-runner:\n  labels: []\n"
+      workflow2 = tap2_path/".github/workflows/ci.yml"
+      workflow2.write "name: CI"
+
+      expect(described_class).to receive(:system).with(
+        "actionlint", "-shellcheck", "shellcheck",
+        "-config-file", HOMEBREW_REPOSITORY/".github/actionlint.yaml",
+        "-ignore", "image: string; options: string",
+        "-ignore", "label .* is unknown",
+        workflow1, workflow2
+      )
+
+      described_class.run_actionlint!([workflow1, workflow2])
+    end
+  end
+
+  describe ".run_rubocop" do
+    let(:dir) { mktmpdir }
+    let(:ruby_file) { dir/"test.rb" }
+
+    before do
+      ruby_file.write <<~RUBY
+        class Test
+        end
+      RUBY
+    end
+
+    it "passes --disable-uncorrectable when --todo is enabled" do
+      result = double(status: double(exitstatus: 0), stdout: '{"files":[]}')
+
+      expect(described_class).to receive(:system_command) do |_cmd, args:, **|
+        expect(args).to include("--disable-uncorrectable")
+        result
+      end
+
+      described_class.run_rubocop([ruby_file], :json, fix: true, todo: true)
     end
   end
 end

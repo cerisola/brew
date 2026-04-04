@@ -6,7 +6,7 @@ require "kramdown/parser/kramdown"
 module Homebrew
   module Manpages
     module Parser
-      # Kramdown parser with compatiblity for ronn variable syntax.
+      # Kramdown parser with compatibility for ronn variable syntax.
       class Ronn < ::Kramdown::Parser::Kramdown
         def initialize(*)
           super
@@ -22,7 +22,7 @@ module Homebrew
         end
 
         # HTML-like tags denote variables instead, except <br>.
-        VARIABLE_REGEX = /<([\w\-\|]+)>/
+        VARIABLE_REGEX = /<([\w\-|]+)>/
         def parse_variable
           start_line_number = @src.current_line_number
           @src.scan(VARIABLE_REGEX)

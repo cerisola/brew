@@ -1,18 +1,29 @@
 # typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
+require "bundle/package_type"
+
 module Homebrew
   module Bundle
     class Dsl
       class Entry
-        attr_reader :type, :name, :options
+        sig { returns(Symbol) }
+        attr_reader :type
 
+        sig { returns(String) }
+        attr_reader :name
+
+        sig { returns(Homebrew::Bundle::EntryOptions) }
+        attr_reader :options
+
+        sig { params(type: Symbol, name: String, options: Homebrew::Bundle::EntryOptions).void }
         def initialize(type, name, options = {})
           @type = type
           @name = name
           @options = options
         end
 
+        sig { returns(String) }
         def to_s
           name
         end
@@ -42,7 +53,7 @@ module Homebrew
       def cask_args(args)
         raise "cask_args(#{args.inspect}) should be a Hash object" unless args.is_a? Hash
 
-        @cask_arguments = args
+        @cask_arguments.merge!(args)
       end
 
       def brew(name, options = {})
@@ -61,26 +72,6 @@ module Homebrew
         name = Homebrew::Bundle::Dsl.sanitize_cask_name(name)
         options[:args] = @cask_arguments.merge options.fetch(:args, {})
         @entries << Entry.new(:cask, name, options)
-      end
-
-      def mas(name, options = {})
-        id = options[:id]
-        raise "name(#{name.inspect}) should be a String object" unless name.is_a? String
-        raise "options[:id](#{id}) should be an Integer object" unless id.is_a? Integer
-
-        @entries << Entry.new(:mas, name, id:)
-      end
-
-      def whalebrew(name)
-        raise "name(#{name.inspect}) should be a String object" unless name.is_a? String
-
-        @entries << Entry.new(:whalebrew, name)
-      end
-
-      def vscode(name)
-        raise "name(#{name.inspect}) should be a String object" unless name.is_a? String
-
-        @entries << Entry.new(:vscode, name)
       end
 
       def tap(name, clone_target = nil, options = {})
@@ -104,8 +95,10 @@ module Homebrew
           Regexp.last_match(1)
         elsif name =~ HOMEBREW_TAP_FORMULA_REGEX
           user = Regexp.last_match(1)
-          repo = T.must(Regexp.last_match(2))
+          repo = Regexp.last_match(2)
           name = Regexp.last_match(3)
+          return name if repo.nil? || name.nil?
+
           "#{user}/#{repo.sub("homebrew-", "")}/#{name}"
         else
           name
@@ -126,9 +119,38 @@ module Homebrew
         name.downcase
       end
 
-      def self.pluralize_dependency(installed_count)
-        (installed_count == 1) ? "dependency" : "dependencies"
+      def method_missing(method_name, *args, **options, &block)
+        extension = Homebrew::Bundle.extension(method_name)
+        return super if extension.nil?
+        raise ArgumentError, "blocks are not supported for #{method_name}" if block
+
+        # Extension DSL entries follow the existing Brewfile calling convention:
+        # a required name plus an optional options hash, passed positionally,
+        # with keywords, or both.
+        unless (1..2).cover?(args.length)
+          raise ArgumentError,
+                "wrong number of arguments (given #{args.length}, expected 1..2)"
+        end
+
+        positional_options = {}
+        if args.length == 2
+          positional_options = args[1]
+          unless positional_options.is_a? Hash
+            raise ArgumentError,
+                  "options(#{positional_options.inspect}) should be a Hash object"
+          end
+        end
+
+        @entries << extension.entry(args.first, positional_options.merge(options))
+      end
+
+      def respond_to_missing?(method_name, include_private = false)
+        Homebrew::Bundle.extension(method_name).present? || super
       end
     end
   end
 end
+
+# Load extensions after `Dsl` is defined because their `entry` methods build
+# `Dsl::Entry` instances.
+require "bundle/extensions"

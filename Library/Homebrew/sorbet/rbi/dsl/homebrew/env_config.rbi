@@ -50,9 +50,6 @@ module Homebrew::EnvConfig
     def brew_git_remote; end
 
     sig { returns(T.nilable(::String)) }
-    def brew_wrapper; end
-
-    sig { returns(T.nilable(::String)) }
     def browser; end
 
     sig { returns(T.nilable(::String)) }
@@ -124,8 +121,8 @@ module Homebrew::EnvConfig
     sig { returns(T::Boolean) }
     def forbid_casks?; end
 
-    sig { returns(T::Boolean) }
-    def forbid_packages_from_paths?; end
+    sig { returns(T.nilable(::String)) }
+    def forbidden_cask_artifacts; end
 
     sig { returns(T.nilable(::String)) }
     def forbidden_casks; end
@@ -150,6 +147,9 @@ module Homebrew::EnvConfig
 
     sig { returns(T.nilable(::String)) }
     def force_brew_wrapper; end
+
+    sig { returns(T.nilable(::String)) }
+    def force_brew_wrapper_help_message; end
 
     sig { returns(T::Boolean) }
     def force_brewed_ca_certificates?; end
@@ -285,6 +285,9 @@ module Homebrew::EnvConfig
 
     sig { returns(T::Boolean) }
     def skip_or_later_bottles?; end
+
+    sig { returns(T::Boolean) }
+    def sorbet_recursive?; end
 
     sig { returns(T::Boolean) }
     def sorbet_runtime?; end

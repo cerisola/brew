@@ -1,74 +1,7 @@
-# typed: true # rubocop:todo Sorbet/StrictSigil
+# typed: strict
 # frozen_string_literal: true
 
-require "context"
-
-module Homebrew
-  extend Context
-
-  def self._system(cmd, *args, **options)
-    pid = fork do
-      yield if block_given?
-      args.map!(&:to_s)
-      begin
-        exec(cmd, *args, **options)
-      rescue
-        nil
-      end
-      exit! 1 # never gets here unless exec failed
-    end
-    Process.wait(T.must(pid))
-    $CHILD_STATUS.success?
-  end
-
-  def self.system(cmd, *args, **options)
-    if verbose?
-      out = (options[:out] == :err) ? $stderr : $stdout
-      out.puts "#{cmd} #{args * " "}".gsub(RUBY_PATH, "ruby")
-                                     .gsub($LOAD_PATH.join(File::PATH_SEPARATOR).to_s, "$LOAD_PATH")
-    end
-    _system(cmd, *args, **options)
-  end
-
-  # `Module` and `Regexp` are global variables used as types here so they don't need to be imported
-  # rubocop:disable Style/GlobalVars
-  sig { params(the_module: Module, pattern: Regexp).void }
-  def self.inject_dump_stats!(the_module, pattern)
-    @injected_dump_stat_modules ||= {}
-    @injected_dump_stat_modules[the_module] ||= []
-    injected_methods = @injected_dump_stat_modules[the_module]
-    the_module.module_eval do
-      instance_methods.grep(pattern).each do |name|
-        next if injected_methods.include? name
-
-        method = instance_method(name)
-        define_method(name) do |*args, &block|
-          require "time"
-
-          time = Time.now
-
-          begin
-            method.bind_call(self, *args, &block)
-          ensure
-            $times[name] ||= 0
-            $times[name] += Time.now - time
-          end
-        end
-      end
-    end
-
-    return unless $times.nil?
-
-    $times = {}
-    at_exit do
-      col_width = [$times.keys.map(&:size).max.to_i + 2, 15].max
-      $times.sort_by { |_k, v| v }.each do |method, time|
-        puts format("%<method>-#{col_width}s %<time>0.4f sec", method: "#{method}:", time:)
-      end
-    end
-  end
-  # rubocop:enable Style/GlobalVars
-end
+require "homebrew"
 
 module Utils
   # Removes the rightmost segment from the constant expression in the string.
@@ -116,6 +49,15 @@ module Utils
     params(stem: String, count: Integer, plural: String, singular: String, include_count: T::Boolean).returns(String)
   }
   def self.pluralize(stem, count, plural: "s", singular: "", include_count: false)
+    case stem
+    when "formula"
+      plural = "e"
+    when "dependency", "try"
+      stem = stem.delete_suffix("y")
+      plural = "ies"
+      singular = "y"
+    end
+
     prefix = include_count ? "#{count} " : ""
     suffix = (count == 1) ? singular : plural
     "#{prefix}#{stem}#{suffix}"
@@ -166,5 +108,81 @@ module Utils
   sig { params(basename: String).returns(String) }
   def self.safe_filename(basename)
     basename.gsub(SAFE_FILENAME_REGEX, "")
+  end
+
+  # Converts a string starting with `:` to a symbol, otherwise returns the
+  # string itself.
+  #
+  #   convert_to_string_or_symbol(":example") # => :example
+  #   convert_to_string_or_symbol("example")  # => "example"
+  sig { params(string: String).returns(T.any(String, Symbol)) }
+  def self.convert_to_string_or_symbol(string)
+    return T.must(string[1..]).to_sym if string.start_with?(":")
+
+    string
+  end
+
+  sig { params(obj: T.untyped).returns(T.untyped) }
+  def self.deep_stringify_symbols(obj)
+    case obj
+    when String
+      # Escape leading : or \ to avoid confusion with stringified symbols
+      # ":foo" -> "\:foo"
+      # "\foo" -> "\\foo"
+      if obj.start_with?(":", "\\")
+        "\\#{obj}"
+      else
+        obj
+      end
+    when Symbol
+      ":#{obj}"
+    when Hash
+      obj.to_h { |k, v| [deep_stringify_symbols(k), deep_stringify_symbols(v)] }
+    when Array
+      obj.map { |v| deep_stringify_symbols(v) }
+    else
+      obj
+    end
+  end
+
+  sig { params(obj: T.untyped).returns(T.untyped) }
+  def self.deep_unstringify_symbols(obj)
+    case obj
+    when String
+      if obj.start_with?("\\")
+        obj[1..]
+      elsif obj.start_with?(":")
+        T.must(obj[1..]).to_sym
+      else
+        obj
+      end
+    when Hash
+      obj.to_h { |k, v| [deep_unstringify_symbols(k), deep_unstringify_symbols(v)] }
+    when Array
+      obj.map { |v| deep_unstringify_symbols(v) }
+    else
+      obj
+    end
+  end
+
+  sig {
+    type_parameters(:U)
+      .params(obj: T.all(T.type_parameter(:U), Object))
+      .returns(T.nilable(T.type_parameter(:U)))
+  }
+  def self.deep_compact_blank(obj)
+    obj = case obj
+    when Hash
+      obj.transform_values { |v| deep_compact_blank(v) }
+         .compact
+    when Array
+      obj.filter_map { |v| deep_compact_blank(v) }
+    else
+      obj
+    end
+
+    return if obj.blank? || (obj.is_a?(Numeric) && obj.zero?)
+
+    obj
   end
 end

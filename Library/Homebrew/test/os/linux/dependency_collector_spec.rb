@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "dependency_collector"
@@ -8,7 +9,7 @@ RSpec.describe DependencyCollector do
   subject(:collector) { described_class.new }
 
   describe "#add" do
-    resource = Resource.new
+    let(:resource) { Resource.new }
 
     context "when xz, unzip and bzip2 are not available" do
       it "creates a resource dependency from a '.xz' URL" do

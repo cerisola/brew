@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "formula"
@@ -8,7 +9,7 @@ RSpec.describe Livecheck do
     formula do
       homepage "https://brew.sh"
       url "https://brew.sh/test-0.0.1.tgz"
-      head "https://github.com/cerisola/brew.git"
+      head "https://github.com/cerisola/brew.git", branch: "master"
     end
   end
   let(:livecheck_f) { described_class.new(f.class) }
@@ -99,7 +100,9 @@ RSpec.describe Livecheck do
   end
 
   describe "#strategy" do
-    block = proc { |page, regex| page.scan(regex).map { |match| match[0].tr("_", ".") } }
+    let(:block) do
+      proc { |page, regex| page.scan(regex).map { |match| match[0].tr("_", ".") } }
+    end
 
     it "returns nil if not set" do
       expect(livecheck_f.strategy).to be_nil
@@ -128,10 +131,16 @@ RSpec.describe Livecheck do
       livecheck_f.throttle(10)
       expect(livecheck_f.throttle).to eq(10)
     end
+
+    it "sets @throttle_days to provided Integer" do
+      livecheck_f.throttle(days: 1)
+      expect(livecheck_f.throttle_days).to eq(1)
+    end
   end
 
   describe "#url" do
     let(:url_string) { "https://brew.sh" }
+    let(:referer_url) { "https://example.com/referer" }
 
     it "returns nil if not set" do
       expect(livecheck_f.url).to be_nil
@@ -162,11 +171,28 @@ RSpec.describe Livecheck do
       # (i.e. existing values aren't reset to `nil`). [We only call `url` once
       # in a `livecheck` block but this should technically work due to how it's
       # implemented.]
-      livecheck_f.url(url_string, homebrew_curl: true, post_form: post_hash)
+      livecheck_f.url(
+        url_string,
+        cookies:       { "cookie_key" => "cookie_value" },
+        header:        "Accept: */*",
+        homebrew_curl: true,
+        post_form:     post_hash,
+        referer:       referer_url,
+        user_agent:    :browser,
+      )
       livecheck_f.url(url_string, post_json: post_hash)
       expect(livecheck_f.options.homebrew_curl).to be(true)
       expect(livecheck_f.options.post_form).to eq(post_hash)
       expect(livecheck_f.options.post_json).to eq(post_hash)
+      expect(livecheck_f.options.referer).to eq(referer_url)
+      expect(livecheck_f.options.user_agent).to eq(:browser)
+
+      header_array = ["Accept: */*", "X-Requested-With: XMLHttpRequest"]
+      livecheck_f.url(url_string, header: header_array)
+      expect(livecheck_f.options.header).to eq(header_array)
+
+      livecheck_f.url(url_string, user_agent: "Example")
+      expect(livecheck_f.options.user_agent).to eq("Example")
     end
 
     it "raises an ArgumentError if the argument isn't a valid Symbol" do
@@ -200,10 +226,12 @@ RSpec.describe Livecheck do
       end
     end
 
-    [:needs_arm, :needs_intel].each do |needs_arch|
-      arch_value = needs_arch.to_s.delete_prefix("needs_")
-      it "delegates `arch` in `livecheck` block to `package_or_resource`", needs_arch do
-        expect(c_arch.livecheck.url).to eq("https://brew.sh/#{arch_value}")
+    {
+      needs_arm:   "arm",
+      needs_intel: "intel",
+    }.each do |metadata, expected_arch|
+      it "delegates `arch` in `livecheck` block to `package_or_resource`", metadata do
+        expect(c_arch.livecheck.url).to eq("https://brew.sh/#{expected_arch}")
       end
     end
   end
@@ -226,10 +254,12 @@ RSpec.describe Livecheck do
       end
     end
 
-    [:needs_macos, :needs_linux].each do |needs_os|
-      os_value = needs_os.to_s.delete_prefix("needs_")
-      it "delegates `os` in `livecheck` block to `package_or_resource`", needs_os do
-        expect(c_os.livecheck.url).to eq("https://brew.sh/#{os_value}")
+    {
+      needs_macos: "macos",
+      needs_linux: "linux",
+    }.each do |metadata, expected_os|
+      it "delegates `os` in `livecheck` block to `package_or_resource`", metadata do
+        expect(c_os.livecheck.url).to eq("https://brew.sh/#{expected_os}")
       end
     end
   end
@@ -284,15 +314,16 @@ RSpec.describe Livecheck do
     it "returns a Hash of all instance variables" do
       expect(livecheck_f.to_hash).to eq(
         {
-          "options"  => Homebrew::Livecheck::Options.new.to_hash,
-          "cask"     => nil,
-          "formula"  => nil,
-          "regex"    => nil,
-          "skip"     => false,
-          "skip_msg" => nil,
-          "strategy" => nil,
-          "throttle" => nil,
-          "url"      => nil,
+          "options"       => Homebrew::Livecheck::Options.new.to_hash,
+          "cask"          => nil,
+          "formula"       => nil,
+          "regex"         => nil,
+          "skip"          => false,
+          "skip_msg"      => nil,
+          "strategy"      => nil,
+          "throttle"      => nil,
+          "throttle_days" => nil,
+          "url"           => nil,
         },
       )
     end

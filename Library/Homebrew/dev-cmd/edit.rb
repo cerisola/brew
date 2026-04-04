@@ -9,10 +9,9 @@ module Homebrew
     class Edit < AbstractCommand
       cmd_args do
         description <<~EOS
-          Open a <formula>, <cask> or <tap> in the editor set by `EDITOR` or `HOMEBREW_EDITOR`,
+          Open a <formula>, <cask> or <tap> in the editor set by `$EDITOR` or `$HOMEBREW_EDITOR`,
           or open the Homebrew repository for editing if no argument is provided.
         EOS
-
         switch "--formula", "--formulae",
                description: "Treat all named arguments as formulae."
         switch "--cask", "--casks",
@@ -30,6 +29,11 @@ module Homebrew
         ENV["COLORTERM"] = ENV.fetch("HOMEBREW_COLORTERM", nil)
         # Recover $TMPDIR for emacsclient
         ENV["TMPDIR"] = ENV.fetch("HOMEBREW_TMPDIR", nil)
+
+        # VS Code remote development relies on this env var to work
+        if which_editor(silent: true) == "code" && ENV.include?("HOMEBREW_VSCODE_IPC_HOOK_CLI")
+          ENV["VSCODE_IPC_HOOK_CLI"] = ENV.fetch("HOMEBREW_VSCODE_IPC_HOOK_CLI", nil)
+        end
 
         unless (HOMEBREW_REPOSITORY/".git").directory?
           odie <<~EOS
@@ -49,6 +53,16 @@ module Homebrew
             [HOMEBREW_REPOSITORY]
           end
         else
+          args.named.each do |name|
+            if !args.cask? && !CoreTap.instance.installed? &&
+               Homebrew::API.formula_names.include?(name.delete_prefix("#{CoreTap.instance.name}/"))
+              CoreTap.instance.install(force: true)
+            elsif !args.formula? && !CoreCaskTap.instance.installed? &&
+                  Homebrew::API.cask_tokens.include?(name.delete_prefix("#{CoreCaskTap.instance.name}/"))
+              CoreCaskTap.instance.install(force: true)
+            end
+          end
+
           expanded_paths = args.named.to_paths
           expanded_paths.each do |path|
             raise_with_message!(path, args.cask?) unless path.exist?
@@ -57,7 +71,7 @@ module Homebrew
         end
 
         if args.print_path?
-          paths.each { puts _1 }
+          paths.each { puts it }
           return
         end
 
@@ -111,7 +125,7 @@ module Homebrew
 
           raise TapUnavailableError, "#{tap_match[:user]}/#{tap_match[:repo]}"
         elsif cask || core_cask_path?(path)
-          if !CoreCaskTap.instance.installed? && Homebrew::API::Cask.all_casks.key?(name)
+          if !CoreCaskTap.instance.installed? && Homebrew::API.cask_tokens.include?(name)
             command = "brew tap --force #{CoreCaskTap.instance.name}"
             action = "tap #{CoreCaskTap.instance.name}"
           else
@@ -120,7 +134,7 @@ module Homebrew
           end
         elsif core_formula_path?(path) &&
               !CoreTap.instance.installed? &&
-              Homebrew::API::Formula.all_formulae.key?(name)
+              Homebrew::API.formula_names.include?(name)
           command = "brew tap --force #{CoreTap.instance.name}"
           action = "tap #{CoreTap.instance.name}"
         else

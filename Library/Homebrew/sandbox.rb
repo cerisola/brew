@@ -6,11 +6,13 @@ require "io/console"
 require "pty"
 require "tempfile"
 require "utils/fork"
+require "utils/output"
 
 # Helper class for running a sub-process inside of a sandboxed environment.
 class Sandbox
+  include Utils::Output::Mixin
+
   SANDBOX_EXEC = "/usr/bin/sandbox-exec"
-  private_constant :SANDBOX_EXEC
 
   # This is defined in the macOS SDK but Ruby unfortunately does not expose it.
   # This value can be found by compiling a C program that prints TIOCSCTTY.
@@ -183,7 +185,12 @@ class Sandbox
                 Process.setsid
                 controller.close
                 worker.ioctl(TIOCSCTTY, 0) # Make this the controlling terminal.
+
+                # We're opening and immediately closing so this is safe.
+                # rubocop:disable Style/FileOpen
                 File.open("/dev/tty", Fcntl::O_WRONLY).close # Workaround for https://developer.apple.com/forums/thread/663632
+                # rubocop:enable Style/FileOpen
+
                 worker.close_on_exec = true
                 exec(*command, in: worker, out: worker, err: worker) # And map everything to the PTY.
               else
@@ -259,7 +266,7 @@ class Sandbox
     invalid_char = ['"', "'", "(", ")", "\n", "\\"].find do |c|
       path.to_s.include?(c)
     end
-    raise ArgumentError, "Invalid character #{invalid_char} in path: #{path}" if invalid_char
+    raise ArgumentError, "Invalid character '#{invalid_char}' in path: #{path}" if invalid_char
 
     case type
     when :regex   then "regex #\"#{path}\""

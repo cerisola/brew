@@ -5,6 +5,7 @@ require "abstract_command"
 require "bump_version_parser"
 require "cask"
 require "cask/download"
+require "livecheck/livecheck_version"
 require "utils/tar"
 
 module Homebrew
@@ -49,9 +50,8 @@ module Homebrew
                description: "Use the specified GitHub organization for forking."
 
         conflicts "--dry-run", "--write"
-        conflicts "--no-audit", "--online"
-        conflicts "--version=", "--version-arm="
-        conflicts "--version=", "--version-intel="
+        conflicts "--version", "--version-arm"
+        conflicts "--version", "--version-intel"
 
         named_args :cask, number: 1, without_api: true
       end
@@ -72,7 +72,16 @@ module Homebrew
         # Use the user's browser, too.
         ENV["BROWSER"] = EnvConfig.browser
 
-        cask = args.named.to_casks.fetch(0)
+        @cask_retried = T.let(false, T.nilable(T::Boolean))
+        cask = begin
+          args.named.to_casks.fetch(0)
+        rescue Cask::CaskUnavailableError
+          raise if @cask_retried
+
+          CoreCaskTap.instance.install(force: true)
+          @cask_retried = true
+          retry
+        end
 
         odie "This cask is not in a tap!" if cask.tap.blank?
         odie "This cask's tap is not a Git repository!" unless cask.tap.git?
@@ -85,7 +94,9 @@ module Homebrew
           method or 'livecheck' block with 'skip'.)
         EOS
 
-        odie "You have too many PRs open: close or merge some first!" if GitHub.too_many_open_prs?(cask.tap)
+        if !args.write_only? && GitHub.too_many_open_prs?(cask.tap)
+          odie "You have too many PRs open: close or merge some first!"
+        end
 
         new_version = BumpVersionParser.new(
           general: args.version,
@@ -113,7 +124,8 @@ module Homebrew
           raise UsageError, "No `--version`, `--url` or `--sha256` argument specified!"
         end
 
-        check_pull_requests(cask, new_version:)
+        check_throttle(cask, new_version:)
+        check_pull_requests(cask, new_version:) unless args.write_only?
 
         replacement_pairs ||= []
         branch_name = "bump-#{cask.token}"
@@ -136,12 +148,23 @@ module Homebrew
         end
 
         if new_version.present?
-          # For simplicity, our naming defers to the arm version if we multiple architectures are specified
-          branch_version = new_version.arm || new_version.general
+          # For simplicity, our naming defers to the arm version if multiple architectures are specified
+          branch_version = new_version.arm || new_version.intel || new_version.general
           if branch_version.is_a?(Cask::DSL::Version)
             commit_version = shortened_version(branch_version, cask:)
             branch_name = "bump-#{cask.token}-#{branch_version.tr(",:", "-")}"
             commit_message ||= "#{cask.token} #{commit_version}"
+
+            # Append an arch-only suffix to the branch name and parenthetical to
+            # the commit title if the cask is multi-arch but only one arch is
+            # being updated
+            if new_version.arm && !new_version.intel
+              branch_name += "-arm-only"
+              commit_message += " (arm only)"
+            elsif new_version.intel && !new_version.arm
+              branch_name += "-intel-only"
+              commit_message += " (intel only)"
+            end
           end
           replacement_pairs = replace_version_and_checksum(cask, new_hash, new_version, replacement_pairs)
         end
@@ -156,7 +179,9 @@ module Homebrew
                                          read_only_run: args.dry_run?,
                                          silent:        args.quiet?)
 
-        run_cask_audit(cask, old_contents)
+        audit_exceptions = []
+        audit_exceptions << ["min_os", "rosetta", "signing"] if ENV["HOMEBREW_TEST_BOT_AUTOBUMP"].present?
+        run_cask_audit(cask, old_contents, audit_exceptions)
         run_cask_style(cask, old_contents)
 
         pr_info = {
@@ -185,11 +210,11 @@ module Homebrew
         end
       end
 
-      sig { params(cask: Cask::Cask).returns(T::Array[[Symbol, Symbol]]) }
-      def generate_system_options(cask)
+      sig { params(cask: Cask::Cask, new_version: BumpVersionParser).returns(T::Array[[Symbol, Symbol]]) }
+      def generate_system_options(cask, new_version)
         current_os = Homebrew::SimulateSystem.current_os
         current_os_is_macos = MacOSVersion::SYMBOLS.include?(current_os)
-        newest_macos = MacOSVersion::SYMBOLS.keys.first
+        newest_macos = MacOSVersion.new(HOMEBREW_MACOS_NEWEST_SUPPORTED).to_sym
 
         depends_on_archs = cask.depends_on.arch&.filter_map { |arch| arch[:type] }&.uniq
 
@@ -197,7 +222,15 @@ module Homebrew
         # `:macos` values (when used), as a generic `:macos` value won't apply
         # to on_system blocks referencing macOS versions.
         os_values = []
-        arch_values = depends_on_archs.presence || []
+
+        if new_version.arm || new_version.intel
+          arch_values = []
+          arch_values << :arm if new_version.arm
+          arch_values << :intel if new_version.intel
+        else
+          arch_values = depends_on_archs.presence || []
+        end
+
         if cask.on_system_blocks_exist?
           OnSystem::BASE_OS_OPTIONS.each do |os|
             os_values << if os == :macos
@@ -207,7 +240,7 @@ module Homebrew
             end
           end
 
-          arch_values = OnSystem::ARCH_OPTIONS if arch_values.empty?
+          arch_values = OnSystem::ARCH_OPTIONS.dup if arch_values.empty?
         else
           # Architecture is only relevant if on_system blocks are present or
           # the cask uses `depends_on arch`, otherwise we default to ARM for
@@ -216,19 +249,33 @@ module Homebrew
           arch_values << :arm if arch_values.empty?
         end
 
+        if arch_values.length > 1 && !new_version.general
+          # We sort arch values in descending order by version to mitigate the
+          # issue where updating multiple arch-specific versions can lead to
+          # incorrect version changes in the cask (e.g. ARM is version 1.2.3,
+          # Intel is updated to 1.2.3, ARM is updated to 1.2.4 and this
+          # incorrectly replaces the 1.2.3 version for both archs). This is
+          # something that should be handled by better version replacement logic
+          # but this is a workaround for now.
+          arch_values = arch_values.sort_by do |type|
+            new_version_value = Version.new(new_version.send(type) || "0")
+            Livecheck::LivecheckVersion.create(cask, new_version_value)
+          end.reverse
+        end
+
         os_values.product(arch_values)
       end
 
       sig {
         params(
           cask:              Cask::Cask,
-          new_hash:          T.any(NilClass, String, Symbol),
+          new_hash:          T.nilable(T.any(String, Symbol)),
           new_version:       BumpVersionParser,
           replacement_pairs: T::Array[[T.any(Regexp, String), T.any(Pathname, String)]],
         ).returns(T::Array[[T.any(Regexp, String), T.any(Pathname, String)]])
       }
       def replace_version_and_checksum(cask, new_hash, new_version, replacement_pairs)
-        generate_system_options(cask).each do |os, arch|
+        generate_system_options(cask, new_version).each do |os, arch|
           SimulateSystem.with(os:, arch:) do
             # Handle the cask being invalid for specific os/arch combinations
             old_cask = begin
@@ -242,6 +289,7 @@ module Homebrew
             next unless old_version
 
             bump_version = new_version.send(arch) || new_version.general
+            next unless bump_version
 
             old_version_regex = old_version.latest? ? ":latest" : %Q(["']#{Regexp.escape(old_version.to_s)}["'])
             replacement_pairs << [/version\s+#{old_version_regex}/m,
@@ -272,6 +320,8 @@ module Homebrew
               end
               languages.each do |language|
                 new_cask        = Cask::CaskLoader.load(tmp_contents)
+                next unless new_cask.url
+
                 new_cask.config = if language.blank?
                   tmp_cask.config
                 else
@@ -289,6 +339,22 @@ module Homebrew
           end
         end
         replacement_pairs
+      end
+
+      sig { params(cask: Cask::Cask, new_version: BumpVersionParser).void }
+      def check_throttle(cask, new_version:)
+        return unless cask.tap
+
+        throttle_rate = cask.livecheck.throttle
+        return unless throttle_rate
+
+        version = new_version.arm || new_version.intel || new_version.general
+        return unless version.is_a?(Cask::DSL::Version)
+
+        version_patch = version.patch.to_i
+        return if version_patch.modulo(throttle_rate).zero?
+
+        odie "#{cask.token} should only be updated every #{throttle_rate} releases on multiples of #{throttle_rate}"
       end
 
       sig { params(cask: Cask::Cask, new_version: BumpVersionParser).void }
@@ -312,8 +378,8 @@ module Homebrew
         end
       end
 
-      sig { params(cask: Cask::Cask, old_contents: String).void }
-      def run_cask_audit(cask, old_contents)
+      sig { params(cask: Cask::Cask, old_contents: String, audit_exceptions: T::Array[String]).void }
+      def run_cask_audit(cask, old_contents, audit_exceptions = [])
         if args.dry_run?
           if args.no_audit?
             ohai "Skipping `brew audit`"
@@ -326,7 +392,8 @@ module Homebrew
         if args.no_audit?
           ohai "Skipping `brew audit`"
         else
-          system HOMEBREW_BREW_FILE, "audit", "--cask", "--online", cask.full_name
+          system HOMEBREW_BREW_FILE, "audit", "--cask", "--online", cask.full_name,
+                 "--except=#{audit_exceptions.join(",")}"
           failed_audit = !$CHILD_STATUS.success?
         end
         return unless failed_audit

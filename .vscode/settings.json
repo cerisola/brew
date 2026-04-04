@@ -40,7 +40,6 @@
       "id": "default",
       "name": "Brew Typecheck",
       "description": "Default configuration",
-      "cwd": "${workspaceFolder}",
       "command": [
         "./bin/brew",
         "typecheck",
@@ -67,5 +66,6 @@
     }
   },
   "simplecov-vscode.path": "Library/Homebrew/test/coverage/.resultset.json",
-  "simplecov-vscode.enabled": false
+  "simplecov-vscode.enabled": false,
+  "specstory.cloudSync.enabled": "never"
 }

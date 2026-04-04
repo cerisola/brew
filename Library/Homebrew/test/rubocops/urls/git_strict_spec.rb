@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "rubocops/urls"
@@ -46,7 +47,7 @@ RSpec.describe RuboCop::Cop::FormulaAuditStrict::GitUrls do
         class Foo < Formula
           desc "foo"
           url "https://github.com/foo/bar.git",
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAuditStrict/GitUrls: Formulae in homebrew/core should specify a tag for git URLs
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAuditStrict/GitUrls: Formulae in homebrew/core should specify a tag for Git URLs
               revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         end
       RUBY
@@ -57,7 +58,7 @@ RSpec.describe RuboCop::Cop::FormulaAuditStrict::GitUrls do
         class Foo < Formula
           desc "foo"
           url "https://github.com/foo/bar.git",
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAuditStrict/GitUrls: Formulae in homebrew/core should specify a tag for git URLs
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAuditStrict/GitUrls: Formulae in homebrew/core should specify a tag for Git URLs
               revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               shallow:  false
         end

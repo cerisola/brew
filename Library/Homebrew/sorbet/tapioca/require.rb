@@ -23,9 +23,12 @@ definition.resolve.for(definition.current_dependencies).each do |spec|
   next if name == "sorbet-static"
   next if name == "sorbet-static-and-runtime"
 
+  # We don't generate RBIs for pycall
+  next if name == "pycall"
+
   name = dependency_require_map[name] if dependency_require_map.key?(name)
   require name
-  additional_requires_map[name]&.each { require(_1) }
+  additional_requires_map[name]&.each { require(it) }
 rescue LoadError
   raise unless name.include?("-")
 

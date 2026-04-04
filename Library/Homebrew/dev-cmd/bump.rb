@@ -9,13 +9,27 @@ require "utils/repology"
 module Homebrew
   module DevCmd
     class Bump < AbstractCommand
+      LIVECHECK_MESSAGE_REGEX = /^(?:error:|skipped|unable to get(?: throttled)? versions)/i
+      NEWER_THAN_UPSTREAM_MSG = " (newer than upstream)"
+
+      class ResourceVersionInfo < T::Struct
+        const :name, String
+        const :current_version, String
+        const :latest_version, T.nilable(String)
+        const :outdated, T::Boolean
+        const :newer_than_upstream, T::Boolean
+      end
+
       class VersionBumpInfo < T::Struct
         const :type, Symbol
-        const :multiple_versions, T::Boolean
+        const :deprecated, T::Hash[Symbol, T::Boolean], default: {}
+        const :multiple_versions, T::Hash[Symbol, T::Boolean], default: {}
         const :version_name, String
         const :current_version, BumpVersionParser
-        const :repology_latest, T.any(String, Version)
         const :new_version, BumpVersionParser
+        const :resource_versions, T::Array[ResourceVersionInfo], default: []
+        const :repology_latest, T.any(String, Version)
+        const :newer_than_upstream, T::Hash[Symbol, T::Boolean], default: {}
         const :duplicate_pull_requests, T.nilable(T.any(T::Array[String], String))
         const :maybe_duplicate_pull_requests, T.nilable(T.any(T::Array[String], String))
       end
@@ -40,7 +54,8 @@ module Homebrew
         switch "--cask", "--casks",
                description: "Check only casks."
         switch "--eval-all",
-               description: "Evaluate all formulae and casks."
+               description: "Evaluate all formulae and casks.",
+               env:         :eval_all
         switch "--repology",
                description: "Use Repology to check for outdated packages."
         flag   "--tap=",
@@ -56,10 +71,10 @@ module Homebrew
         switch "--bump-synced",
                description: "Bump additional formulae marked as synced with the given formulae."
 
-        conflicts "--cask", "--formula"
-        conflicts "--tap=", "--installed"
-        conflicts "--tap=", "--no-autobump"
-        conflicts "--eval-all", "--installed"
+        conflicts "--formula", "--cask"
+        conflicts "--tap", "--installed"
+        conflicts "--tap", "--no-autobump"
+        conflicts "--installed", "--eval-all"
         conflicts "--installed", "--auto"
         conflicts "--no-pull-requests", "--open-pr"
 
@@ -71,14 +86,12 @@ module Homebrew
         Homebrew.install_bundler_gems!(groups: ["livecheck"])
 
         Homebrew.with_no_api_env do
-          eval_all = args.eval_all? || Homebrew::EnvConfig.eval_all?
+          eval_all = args.eval_all?
 
           excluded_autobump = []
-          if args.no_autobump?
-            excluded_autobump.concat(autobumped_formulae_or_casks(CoreTap.instance)) if eval_all || args.formula?
-            if eval_all || args.cask?
-              excluded_autobump.concat(autobumped_formulae_or_casks(CoreCaskTap.instance, casks: true))
-            end
+          if args.no_autobump? && eval_all
+            excluded_autobump.concat(autobumped_formulae_or_casks(CoreTap.instance)) if args.formula?
+            excluded_autobump.concat(autobumped_formulae_or_casks(CoreCaskTap.instance, casks: true)) if args.cask?
           end
 
           formulae_and_casks = if args.auto?
@@ -92,9 +105,15 @@ module Homebrew
             what = args.cask? ? "casks" : "formulae"
             raise UsageError, "No autobumped #{what} found." if autobump_list.blank?
 
-            autobump_list.map do |name|
+            # Only run bump on the first formula in each synced group
+            if args.bump_synced? && args.formula?
+              synced_formulae = Set.new(tap.synced_versions_formulae.flat_map { it.drop(1) })
+            end
+
+            autobump_list.filter_map do |name|
               qualified_name = "#{tap.name}/#{name}"
               next Cask::CaskLoader.load(qualified_name) if args.cask?
+              next if synced_formulae&.include?(name)
 
               Formulary.factory(qualified_name)
             end
@@ -118,7 +137,7 @@ module Homebrew
           else
             raise UsageError,
                   "`brew bump` without named arguments needs `--installed` or `--eval-all` passed or " \
-                  "`HOMEBREW_EVAL_ALL` set!"
+                  "`HOMEBREW_EVAL_ALL=1` set!"
           end
 
           if args.start_with
@@ -136,7 +155,7 @@ module Homebrew
 
           if args.repology? && !Utils::Curl.curl_supports_tls13?
             begin
-              ensure_formula_installed!("curl", reason: "Repology queries") unless HOMEBREW_BREWED_CURL_PATH.exist?
+              Formula["curl"].ensure_installed!(reason: "Repology queries") unless HOMEBREW_BREWED_CURL_PATH.exist?
             rescue FormulaUnavailableError
               opoo "A newer `curl` is required for Repology queries."
             end
@@ -167,7 +186,7 @@ module Homebrew
                             .values
                             .select { |items| items.length > 1 }
                             .flatten
-                            .select { |item| item.is_a?(Cask::Cask) }
+                            .grep(Cask::Cask)
         end
 
         ambiguous_names = []
@@ -181,7 +200,7 @@ module Homebrew
 
         formulae_and_casks.each_with_index do |formula_or_cask, i|
           puts if i.positive?
-          next if skip_ineligible_formulae(formula_or_cask)
+          next if skip_ineligible_formulae!(formula_or_cask)
 
           use_full_name = args.full_name? || ambiguous_names.include?(formula_or_cask)
           name = Livecheck.package_or_resource_name(formula_or_cask, full_name: use_full_name)
@@ -205,15 +224,19 @@ module Homebrew
       sig {
         params(formula_or_cask: T.any(Formula, Cask::Cask)).returns(T::Boolean)
       }
-      def skip_ineligible_formulae(formula_or_cask)
+      def skip_ineligible_formulae!(formula_or_cask)
         if formula_or_cask.is_a?(Formula)
           skip = formula_or_cask.disabled? || formula_or_cask.head_only?
           name = formula_or_cask.name
           text = "Formula is #{formula_or_cask.disabled? ? "disabled" : "HEAD-only"} so not accepting updates.\n"
         else
-          skip = formula_or_cask.disabled?
+          skip = formula_or_cask.disabled? || formula_or_cask.version.latest?
           name = formula_or_cask.token
-          text = "Cask is disabled so not accepting updates.\n"
+          text = if formula_or_cask.disabled?
+            "Cask is disabled so not accepting updates.\n"
+          else
+            "Cask uses `version :latest` so `brew bump` cannot check it.\n"
+          end
         end
         if (tap = formula_or_cask.tap) && !tap.allow_bump?(name)
           skip = true
@@ -255,8 +278,12 @@ module Homebrew
         )
 
         if skip_info.present?
-          return "#{skip_info[:status]}" \
-                 "#{" - #{skip_info[:messages].join(", ")}" if skip_info[:messages].present?}"
+          skip_status = skip_info[:status]
+          skip_messages = skip_info[:messages]
+          skip_message = skip_messages.join("; ") if skip_messages.present?
+          return "error: #{skip_message}" if skip_status == "error" && skip_message
+
+          return "skipped - #{skip_message || skip_status}"
         end
 
         version_info = Livecheck.latest_version(
@@ -312,19 +339,23 @@ module Homebrew
           [:cask, "cask version:   "]
         end
 
-        old_versions = {}
+        deprecated = {}
+        current_versions = {}
         new_versions = {}
 
         repology_latest = repositories.present? ? Repology.latest_version(repositories) : "not found"
+        repology_latest_is_a_version = repology_latest.is_a?(Version)
 
-        # When blocks are absent, arch is not relevant. For consistency, we simulate the arm architecture.
+        # When blocks are absent, arch is not relevant. For consistency, we
+        # simulate the arm architecture.
         arch_options = is_cask_with_blocks ? OnSystem::ARCH_OPTIONS : [:arm]
 
         arch_options.each do |arch|
           SimulateSystem.with(arch:) do
             version_key = is_cask_with_blocks ? arch : :general
 
-            # We reload the formula/cask here to ensure we're getting the correct version for the current arch
+            # We reload the formula/cask here to ensure we're getting the
+            # correct version for the current arch
             if formula_or_cask.is_a?(Formula)
               loaded_formula_or_cask = formula_or_cask
               current_version_value = T.must(loaded_formula_or_cask.stable).version
@@ -333,86 +364,182 @@ module Homebrew
               current_version_value = Version.new(loaded_formula_or_cask.version)
             end
 
-            livecheck_latest = livecheck_result(loaded_formula_or_cask)
+            deprecated[version_key] = loaded_formula_or_cask.deprecated?
+            formula_or_cask_has_livecheck = loaded_formula_or_cask.livecheck_defined?
 
-            new_version_value = if (livecheck_latest.is_a?(Version) &&
+            livecheck_latest = livecheck_result(loaded_formula_or_cask)
+            livecheck_latest_is_a_version = livecheck_latest.is_a?(Version)
+
+            new_version_value = if (livecheck_latest_is_a_version &&
                                     Livecheck::LivecheckVersion.create(formula_or_cask, livecheck_latest) >=
                                     Livecheck::LivecheckVersion.create(formula_or_cask, current_version_value)) ||
-                                   current_version_value == "latest"
+                                   current_version_value == "latest" ||
+                                   message?(livecheck_latest)
               livecheck_latest
-            elsif livecheck_latest.is_a?(String) && livecheck_latest.start_with?("skipped")
-              "skipped"
-            elsif repology_latest.is_a?(Version) &&
+            elsif repology_latest_is_a_version &&
+                  !formula_or_cask_has_livecheck &&
                   repology_latest > current_version_value &&
-                  !loaded_formula_or_cask.livecheck_defined? &&
                   current_version_value != "latest"
               repology_latest
             end.presence
 
+            # Fall back to the upstream version if there isn't a new version
+            # value at this point, as this will allow us to surface an upstream
+            # version that's lower than the current version.
+            new_version_value ||= livecheck_latest if livecheck_latest_is_a_version
+            new_version_value ||= repology_latest if repology_latest_is_a_version && !formula_or_cask_has_livecheck
+
             # Store old and new versions
-            old_versions[version_key] = current_version_value
+            current_versions[version_key] = current_version_value
             new_versions[version_key] = new_version_value
           end
         end
 
-        # If arm and intel versions are identical, as it happens with casks where only the checksums differ,
-        # we consolidate them into a single version.
-        if old_versions[:arm].present? && old_versions[:arm] == old_versions[:intel]
-          old_versions = { general: old_versions[:arm] }
+        # If arm and intel versions are identical, as it happens with casks
+        # where only the checksums differ, we consolidate them into a single
+        # version.
+        if current_versions[:arm].present? && current_versions[:arm] == current_versions[:intel]
+          current_versions = { general: current_versions[:arm] }
         end
         if new_versions[:arm].present? && new_versions[:arm] == new_versions[:intel]
           new_versions = { general: new_versions[:arm] }
         end
 
-        multiple_versions = old_versions.values_at(:arm, :intel).all?(&:present?) ||
-                            new_versions.values_at(:arm, :intel).all?(&:present?)
-
-        current_version = BumpVersionParser.new(general: old_versions[:general],
-                                                arm:     old_versions[:arm],
-                                                intel:   old_versions[:intel])
+        current_version = BumpVersionParser.new(general: current_versions[:general],
+                                                arm:     current_versions[:arm],
+                                                intel:   current_versions[:intel])
 
         begin
           new_version = BumpVersionParser.new(general: new_versions[:general],
                                               arm:     new_versions[:arm],
                                               intel:   new_versions[:intel])
         rescue
-          # When livecheck fails, we fail gracefully. Otherwise VersionParser will
-          # raise a usage error
+          # When livecheck fails, we fail gracefully. Otherwise VersionParser
+          # will raise a usage error
           new_version = BumpVersionParser.new(general: "unable to get versions")
         end
 
+        compare_versions(current_version, new_version, formula_or_cask) =>
+          { multiple_versions:, newer_than_upstream: }
+        if !multiple_versions[:current] && deprecated[:general].nil?
+          deprecated = { general: deprecated[:arm] || deprecated[:intel] || false }
+        end
+
+        # Collect resource version info for formulae with resources that have explicit livecheck blocks
+        resource_versions = if formula_or_cask.is_a?(Formula) && new_version.general.is_a?(Version)
+          collect_resource_versions(formula_or_cask, new_version.general.to_s)
+        else
+          []
+        end
+
         if !args.no_pull_requests? &&
-           (new_version.general != "unable to get versions") &&
-           (new_version != current_version)
-          # We use the ARM version for the pull request version. This is
-          # consistent with the behavior of bump-cask-pr.
-          pull_request_version = if multiple_versions
-            new_version.arm.to_s
-          else
-            new_version.general.to_s
+           !newer_than_upstream.all? { |_k, v| v == true }
+          pull_request_version = nil
+          if (new_version_arm = new_version.arm) &&
+             !message?(new_version_arm) &&
+             (new_version_arm != current_version.arm)
+            # We use the ARM version for the pull request version even if there
+            # are multiple arch versions to be consistent with the behavior of
+            # bump-cask-pr.
+            pull_request_version = new_version_arm.to_s
+          elsif (new_version_intel = new_version.intel) &&
+                !message?(new_version_intel) &&
+                (new_version_intel != current_version.intel)
+            pull_request_version = new_version_intel.to_s
+          elsif (new_version_general = new_version.general) &&
+                !message?(new_version_general) &&
+                (new_version_general != current_version.general)
+            pull_request_version = new_version_general.to_s
           end
 
-          duplicate_pull_requests = retrieve_pull_requests(
-            formula_or_cask,
-            name,
-            version: pull_request_version,
-          )
+          if pull_request_version
+            duplicate_pull_requests = retrieve_pull_requests(
+              formula_or_cask,
+              name,
+              version: pull_request_version,
+            )
 
-          maybe_duplicate_pull_requests = if duplicate_pull_requests.nil?
-            retrieve_pull_requests(formula_or_cask, name)
+            maybe_duplicate_pull_requests = if duplicate_pull_requests.nil?
+              retrieve_pull_requests(formula_or_cask, name)
+            end
           end
         end
 
         VersionBumpInfo.new(
           type:,
+          deprecated:,
           multiple_versions:,
           version_name:,
           current_version:,
-          repology_latest:,
           new_version:,
+          resource_versions:,
+          repology_latest:,
+          newer_than_upstream:,
           duplicate_pull_requests:,
           maybe_duplicate_pull_requests:,
         )
+      end
+
+      sig {
+        params(
+          formula:                Formula,
+          formula_latest_version: String,
+        ).returns(T::Array[ResourceVersionInfo])
+      }
+      def collect_resource_versions(formula, formula_latest_version)
+        resource_versions = []
+
+        formula.resources.each do |resource|
+          next unless resource.livecheck_defined?
+          next if resource.livecheck.skip?
+
+          # Resources that reference :parent track the formula version directly
+          if resource.livecheck.formula == :parent
+            current = resource.version.to_s
+            resource_versions << ResourceVersionInfo.new(
+              name:                resource.name,
+              current_version:     current,
+              latest_version:      formula_latest_version,
+              outdated:            Version.new(current) < Version.new(formula_latest_version),
+              newer_than_upstream: Version.new(current) > Version.new(formula_latest_version),
+            )
+            next
+          end
+
+          resource_info = Livecheck.resource_version(
+            resource,
+            formula_latest_version,
+            json:      true,
+            full_name: false,
+            debug:     false,
+            quiet:     true,
+            verbose:   false,
+          )
+
+          if resource_info.empty? || resource_info[:status] == "error"
+            resource_versions << ResourceVersionInfo.new(
+              name:                resource.name,
+              current_version:     resource.version.to_s,
+              latest_version:      nil,
+              outdated:            false,
+              newer_than_upstream: false,
+            )
+            next
+          end
+
+          version_info = resource_info[:version]
+          next if version_info.blank?
+
+          resource_versions << ResourceVersionInfo.new(
+            name:                resource.name,
+            current_version:     version_info[:current],
+            latest_version:      version_info[:latest],
+            outdated:            version_info[:outdated] == true,
+            newer_than_upstream: version_info[:newer_than_upstream] == true,
+          )
+        end
+
+        resource_versions
       end
 
       sig {
@@ -428,12 +555,17 @@ module Homebrew
                                                  repositories:,
                                                  name:)
 
+        deprecated = version_info.deprecated
+        multiple_versions = version_info.multiple_versions
         current_version = version_info.current_version
         new_version = version_info.new_version
         repology_latest = version_info.repology_latest
+        newer_than_upstream = version_info.newer_than_upstream
+        duplicate_pull_requests = version_info.duplicate_pull_requests
+        maybe_duplicate_pull_requests = version_info.maybe_duplicate_pull_requests
 
-        # Check if all versions are equal
         versions_equal = (new_version == current_version)
+        all_newer_than_upstream = newer_than_upstream.all? { |_k, v| v == true }
 
         title_name = ambiguous_cask ? "#{name} (cask)" : name
         title = if (repology_latest == current_version.general || !repology_latest.is_a?(Version)) && versions_equal
@@ -443,28 +575,30 @@ module Homebrew
         end
 
         # Conditionally format output based on type of formula_or_cask
-        current_versions = if version_info.multiple_versions
-          "arm:   #{current_version.arm}
-                          intel: #{current_version.intel}"
+        current_versions = if multiple_versions[:current]
+          "arm:   #{current_version.arm || current_version.general}" \
+            "#{NEWER_THAN_UPSTREAM_MSG if newer_than_upstream[:arm]}" \
+            "#{" (deprecated)" if deprecated[:arm]}" \
+            "\n                          " \
+            "intel: #{current_version.intel || current_version.general}" \
+            "#{NEWER_THAN_UPSTREAM_MSG if newer_than_upstream[:intel]}" \
+            "#{" (deprecated)" if deprecated[:intel]}"
         else
-          current_version.general.to_s
+          "#{current_version.general}" \
+            "#{NEWER_THAN_UPSTREAM_MSG if newer_than_upstream[:general]}" \
+            "#{" (deprecated)" if deprecated[:general]}"
         end
-        current_versions << " (deprecated)" if formula_or_cask.deprecated?
 
-        new_versions = if version_info.multiple_versions && new_version.arm && new_version.intel
+        new_versions = if multiple_versions[:new] && new_version.arm && new_version.intel
           "arm:   #{new_version.arm}
                           intel: #{new_version.intel}"
         else
           new_version.general
         end
 
-        version_label = version_info.version_name
-        duplicate_pull_requests = version_info.duplicate_pull_requests
-        maybe_duplicate_pull_requests = version_info.maybe_duplicate_pull_requests
-
         ohai title
         puts <<~EOS
-          Current #{version_label}  #{current_versions}
+          Current #{version_info.version_name}  #{current_versions}
           Latest livecheck version: #{new_versions}#{" (throttled)" if formula_or_cask.livecheck.throttle}
         EOS
         puts <<~EOS unless skip_repology?(formula_or_cask)
@@ -479,9 +613,27 @@ module Homebrew
             EOS
           end
         end
+
+        # Display resource version info for formulae
+        resource_versions = version_info.resource_versions
+        puts "Resources with livecheck:" unless resource_versions.empty?
+        resource_versions.each do |rv|
+          status = if rv.latest_version.nil?
+            "#{Tty.red}unable to get versions#{Tty.reset}"
+          elsif rv.newer_than_upstream
+            "#{Tty.red}#{rv.current_version}#{Tty.reset} -> #{rv.latest_version}#{NEWER_THAN_UPSTREAM_MSG}"
+          elsif rv.outdated
+            "#{rv.current_version} -> #{Tty.green}#{rv.latest_version}#{Tty.reset}"
+          else
+            "#{rv.current_version} -> #{rv.latest_version}"
+          end
+          puts "  #{rv.name}: #{status}"
+        end
+
         if !args.no_pull_requests? &&
-           (new_version.general != "unable to get versions") &&
-           !versions_equal
+           !message?(new_version.general) &&
+           !versions_equal &&
+           !all_newer_than_upstream
           if duplicate_pull_requests
             duplicate_pull_requests_text = duplicate_pull_requests
           elsif maybe_duplicate_pull_requests
@@ -498,7 +650,11 @@ module Homebrew
           end
         end
 
-        return unless args.open_pr?
+        if !args.open_pr? ||
+           message?(new_version.general) ||
+           all_newer_than_upstream
+          return
+        end
 
         if GitHub.too_many_open_prs?(formula_or_cask.tap)
           odie "You have too many PRs open: close or merge some first!"
@@ -511,17 +667,34 @@ module Homebrew
           puts "#{title_name} was not bumped to the Repology version because it has a `livecheck` block."
         end
         if new_version.blank? || versions_equal ||
-           (!new_version.general.is_a?(Version) && !version_info.multiple_versions)
+           (!new_version.general.is_a?(Version) && !multiple_versions[:new])
           return
         end
 
         return if duplicate_pull_requests.present?
 
-        version_args = if version_info.multiple_versions
-          %W[--version-arm=#{new_version.arm} --version-intel=#{new_version.intel}]
-        else
-          "--version=#{new_version.general}"
+        version_args = []
+        if multiple_versions[:current] && multiple_versions[:new]
+          if (new_version_arm = new_version.arm) &&
+             !message?(new_version_arm) &&
+             current_version.arm &&
+             new_version_arm > current_version.arm
+            version_args << "--version-arm=#{new_version_arm}"
+          end
+          if (new_version_intel = new_version.intel) &&
+             !message?(new_version_intel) &&
+             current_version.intel &&
+             new_version_intel > current_version.intel
+            version_args << "--version-intel=#{new_version_intel}"
+          end
+        elsif multiple_versions[:current]
+          opoo "`#{name}` needs to be manually updated using one version"
+        elsif multiple_versions[:new]
+          opoo "`#{name}` needs to be manually updated using arch-specific versions"
+        elsif new_version.general
+          version_args << "--version=#{new_version.general}"
         end
+        return if version_args.blank?
 
         bump_pr_args = [
           "bump-#{version_info.type}-pr",
@@ -537,7 +710,99 @@ module Homebrew
           bump_pr_args << "--bump-synced=#{outdated_synced_formulae.join(",")}"
         end
 
-        system HOMEBREW_BREW_FILE, *bump_pr_args
+        # Pass all livecheck-checked resources to bump-formula-pr, including
+        # up-to-date and failed ones, so it can track what was checked
+        if version_info.type == :formula && !resource_versions.empty?
+          require "json"
+          resource_data = resource_versions.map do |rv|
+            { name: rv.name, current_version: rv.current_version, latest_version: rv.latest_version }
+          end
+          bump_pr_args << "--resource-versions=#{resource_data.to_json}"
+        end
+
+        result = system HOMEBREW_BREW_FILE, *bump_pr_args
+        Homebrew.failed = true unless result
+      end
+
+      sig {
+        params(
+          current_version: BumpVersionParser,
+          new_version:     BumpVersionParser,
+          formula_or_cask: T.any(Formula, Cask::Cask),
+        ).returns(T::Hash[Symbol, T::Hash[Symbol, T::Boolean]])
+      }
+      def compare_versions(current_version, new_version, formula_or_cask)
+        current_versions = {}
+        new_versions = {}
+        BumpVersionParser::VERSION_SYMBOLS.each do |type|
+          current_version_value = current_version.send(type)
+          if current_version_value
+            current_versions[type] = Livecheck::LivecheckVersion.create(formula_or_cask, current_version_value)
+          end
+
+          new_version_value = new_version.send(type)
+          if message?(new_version_value)
+            # Store a string, so we can easily tell when a value is a message
+            # rather than a version
+            new_versions[type] = new_version_value.to_s
+          elsif new_version_value
+            new_versions[type] = Livecheck::LivecheckVersion.create(formula_or_cask, new_version_value)
+          end
+        end
+
+        multiple_versions = {
+          current: current_versions.length > 1,
+          new:     new_versions.length > 1,
+        }
+
+        current_version_types = current_versions.keys
+        new_version_types = new_versions.keys
+        comparison_pairs = {}
+
+        # Compare the same version types when shared by current/new versions
+        (current_version_types & new_version_types).each do |type|
+          comparison_pairs[type] = [current_versions[type], new_versions[type]]
+        end
+
+        # Compare current versions to `new_version.general` when the current
+        # version differs by arch but the new version does not
+        if multiple_versions[:current] && new_versions.key?(:general)
+          (current_version_types - new_version_types).each do |type|
+            comparison_pairs[type] ||= [current_versions[type], new_versions[:general]]
+          end
+        end
+
+        # Compare `current_version.general` to the highest new version when the
+        # current version does not differ by arch but the new version does
+        if !comparison_pairs.key?(:general) &&
+           current_versions.key?(:general) &&
+           multiple_versions[:new]
+          highest_new_version = (new_version_types - current_version_types).filter_map do |type|
+            version = new_versions[type]
+            next unless version.is_a?(Livecheck::LivecheckVersion)
+
+            version
+          end.max
+          comparison_pairs[:general] = [current_versions[:general], highest_new_version]
+        end
+
+        newer_than_upstream = {}
+        comparison_pairs.each do |version_type, (current_value, new_value)|
+          newer_than_upstream[version_type] = if new_value.is_a?(Livecheck::LivecheckVersion)
+            (current_value > new_value)
+          else
+            false
+          end
+        end
+
+        { multiple_versions:, newer_than_upstream: }
+      end
+
+      sig { params(value: T.nilable(T.any(Version, Cask::DSL::Version, String))).returns(T::Boolean) }
+      def message?(value)
+        return false if !value.is_a?(Cask::DSL::Version) && !value.is_a?(String)
+
+        value.match?(LIVECHECK_MESSAGE_REGEX)
       end
 
       sig {

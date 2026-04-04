@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 RSpec.describe Cask::Artifact::Manpage, :cask do
@@ -6,7 +7,7 @@ RSpec.describe Cask::Artifact::Manpage, :cask do
   context "without section" do
     let(:cask_token) { "invalid-manpage-no-section" }
 
-    it "fails to load a cask without section" do
+    it "fails to load a cask without section", :no_api do
       expect { cask }.to raise_error(Cask::CaskInvalidError, /is not a valid man page name/)
     end
   end
@@ -14,7 +15,7 @@ RSpec.describe Cask::Artifact::Manpage, :cask do
   context "with install" do
     let(:install_phase) do
       lambda do
-        cask.artifacts.select { |a| a.is_a?(described_class) }.each do |artifact|
+        cask.artifacts.grep(described_class).each do |artifact|
           artifact.install_phase(command: NeverSudoSystemCommand, force: false)
         end
       end

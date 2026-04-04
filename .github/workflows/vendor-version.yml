@@ -19,11 +19,10 @@ jobs:
     steps:
       - name: Set up Homebrew
         id: set-up-homebrew
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@main
         with:
           core: false
           cask: false
-          test-bot: false
 
       - name: Install Bundler RubyGems
         run: brew install-bundler-gems --groups=all

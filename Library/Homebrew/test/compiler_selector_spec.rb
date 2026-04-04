@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "compilers"
@@ -23,7 +24,7 @@ RSpec.describe CompilerSelector do
     end
   end
 
-  describe "#compiler" do
+  describe "#compiler", :no_api do
     it "defaults to cc" do
       expect(selector.compiler).to eq(cc)
     end

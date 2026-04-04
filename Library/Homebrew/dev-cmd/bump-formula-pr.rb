@@ -5,7 +5,6 @@ require "abstract_command"
 require "fileutils"
 require "formula"
 require "utils/inreplace"
-require "utils/pypi"
 require "utils/tar"
 
 module Homebrew
@@ -83,6 +82,10 @@ module Homebrew
                     description: "Exclude these Python packages when finding resources."
         comma_array "--bump-synced=",
                     hidden: true
+        flag   "--resource-versions=",
+               description: "JSON-encoded resource version data from `brew bump`.",
+               hidden:      true
+
         conflicts "--dry-run", "--write-only"
         conflicts "--no-audit", "--strict"
         conflicts "--no-audit", "--online"
@@ -93,6 +96,9 @@ module Homebrew
 
       sig { override.void }
       def run
+        Homebrew.install_bundler_gems!(groups: ["ast"])
+        require "utils/pypi"
+
         if args.revision.present? && args.tag.nil? && args.version.nil?
           raise UsageError, "`--revision` must be passed with either `--tag` or `--version`!"
         end
@@ -104,14 +110,28 @@ module Homebrew
         # Use the user's browser, too.
         ENV["BROWSER"] = Homebrew::EnvConfig.browser
 
-        formula = args.named.to_formulae.first
-        raise FormulaUnspecifiedError if formula.blank?
+        @tap_retried = T.let(false, T.nilable(T::Boolean))
+        begin
+          formula = args.named.to_formulae.first
+          raise FormulaUnspecifiedError if formula.blank?
 
-        odie "This formula is disabled!" if formula.disabled?
-        odie "This formula is deprecated and does not build!" if formula.deprecation_reason == :does_not_build
-        tap = formula.tap
-        odie "This formula is not in a tap!" if tap.blank?
-        odie "This formula's tap is not a Git repository!" unless tap.git?
+          raise ArgumentError, "This formula is disabled!" if formula.disabled?
+          if formula.deprecation_reason == :does_not_build
+            raise ArgumentError, "This formula is deprecated and does not build!"
+          end
+
+          tap = formula.tap
+          raise ArgumentError, "This formula is not in a tap!" if tap.blank?
+          raise ArgumentError, "This formula's tap is not a Git repository!" unless tap.git?
+
+          formula
+        rescue ArgumentError => e
+          odie e.message if @tap_retried
+
+          CoreTap.instance.install(force: true)
+          @tap_retried = true
+          retry
+        end
 
         odie <<~EOS unless tap.allow_bump?(formula.name)
           Whoops, the #{formula.name} formula has its version update
@@ -121,7 +141,9 @@ module Homebrew
           method or 'livecheck' block with 'skip'.)
         EOS
 
-        odie "You have too many PRs open: close or merge some first!" if GitHub.too_many_open_prs?(tap)
+        if !args.write_only? && GitHub.too_many_open_prs?(tap)
+          odie "You have too many PRs open: close or merge some first!"
+        end
 
         formula_spec = formula.stable
         odie "#{formula}: no stable specification found!" if formula_spec.blank?
@@ -135,7 +157,7 @@ module Homebrew
         remote_branch = tap.git_repository.origin_branch_name
         previous_branch = "-"
 
-        check_pull_requests(formula, tap_remote_repo, state: "open")
+        check_pull_requests(formula, tap_remote_repo, state: "open") unless args.write_only?
 
         all_formulae = []
         if args.bump_synced.present?
@@ -159,6 +181,7 @@ module Homebrew
 
           new_url = args.url
           new_version = args.version
+
           check_new_version(commit_formula, tap_remote_repo, version: new_version) if new_version.present?
 
           opoo "This formula has patches that may be resolved upstream." if commit_formula.patchlist.present?
@@ -174,6 +197,7 @@ module Homebrew
           end
 
           old_hash = commit_formula_spec.checksum&.hexdigest
+
           new_hash = args.sha256
           new_tag = args.tag
           new_revision = args.revision
@@ -213,10 +237,9 @@ module Homebrew
           elsif new_url.blank? && new_version.blank?
             raise UsageError, "#{commit_formula}: no `--url` or `--version` argument specified!"
           else
-            next unless new_version.present?
+            new_url ||= PyPI.update_pypi_url(old_url, new_version) if new_version.present?
 
-            new_url ||= PyPI.update_pypi_url(old_url, new_version)
-            if new_url.blank?
+            if new_url.blank? && new_version.present?
               new_url = update_url(old_url, old_version, new_version)
               if new_mirrors.blank? && old_mirrors.present?
                 new_mirrors = old_mirrors.map do |old_mirror|
@@ -230,6 +253,9 @@ module Homebrew
                 and old URL are both:
                   #{new_url}
               EOS
+            end
+            if new_url.blank?
+              odie "There was an issue generating the updated url, you may need to create the PR manually"
             end
             check_new_version(commit_formula, tap_remote_repo, url: new_url) if new_version.blank?
             resource_path, forced_version = fetch_resource_and_forced_version(commit_formula, new_version, new_url)
@@ -358,6 +384,7 @@ module Homebrew
             alias_rename.map! { |a| tap.alias_dir/a }
           end
 
+          resource_update_results = {}
           unless args.dry_run?
             resources_checked = PyPI.update_python_resources! formula,
                                                               version:                  new_formula_version.to_s,
@@ -368,17 +395,61 @@ module Homebrew
                                                               silent:                   args.quiet?,
                                                               ignore_non_pypi_packages: true
 
-            update_matching_version_resources! commit_formula,
-                                               version: new_formula_version.to_s
+            resource_update_results.merge!(
+              update_matching_version_resources!(commit_formula, version: new_formula_version.to_s),
+            )
+
+            resource_versions = parse_resource_versions_arg
+            if resource_versions.present?
+              resource_update_results.merge!(
+                update_resources!(commit_formula, resource_versions:),
+              )
+            end
           end
 
-          if resources_checked.nil? && commit_formula.resources.any? do |resource|
-            resource.livecheck.formula != :parent && !resource.name.start_with?("homebrew-")
+          checked_statuses = [:success, :up_to_date, :downgraded]
+          failed_updates = resource_update_results.reject { |_, v| checked_statuses.include?(v) }
+          downgraded_resources = resource_update_results.select { |_, v| v == :downgraded }
+
+          # Check if there are any resources that still need manual update:
+          unchecked_resources = commit_formula.resources.select do |resource|
+            next false if resource.name.start_with?("homebrew-")
+            next false if resource_update_results.key?(resource.name)
+            next false if resource.livecheck.formula == :parent
+
+            true
           end
+
+          formula_checkboxes = []
+
+          if failed_updates.any? || (resources_checked.nil? && unchecked_resources.any?)
+            formula_checkboxes << "- [ ] `resource` blocks have been checked for updates."
+
+            if failed_updates.any?
+              formula_checkboxes << "#{failed_updates.map do |name, status|
+                "  - Resource `#{name}` failed to auto-update (#{status})."
+              end.join("\n")}\n"
+            end
+          end
+
+          if downgraded_resources.any?
+            resource_names = downgraded_resources.keys.map { |name| "`#{name}`" }.join(", ")
+            verb = (downgraded_resources.size == 1) ? "was" : "were"
+            formula_checkboxes <<
+              "**Warning:** #{resource_names} #{verb} " \
+              "downgraded to match the latest upstream version."
+          end
+
+          annotation_comments = %w[TODO FIXME]
+          if annotation_comments.any? { |s| new_contents.include?("#{s}:") }
+            formula_checkboxes << "- [ ] TODO and FIXME comments have been checked."
+          end
+
+          if formula_checkboxes.present?
             formula_pr_message += <<~EOS
 
 
-              - [ ] `resource` blocks have been checked for updates.
+              #{formula_checkboxes.join("\n")}
             EOS
           end
 
@@ -393,12 +464,19 @@ module Homebrew
               nil
             end
 
-            if github_release_data.present?
+            if github_release_data.present? && github_release_data["body"].present?
               pre = "pre" if github_release_data["prerelease"].present?
+              # maximum length of PR body is 65,536 characters so let's truncate release notes to half of that.
+              body = Formatter.truncate(github_release_data["body"], max: 32_768)
+
+              # Ensure the URL is properly HTML encoded to handle any quotes or other special characters
+              html_url = CGI.escapeHTML(github_release_data["html_url"])
+
               formula_pr_message += <<~XML
                 <details>
                   <summary>#{pre}release notes</summary>
-                  <pre>#{github_release_data["body"]}</pre>
+                  <pre>#{body}</pre>
+                  <p>View the full release notes at <a href="#{html_url}">#{html_url}</a>.</p>
                 </details>
               XML
             end
@@ -407,7 +485,7 @@ module Homebrew
           {
             sourcefile_path:    commit_formula.path,
             old_contents:,
-            commit_message:     "#{commit_formula.name} #{args.version}",
+            commit_message:     "#{commit_formula.name} #{new_formula_version}",
             additional_files:   alias_rename,
             formula_pr_message:,
             formula_name:       commit_formula.name,
@@ -426,7 +504,7 @@ module Homebrew
           # If `brew audit` fails, revert the changes made to any formula.
           commits.each do |revert|
             revert_formula = Formula[revert[:formula_name]]
-            revert_formula.path.atomic_write(revert[:old_contents]) unless args.dry_run?
+            revert_formula.path.atomic_write(revert[:old_contents]) if !args.dry_run? && !args.write_only?
             revert_alias_rename = revert[:additional_files]
             if revert_alias_rename && (source = revert_alias_rename.first) && (destination = revert_alias_rename.last)
               FileUtils.mv source, destination
@@ -436,11 +514,14 @@ module Homebrew
           odie "`brew audit` failed for #{commit[:formula_name]}!"
         end
 
-        new_formula_version = T.must(commits.first)[:new_version]
+        new_formula_version = commits.fetch(0)[:new_version]
+
         pr_title = if args.bump_synced.nil?
           "#{formula.name} #{new_formula_version}"
         else
-          "#{Array(args.bump_synced).join(" ")} #{new_formula_version}"
+          maximum_characters_in_title = 72
+          max = maximum_characters_in_title - new_formula_version.to_s.length - 1
+          "#{Formatter.truncate(Array(args.bump_synced).join(" "), max:)} #{new_formula_version}"
         end
 
         pr_message = "Created with `brew bump-formula-pr`."
@@ -498,6 +579,8 @@ module Homebrew
       sig { params(old_url: String, old_version: String, new_version: String).returns(String) }
       def update_url(old_url, old_version, new_version)
         new_url = old_url.gsub(old_version, new_version)
+        new_url.gsub!(old_version.tr(".", "_"), new_version.tr(".", "_")) if old_version.include?(".")
+
         return new_url if (old_version_parts = old_version.split(".")).length < 2
         return new_url if (new_version_parts = new_version.split(".")).length != old_version_parts.length
 
@@ -524,68 +607,6 @@ module Homebrew
         resource.version(new_version) if forced_version
         odie "Couldn't identify version, specify it using `--version=`." if resource.version.blank?
         [resource.fetch, forced_version]
-      end
-
-      sig {
-        params(
-          formula: Formula,
-          version: String,
-        ).void
-      }
-      def update_matching_version_resources!(formula, version:)
-        formula.resources.select { |r| r.livecheck.formula == :parent }.each do |resource|
-          new_url = update_url(resource.url, resource.version.to_s, version)
-
-          if new_url == resource.url
-            opoo <<~EOS
-              You need to bump resource "#{resource.name}" manually since the new URL
-              and old URL are both:
-                #{new_url}
-            EOS
-            next
-          end
-
-          new_mirrors = resource.mirrors.map do |mirror|
-            update_url(mirror, resource.version.to_s, version)
-          end
-          resource_path, forced_version = fetch_resource_and_forced_version(resource, version, new_url)
-          Utils::Tar.validate_file(resource_path)
-          new_hash = resource_path.sha256
-
-          inreplace_regex = /
-            [ ]+resource\ "#{resource.name}"\ do\s+
-              url\ .*\s+
-              (mirror\ .*\s+)*
-              sha256\ .*\s+
-              (version\ .*\s+)?
-              (\#.*\s+)*
-              livecheck\ do\s+
-                formula\ :parent\s+
-              end\s+
-              ((\#.*\s+)*
-              patch\ (.*\ )?do\s+
-                url\ .*\s+
-                sha256\ .*\s+
-              end\s+)*
-            end\s
-          /x
-
-          leading_spaces = T.must(formula.path.read.match(/^([ ]+)resource "#{resource.name}"/)).captures.first
-          new_resource_block = <<~EOS
-            #{leading_spaces}resource "#{resource.name}" do
-            #{leading_spaces}  url "#{new_url}"#{new_mirrors.map { |m| "\n#{leading_spaces}  mirror \"#{m}\"" }.join}
-            #{leading_spaces}  sha256 "#{new_hash}"
-            #{forced_version ? "#{leading_spaces}  version \"#{version}\"\n" : ""}
-            #{leading_spaces}  livecheck do
-            #{leading_spaces}    formula :parent
-            #{leading_spaces}  end
-            #{leading_spaces}end
-          EOS
-
-          Utils::Inreplace.inreplace formula.path do |s|
-            s.sub! inreplace_regex, new_resource_block
-          end
-        end
       end
 
       sig { params(formula: Formula, contents: T.nilable(String)).returns(Version) }
@@ -634,7 +655,7 @@ module Homebrew
         end
 
         check_throttle(formula, version)
-        check_pull_requests(formula, tap_remote_repo, version:)
+        check_pull_requests(formula, tap_remote_repo, version:) unless args.write_only?
       end
 
       sig { params(formula: Formula, new_version: String).void }
@@ -665,6 +686,155 @@ module Homebrew
         return if Version.new(new_alias_version) <= Version.new(old_alias_version)
 
         [versioned_alias, "#{name}@#{new_alias_version}"]
+      end
+
+      sig { returns(T.nilable(T::Hash[String, T::Hash[Symbol, T.nilable(String)]])) }
+      def parse_resource_versions_arg
+        return if (resource_versions = args.resource_versions).blank?
+
+        require "json"
+        resource_data = JSON.parse(resource_versions)
+        resource_data.to_h do |r|
+          [r["name"], { current_version: r["current_version"], latest_version: r["latest_version"] }]
+        end
+      rescue JSON::ParserError => e
+        opoo "Failed to parse --resource-versions JSON: #{e.message}"
+        nil
+      end
+
+      # TODO: Add support for resources using `tag` and/or `revision` instead of
+      # `url`+`sha256`, resource URLs with options, and resources inside `on_os`
+      # or `on_arch` blocks.
+      sig {
+        params(
+          formula:     Formula,
+          resource:    Resource,
+          new_version: String,
+        ).returns(Symbol)
+      }
+      def update_resource_block!(formula, resource, new_version)
+        ohai "Updating resource \"#{resource.name}\" from #{resource.version} to #{new_version}"
+
+        old_url = T.must(resource.url)
+        new_url = update_url(old_url, resource.version.to_s, new_version)
+
+        if new_url == old_url
+          opoo <<~EOS
+            You need to bump resource "#{resource.name}" manually since the new URL
+            and old URL are both:
+              #{new_url}
+          EOS
+          return :url_unchanged
+        end
+
+        new_mirrors = resource.mirrors.map do |mirror|
+          update_url(mirror, resource.version.to_s, new_version)
+        end
+        resource_path, forced_version = fetch_resource_and_forced_version(resource, new_version, new_url)
+        Utils::Tar.validate_file(resource_path)
+        new_hash = resource_path.sha256
+
+        escaped_name = Regexp.escape(resource.name)
+
+        Utils::Inreplace.inreplace formula.path do |s|
+          leading_spaces = T.must(s.inreplace_string.match(/^( +)resource "#{escaped_name}"/)).captures.first
+          inreplace_regex =
+            /^#{leading_spaces}resource "#{escaped_name}" do\n.*?^#{leading_spaces}end\n/m
+
+          s.inreplace_string.sub!(inreplace_regex) do |block|
+            block = block.sub(
+              /^(#{leading_spaces}  url )"#{Regexp.escape(old_url)}"/,
+              "\\1\"#{new_url}\"",
+            )
+
+            resource.mirrors.each_with_index do |old_mirror, i|
+              next if new_mirrors[i].blank?
+
+              block = block.sub(
+                /^(#{leading_spaces}  mirror )"#{Regexp.escape(old_mirror)}"/,
+                "\\1\"#{new_mirrors[i]}\"",
+              )
+            end
+
+            old_checksum = resource.checksum&.hexdigest
+            if old_checksum.present?
+              block = block.sub(
+                /^(#{leading_spaces}  sha256 )"#{old_checksum}"/,
+                "\\1\"#{new_hash}\"",
+              )
+            end
+
+            if forced_version
+              block = if block.match?(/^#{leading_spaces}  version "/)
+                block.sub(/^(#{leading_spaces}  version )"[^"]*"/, "\\1\"#{new_version}\"")
+              else
+                block.sub(
+                  /^(#{leading_spaces}  sha256 "[0-9a-f]+")\n/,
+                  "\\1\n#{leading_spaces}  version \"#{new_version}\"\n",
+                )
+              end
+            end
+
+            block
+          end
+        end
+
+        :success
+      end
+
+      sig {
+        params(
+          formula: Formula,
+          version: String,
+        ).returns(T::Hash[String, Symbol])
+      }
+      def update_matching_version_resources!(formula, version:)
+        results = {}
+        formula.resources.select { |r| r.livecheck.formula == :parent }.each do |resource|
+          results[resource.name] = update_resource_block!(formula, resource, version)
+        end
+        results
+      end
+
+      sig {
+        params(
+          formula:           Formula,
+          resource_versions: T::Hash[String, T::Hash[Symbol, T.nilable(String)]],
+        ).returns(T::Hash[String, Symbol])
+      }
+      def update_resources!(formula, resource_versions:)
+        results = {}
+
+        formula.resources.each do |resource|
+          version_data = resource_versions[resource.name]
+          next if version_data.blank?
+
+          current_version = version_data[:current_version]
+          latest_version = version_data[:latest_version]
+
+          if current_version.blank? || latest_version.blank?
+            opoo "Could not determine versions for resource \"#{resource.name}\""
+            results[resource.name] = :version_unknown
+            next
+          end
+
+          if current_version == latest_version
+            results[resource.name] = :up_to_date
+            next
+          end
+
+          is_downgraded = Version.new(current_version) > Version.new(latest_version)
+
+          begin
+            update_resource_block!(formula, resource, latest_version)
+            results[resource.name] = is_downgraded ? :downgraded : :success
+          rescue => e
+            opoo "Failed to update resource \"#{resource.name}\": #{e}"
+            results[resource.name] = :fetch_failed
+          end
+        end
+
+        results
       end
 
       sig {

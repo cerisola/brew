@@ -20,7 +20,7 @@ else
   end
 
   # This list should match .gitignore
-  vendored_versions = ["3.4"].freeze
+  vendored_versions = ["4.0"].freeze
   vendored_versions.include?("#{ruby_major}.#{ruby_minor}")
 end.freeze
 
@@ -58,6 +58,9 @@ dir = __dir__ || raise("__dir__ is not defined")
 HOMEBREW_LIBRARY_PATH = Pathname(dir).parent.realpath.freeze
 HOMEBREW_USING_PORTABLE_RUBY = RbConfig.ruby.include?("/vendor/portable-ruby/").freeze
 
+HOMEBREW_BUNDLER_VERSION = ENV.fetch("HOMEBREW_BUNDLER_VERSION").freeze
+ENV["BUNDLER_VERSION"] = HOMEBREW_BUNDLER_VERSION
+
 require_relative "../utils/gems"
 Homebrew.setup_gem_environment!(setup_path: false)
 
@@ -77,7 +80,7 @@ end
 require_relative "../vendor/bundle/bundler/setup"
 Homebrew::FastBootRequire.from_archdir("portable_ruby_gems") if HOMEBREW_USING_PORTABLE_RUBY
 $LOAD_PATH.unshift "#{HOMEBREW_LIBRARY_PATH}/vendor/bundle/#{RUBY_ENGINE}/#{Gem.ruby_api_version}/gems/" \
-                   "bundler-#{Homebrew::HOMEBREW_BUNDLER_VERSION}/lib"
+                   "bundler-#{HOMEBREW_BUNDLER_VERSION}/lib"
 $LOAD_PATH.uniq!
 
 # These warnings are nice but often flag problems that are not even our responsibly,

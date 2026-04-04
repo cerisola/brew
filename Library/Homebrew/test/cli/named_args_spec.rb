@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cli/named_args"
@@ -214,7 +215,7 @@ RSpec.describe Homebrew::CLI::NamedArgs do
       expect(described_class.new("foo").to_kegs.map { |k| k.version.version.to_s }.sort).to eq ["1.0", "2.0"]
     end
 
-    it "when there are no matching kegs returns an empty array" do
+    it "when there are no matching kegs returns an empty array" do # rubocop:todo RSpec/AggregateExamples
       expect(described_class.new.to_kegs).to be_empty
     end
 
@@ -314,7 +315,7 @@ RSpec.describe Homebrew::CLI::NamedArgs do
         .to eq ["homebrew/cask/local-caffeine"]
     end
 
-    it "returns an empty array when there are no matching casks" do
+    it "returns an empty array when there are no matching casks" do # rubocop:todo RSpec/AggregateExamples
       expect(described_class.new("foo").homebrew_tap_cask_names).to be_empty
     end
   end
@@ -357,6 +358,25 @@ RSpec.describe Homebrew::CLI::NamedArgs do
       expect(Cask::CaskLoader).to receive(:path).with("foo").and_return(cask_path)
 
       expect(described_class.new("foo", "baz").to_paths(only: :cask)).to eq [cask_path, Cask::CaskLoader.path("baz")]
+    end
+
+    context "when without_api: true" do
+      it "returns a bare path for an API-known formula when the tap is not installed" do
+        allow(CoreTap.instance).to receive(:installed?).and_return(false)
+
+        require "api"
+        allow(Homebrew::API).to receive(:formula_names).and_return(["foo"])
+        allow(Homebrew::API::Formula).to receive(:all_formulae).and_return("foo" => {})
+
+        named_args = described_class.new("foo", without_api: true)
+        paths = named_args.to_paths
+
+        # to_paths returns a bare expanded path (not the core formula path) because
+        # without_api: true sets HOMEBREW_NO_INSTALL_FROM_API=1 which defeats the
+        # API name fallback check. The brew edit command works around this by
+        # auto-tapping before calling to_paths.
+        expect(paths.first.to_s).not_to match(%r{homebrew-core/Formula})
+      end
     end
   end
 

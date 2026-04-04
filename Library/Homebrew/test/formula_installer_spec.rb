@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "formula"
@@ -80,6 +81,246 @@ RSpec.describe FormulaInstaller do
     temporary_install(TestballBottle.new, cc: "clang") do |f|
       tab = Tab.for_formula(f)
       expect(tab.compiler).to eq("clang")
+    end
+  end
+
+  describe "#verify_deps_exist" do
+    it "does not install an untapped dependency tap" do
+      formula = Testball.new
+      installer = described_class.new(formula)
+      tap = instance_double(Tap, user: "user", repository: "repo", to_s: "user/repo", installed?: false)
+
+      allow(installer).to receive(:compute_dependencies).and_raise(TapFormulaUnavailableError.new(tap, "foo"))
+
+      expect(tap).not_to receive(:ensure_installed!)
+
+      expect { installer.send(:verify_deps_exist) }
+        .to raise_error(TapFormulaUnavailableError, /If you trust this tap/) { |error|
+          expect(error.dependent).to eq(formula.full_name)
+        }
+    end
+  end
+
+  describe "linking defaults" do
+    it "links non-keg-only formulae when link_keg is false" do
+      ordinary_formula = formula "homebrew-link-default" do
+        url "foo-1.0"
+      end
+
+      expect(described_class.new(ordinary_formula, link_keg: false).link_keg).to be true
+    end
+
+    it "links non-keg-only dependencies even when they were not previously linked" do
+      dependency_formula = formula "homebrew-link-default-dependency" do
+        url "foo-1.0"
+      end
+      dependency = instance_double(Dependency, to_formula: dependency_formula, name: dependency_formula.name,
+                                               options: Options.new)
+      installer = described_class.new(Testball.new)
+      child_installer = nil
+
+      allow(dependency_formula).to receive_messages(
+        linked_keg:                Pathname("/tmp/nonexistent-linked-keg"),
+        latest_version_installed?: false,
+        tap:                       nil,
+        any_version_installed?:    false,
+      )
+      allow(installer).to receive(:oh1)
+      allow(described_class).to receive(:new).and_wrap_original do |original, formula, **kwargs|
+        instance = original.call(formula, **kwargs)
+        next instance if formula != dependency_formula
+
+        child_installer = instance
+        allow(instance).to receive_messages(prelude: true, install: true, finish: true)
+        instance
+      end
+
+      installer.send(:install_dependency, dependency)
+
+      expect(child_installer).to be_installed_as_dependency
+      expect(child_installer&.link_keg).to be true
+    end
+  end
+
+  describe "versioned keg-only linking defaults" do
+    let(:base_name) { "homebrew-versioned-formula" }
+    let(:formula_name) { "#{base_name}@1.0" }
+    let(:keg_only_formula) do
+      formula formula_name do
+        url "foo-1.0"
+        keg_only :versioned_formula
+      end
+    end
+
+    before do
+      allow(keg_only_formula).to receive_messages(any_version_installed?:  false,
+                                                  link_overwrite_formulae: [])
+    end
+
+    it "links by default when no sibling variants are installed" do
+      fi = described_class.new(keg_only_formula)
+
+      expect(fi.link_keg).to be true
+    end
+
+    it "does not link by default when any version is already installed" do
+      allow(keg_only_formula).to receive(:any_version_installed?).and_return(true)
+
+      fi = described_class.new(keg_only_formula)
+
+      expect(fi.link_keg).to be false
+    end
+
+    it "links when explicitly requested" do
+      allow(keg_only_formula).to receive(:any_version_installed?).and_return(true)
+
+      fi = described_class.new(keg_only_formula, link_keg: true)
+
+      expect(fi.link_keg).to be true
+    end
+
+    it "does not link by default when another @-versioned formula is installed" do
+      other_version = formula "#{base_name}@2.0" do
+        url "foo-2.0"
+        keg_only :versioned_formula
+      end
+      allow(other_version).to receive(:any_version_installed?).and_return(true)
+      allow(keg_only_formula).to receive(:link_overwrite_formulae).and_return([other_version])
+
+      fi = described_class.new(keg_only_formula)
+
+      expect(fi.link_keg).to be false
+    end
+
+    it "does not link by default when the unversioned sibling is installed" do
+      unversioned_formula = formula base_name do
+        url "foo-1.0"
+      end
+      allow(unversioned_formula).to receive(:any_version_installed?).and_return(true)
+      allow(keg_only_formula).to receive(:link_overwrite_formulae).and_return([unversioned_formula])
+
+      fi = described_class.new(keg_only_formula)
+
+      expect(fi.link_keg).to be false
+    end
+
+    it "does not link by default when the unversioned sibling is keg-only" do
+      unversioned_formula = formula base_name do
+        url "foo-1.0"
+        keg_only "some reason"
+      end
+      allow(keg_only_formula).to receive(:link_overwrite_formulae).and_return([unversioned_formula])
+
+      fi = described_class.new(keg_only_formula)
+
+      expect(fi.link_keg).to be false
+    end
+
+    it "does not link by default when the -full variant is installed" do
+      full_variant = formula "#{base_name}-full" do
+        url "foo-full-1.0"
+        keg_only :versioned_formula
+      end
+      allow(full_variant).to receive(:any_version_installed?).and_return(true)
+      allow(keg_only_formula).to receive(:link_overwrite_formulae).and_return([full_variant])
+
+      fi = described_class.new(keg_only_formula)
+
+      expect(fi.link_keg).to be false
+    end
+
+    it "does not link by default when the non-full variant is installed" do
+      full_formula = formula "#{base_name}-full" do
+        url "foo-full-1.0"
+        keg_only :versioned_formula
+      end
+      non_full_variant = formula base_name do
+        url "foo-1.0"
+        keg_only :versioned_formula
+      end
+      allow(non_full_variant).to receive(:any_version_installed?).and_return(true)
+      allow(full_formula).to receive_messages(any_version_installed?:  false,
+                                              link_overwrite_formulae: [non_full_variant])
+
+      fi = described_class.new(full_formula)
+
+      expect(fi.link_keg).to be false
+    end
+  end
+
+  describe "#link" do
+    let(:versioned_formula) do
+      formula "homebrew-versioned-formula@1.0" do
+        url "foo-1.0"
+        keg_only :versioned_formula
+      end
+    end
+    let(:other_version) do
+      formula "homebrew-versioned-formula" do
+        url "foo-2.0"
+        keg_only :versioned_formula
+      end
+    end
+    let(:keg) do
+      instance_double(Keg, linked?: false)
+    end
+
+    before do
+      allow(Formula).to receive(:clear_cache)
+      allow(Cask::Caskroom).to receive(:path).and_return(Pathname("/tmp/nonexistent-caskroom"))
+      allow(versioned_formula).to receive_messages(link_overwrite_formulae: [other_version],
+                                                   any_version_installed?:  false)
+      allow(other_version).to receive(:any_version_installed?).and_return(true)
+    end
+
+    it "only optlinks when default linking is disabled by an installed sibling" do
+      installer = described_class.new(versioned_formula)
+
+      expect(installer.link_keg).to be false
+      expect(Homebrew::Unlink).not_to receive(:unlink_link_overwrite_formulae)
+      expect(keg).to receive(:optlink).with(verbose: false, overwrite: false)
+      expect(keg).not_to receive(:link)
+
+      installer.link(keg)
+    end
+
+    it "unlinks siblings before linking when explicitly requested" do
+      installer = described_class.new(versioned_formula, link_keg: true)
+
+      expect(installer.link_keg).to be true
+      expect(Homebrew::Unlink).to receive(:unlink_link_overwrite_formulae).with(versioned_formula,
+                                                                                verbose: false).ordered
+      expect(keg).to receive(:link).with(verbose: false, overwrite: false).ordered
+
+      installer.link(keg)
+    end
+  end
+
+  describe "#link_manual_command_warning" do
+    let(:base_name) { "homebrew-versioned-formula" }
+    let(:formula_name) { "#{base_name}@1.0" }
+    let(:keg_only_formula) do
+      formula formula_name do
+        url "foo-1.0"
+        keg_only :versioned_formula
+      end
+    end
+
+    it "explains why a versioned formula was installed but not linked" do
+      unversioned_formula = formula base_name do
+        url "foo-1.0"
+      end
+      allow(unversioned_formula).to receive_messages(any_version_installed?: true, linked?: true)
+      allow(keg_only_formula).to receive_messages(any_version_installed?: false, linked?: false,
+                                                  link_overwrite_formulae: [unversioned_formula])
+
+      installer = described_class.new(keg_only_formula)
+
+      expect(installer.send(:link_manual_command_warning)).to eq <<~EOS
+        #{formula_name} was installed but not linked because #{base_name} is already linked.
+        To link this version, run:
+          brew link #{formula_name}
+      EOS
     end
   end
 
@@ -254,6 +495,28 @@ RSpec.describe FormulaInstaller do
       expect do
         fi.forbidden_license_check
       end.to raise_error(CannotInstallFormulaError, /dependency on #{dep_name} where all/)
+    end
+
+    it "raises on forbidden symbol license on formula" do
+      ENV["HOMEBREW_FORBIDDEN_LICENSES"] = "public_domain"
+
+      f_name = "homebrew-forbidden-license"
+      f_path = CoreTap.instance.new_formula_path(f_name)
+      f_path.write <<~RUBY
+        class #{Formulary.class_s(f_name)} < Formula
+          url "foo"
+          version "0.1"
+          license :public_domain
+        end
+      RUBY
+      Formulary.cache.delete(f_path)
+
+      f = Formulary.factory(f_name)
+      fi = described_class.new(f)
+
+      expect do
+        fi.forbidden_license_check
+      end.to raise_error(CannotInstallFormulaError, /#{f_name}'s licenses are all forbidden/)
     end
   end
 

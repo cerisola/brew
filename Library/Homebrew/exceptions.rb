@@ -1,6 +1,11 @@
 # typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
+# We intentionally want to have many exceptions in this file.
+# rubocop:disable Style/OneClassPerFile
+
+require "utils/output"
+
 # Raised when a command is used wrong.
 #
 # @api internal
@@ -75,6 +80,15 @@ class FormulaValidationError < StandardError
   end
 end
 
+class LegacyDSLError < StandardError
+  attr_reader :attr
+
+  def initialize(attr, value)
+    @attr = attr
+    super "A legacy DSL was used: #{attr} (#{value.inspect})"
+  end
+end
+
 class FormulaSpecificationError < StandardError; end
 
 # Raised when a deprecated method is used.
@@ -130,7 +144,10 @@ class TapFormulaOrCaskUnavailableError < FormulaOrCaskUnavailableError
   sig { returns(String) }
   def to_s
     s = super
-    s += "\nPlease tap it and then try again: brew tap #{tap}" unless tap.installed?
+    unless tap.installed?
+      s += "\nThis command requires the tap #{tap}."
+      s += "\nIf you trust this tap, tap it explicitly and then try again:\n  brew tap #{tap}"
+    end
     s
   end
 end
@@ -234,7 +251,10 @@ class TapFormulaUnavailableError < FormulaUnavailableError
   sig { returns(String) }
   def to_s
     s = super
-    s += "\nPlease tap it and then try again: brew tap #{tap}" unless tap.installed?
+    unless tap.installed?
+      s += "\nThis command requires the tap #{tap}."
+      s += "\nIf you trust this tap, tap it explicitly and then try again:\n  brew tap #{tap}"
+    end
     s
   end
 end
@@ -331,9 +351,9 @@ end
 class TapCoreRemoteMismatchError < TapRemoteMismatchError
   def message
     <<~EOS
-      Tap #{name} remote does not match HOMEBREW_CORE_GIT_REMOTE.
+      Tap #{name} remote does not match `$HOMEBREW_CORE_GIT_REMOTE`.
       #{expected_remote} != #{actual_remote}
-      Please set HOMEBREW_CORE_GIT_REMOTE="#{actual_remote}" and run `brew update` instead.
+      Please set `HOMEBREW_CORE_GIT_REMOTE="#{actual_remote}"` and run `brew update` instead.
     EOS
   end
 end
@@ -463,6 +483,8 @@ end
 
 # Raised when an error occurs during a formula build.
 class BuildError < RuntimeError
+  include Utils::Output::Mixin
+
   attr_reader :cmd, :args, :env
   attr_accessor :formula, :options
 
@@ -575,7 +597,7 @@ class UnbottledError < RuntimeError
     require "utils"
 
     msg = <<~EOS
-      The following #{Utils.pluralize("formula", formulae.count, plural: "e")} cannot be installed from #{Utils.pluralize("bottle", formulae.count)} and must be
+      The following #{Utils.pluralize("formula", formulae.count)} cannot be installed from #{Utils.pluralize("bottle", formulae.count)} and must be
       built from source.
         #{formulae.to_sentence}
     EOS
@@ -632,7 +654,7 @@ class DownloadError < RuntimeError
 
   def initialize(downloadable, cause)
     super <<~EOS
-      Failed to download resource #{downloadable.download_name.inspect}
+      Failed to download resource #{downloadable.download_queue_name.inspect}
       #{cause.message}
     EOS
     @cause = cause
@@ -642,18 +664,21 @@ end
 
 # Raised in {CurlDownloadStrategy#fetch}.
 class CurlDownloadStrategyError < RuntimeError
-  def initialize(url)
+  sig { params(url: String, details: T.nilable(String)).void }
+  def initialize(url, details = nil)
+    suffix = "\n#{details}" if details.present?
     case url
     when %r{^file://(.+)}
-      super "File does not exist: #{Regexp.last_match(1)}"
+      super "File cannot be read: #{Regexp.last_match(1)}#{suffix}"
     else
-      super "Download failed: #{url}"
+      super "Download failed: #{url}#{suffix}"
     end
   end
 end
 
 # Raised in {HomebrewCurlDownloadStrategy#fetch}.
 class HomebrewCurlDownloadStrategyError < CurlDownloadStrategyError
+  sig { params(url: String).void }
   def initialize(url)
     super "Homebrew-installed `curl` is not installed for: #{url}"
   end
@@ -688,7 +713,7 @@ class ErrorDuringExecution < RuntimeError
       status.termsig
     end
 
-    redacted_cmd = redact_secrets(cmd.shelljoin.gsub('\=', "="), secrets)
+    redacted_cmd = Formatter.redact_secrets(cmd.shelljoin.gsub('\=', "="), secrets)
 
     reason = if exitstatus
       "exited with #{exitstatus}"
@@ -735,7 +760,7 @@ class ChecksumMismatchError < RuntimeError
     @expected = expected
 
     super <<~EOS
-      SHA256 mismatch
+      SHA-256 mismatch
       Expected: #{Formatter.success(expected.to_s)}
         Actual: #{Formatter.error(actual.to_s)}
           File: #{path}
@@ -799,3 +824,5 @@ class CyclicDependencyError < RuntimeError
     EOS
   end
 end
+
+# rubocop:enable Style/OneClassPerFile

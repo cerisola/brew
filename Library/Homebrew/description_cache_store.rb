@@ -83,7 +83,7 @@ class DescriptionCacheStore < CacheStore
   def delete_from_formula_names!(formula_names)
     return if database.empty?
 
-    formula_names.each(&method(:delete!))
+    formula_names.each { delete!(it) }
   end
   alias delete_from_cask_tokens! delete_from_formula_names!
 
@@ -97,7 +97,7 @@ end
 # {CaskDescriptionCacheStore} provides methods to fetch and mutate cask descriptions used
 # by the `brew desc` and `brew search` commands.
 #
-class CaskDescriptionCacheStore < DescriptionCacheStore
+class CaskDescriptionCacheStore < DescriptionCacheStore # rubocop:todo Style/OneClassPerFile
   # If the database is empty `update!` it with all known casks.
   #
   # @return [nil]

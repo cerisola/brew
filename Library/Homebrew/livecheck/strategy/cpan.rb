@@ -26,7 +26,7 @@ module Homebrew
 
         # The `Regexp` used to determine if the strategy applies to the URL.
         URL_MATCH_REGEX = %r{
-          ^https?://cpan\.metacpan\.org
+          ^https?://(?:cpan\.metacpan\.org|www\.cpan\.org)
           (?<path>/authors/id(?:/[^/]+){3,}/) # Path before the filename
           (?<prefix>[^/]+) # Filename text before the version
           -v?\d+(?:\.\d+)* # The numeric version
@@ -55,7 +55,7 @@ module Homebrew
           return values if match.blank?
 
           # The directory listing page where the archive files are found
-          values[:url] = "https://cpan.metacpan.org#{match[:path]}"
+          values[:url] = "https://www.cpan.org#{match[:path]}"
 
           regex_prefix = Regexp.escape(T.must(match[:prefix])).gsub("\\-", "-")
 
@@ -73,23 +73,26 @@ module Homebrew
         # to {PageMatch.find_versions} to identify versions in the content.
         #
         # @param url [String] the URL of the content to check
-        # @param regex [Regexp] a regex used for matching versions in content
+        # @param regex [Regexp, nil] a regex for matching versions in content
+        # @param content [String, nil] content to check instead of fetching
         # @param options [Options] options to modify behavior
         # @return [Hash]
         sig {
-          override(allow_incompatible: true).params(
+          override.params(
             url:     String,
             regex:   T.nilable(Regexp),
+            content: T.nilable(String),
             options: Options,
             block:   T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.anything])
         }
-        def self.find_versions(url:, regex: nil, options: Options.new, &block)
+        def self.find_versions(url:, regex: nil, content: nil, options: Options.new, &block)
           generated = generate_input_values(url)
 
           PageMatch.find_versions(
             url:     generated[:url],
             regex:   regex || generated[:regex],
+            content:,
             options:,
             &block
           )

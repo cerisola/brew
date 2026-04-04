@@ -5,7 +5,7 @@ redirect_from:
   - /linux
   - /Linux
   - /Linuxbrew
-last_review_date: "2025-04-02"
+last_review_date: "2026-04-03"
 ---
 
 # Homebrew on Linux
@@ -22,13 +22,13 @@ The Homebrew package manager may be used on Linux and [Windows Subsystem for Lin
 
 ## Install
 
-Instructions for the best, supported install of Homebrew on Linux are on the [homepage](https://brew.sh).
+Instructions for the best, supported install of Homebrew on Linux are on the [homepage](https://brew.sh/).
 
 The installation script installs Homebrew to `/home/linuxbrew/.linuxbrew` using *sudo*. Homebrew does not use *sudo* after installation. Using `/home/linuxbrew/.linuxbrew` allows the use of most binary packages (bottles) which will not work when installing in e.g. your personal home directory.
 
 Technically, you can install Homebrew wherever you want. However, you shouldn't install outside the default, supported, best prefix. Many things will need to be built from source outside the default prefix. Building from source is slow, energy-inefficient, buggy and unsupported. The main reason Homebrew just works is **because** we use bottles (binary packages) and most of these require using the default prefix. If you decide to use another prefix: don't open any issues, even if you think they are unrelated to your prefix choice. They will be closed without response.
 
-The prefix `/home/linuxbrew/.linuxbrew` was chosen so that users without admin access can ask an admin to create a `linuxbrew` role account and still benefit from precompiled binaries. If you do not have admin privileges, consider asking your admin staff to create a `linuxbrew` role account for you with home directory set to `/home/linuxbrew`.
+The prefix `/home/linuxbrew/.linuxbrew` was chosen to avoid writing to system-owned directories after installation while still allowing most precompiled binaries (bottles) to be used. Homebrew is designed for single-user installations rather than shared role accounts.
 
 Follow the *Next steps* instructions to add Homebrew to your `PATH` and to your bash shell rcfile, either `~/.bashrc` for `bash` or `~/.zshrc` for `zsh`.
 
@@ -51,7 +51,7 @@ If you're using an older distribution of Linux, installing your first package wi
 
 ## Requirements
 
-See [Support Tiers](Support-Tiers.md)
+See [Support Tiers](Support-Tiers.md#linux) for the full list of Linux requirements.
 
 To install build tools, paste at a terminal prompt:
 
@@ -61,11 +61,18 @@ To install build tools, paste at a terminal prompt:
   sudo apt-get install build-essential procps curl file git
   ```
 
-- **Fedora, CentOS, or Red Hat**
+- **Fedora**
 
   ```sh
-  sudo yum groupinstall 'Development Tools'
-  sudo yum install procps-ng curl file git
+  sudo dnf group install development-tools
+  sudo dnf install procps-ng curl file
+  ```
+
+- **CentOS Stream or RHEL**
+
+  ```sh
+  sudo dnf group install 'Development Tools'
+  sudo dnf install procps-ng curl file
   ```
 
 - **Arch Linux**
@@ -76,7 +83,7 @@ To install build tools, paste at a terminal prompt:
 
 ### ARM32 (Tier 3 Support)
 
-Homebrew can run on 32-bit ARM (e.g. Raspberry Pi and others), but as they lack bottles (binary packages) they are a [Tier 3 supported platform](https://docs.brew.sh/Support-Tiers#tier-3)
+Homebrew can run on 32-bit ARM systems (e.g. Raspberry Pi and others), but as they lack bottles (binary packages) they are a [Tier 3 supported platform](Support-Tiers.md#tier-3).
 
 You may need to install your own Ruby using your system package manager, a PPA, or `rbenv/ruby-build` as we don't distribute a Homebrew Portable Ruby for ARM32.
 

@@ -24,6 +24,7 @@ require "cask/artifact/mdimporter"
 require "cask/artifact/screen_saver"
 require "cask/artifact/bashcompletion"
 require "cask/artifact/fishcompletion"
+require "cask/artifact/generated_completion"
 require "cask/artifact/zshcompletion"
 require "cask/artifact/service"
 require "cask/artifact/stage_only"
@@ -34,5 +35,25 @@ require "cask/artifact/zap"
 module Cask
   # Module containing all cask artifact classes.
   module Artifact
+    MACOS_ONLY_ARTIFACTS = [
+      ::Cask::Artifact::App,
+      ::Cask::Artifact::AudioUnitPlugin,
+      ::Cask::Artifact::Colorpicker,
+      ::Cask::Artifact::Dictionary,
+      ::Cask::Artifact::InputMethod,
+      ::Cask::Artifact::InternetPlugin,
+      ::Cask::Artifact::KeyboardLayout,
+      ::Cask::Artifact::Mdimporter,
+      ::Cask::Artifact::Pkg,
+      ::Cask::Artifact::Prefpane,
+      ::Cask::Artifact::Qlplugin,
+      ::Cask::Artifact::ScreenSaver,
+      ::Cask::Artifact::Service,
+      ::Cask::Artifact::Suite,
+      ::Cask::Artifact::VstPlugin,
+      ::Cask::Artifact::Vst3Plugin,
+    ].freeze
+
+    LINUX_ONLY_ARTIFACTS = T.let([].freeze, T::Array[T.untyped])
   end
 end

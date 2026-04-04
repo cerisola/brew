@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 RSpec.describe Cask::Artifact::Binary, :cask do
@@ -6,7 +7,7 @@ RSpec.describe Cask::Artifact::Binary, :cask do
       InstallHelper.install_without_artifacts(cask)
     end
   end
-  let(:artifacts) { cask.artifacts.select { |a| a.is_a?(described_class) } }
+  let(:artifacts) { cask.artifacts.grep(described_class) }
   let(:binarydir) { cask.config.binarydir }
   let(:expected_path) { binarydir.join("binary") }
 
@@ -103,7 +104,7 @@ RSpec.describe Cask::Artifact::Binary, :cask do
     end
 
     it "links the binary to the proper directory" do
-      cask.artifacts.select { |a| a.is_a?(Cask::Artifact::App) }.each do |artifact|
+      cask.artifacts.grep(Cask::Artifact::App).each do |artifact|
         artifact.install_phase(command: NeverSudoSystemCommand, force: false)
       end
       artifacts.each do |artifact|

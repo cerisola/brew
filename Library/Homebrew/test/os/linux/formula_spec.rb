@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "test/support/fixtures/testball"
@@ -24,7 +25,7 @@ RSpec.describe Formula do
       f = formula "foo" do
         url "foo-1.0"
 
-        uses_from_macos "foo", since: :mojave
+        uses_from_macos "foo", since: :sequoia
       end
 
       expect(f.class.stable.deps.first.name).to eq("foo")

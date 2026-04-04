@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "tab"
@@ -33,6 +34,12 @@ RSpec.describe Tab do
   matcher :be_loaded_from_api do
     match do |actual|
       actual.loaded_from_api == true
+    end
+  end
+
+  matcher :be_loaded_from_internal_api do
+    match do |actual|
+      actual.loaded_from_internal_api == true
     end
   end
 
@@ -88,6 +95,7 @@ RSpec.describe Tab do
     expect(tab).not_to be_installed_as_dependency
     expect(tab).not_to be_installed_on_request
     expect(tab).not_to be_loaded_from_api
+    expect(tab).not_to be_loaded_from_internal_api
     expect(tab).to be_stable
     expect(tab).not_to be_head
     expect(tab.tap).to be_nil
@@ -105,7 +113,7 @@ RSpec.describe Tab do
     expect(tab).to include("without-bar")
   end
 
-  specify "#with?" do
+  specify "#with?" do # rubocop:todo RSpec/AggregateExamples
     expect(tab).to be_built_with("foo")
     expect(tab).to be_built_with("qux")
     expect(tab).not_to be_built_with("bar")
@@ -218,14 +226,38 @@ RSpec.describe Tab do
       ]
       expect(described_class.runtime_deps_hash(formula, formula_recursive_deps)).to eq(expected_output)
     end
+
+    it "includes compatibility_version when set" do
+      foo = formula("foo") do
+        url "foo-1.0"
+        compatibility_version 1
+      end
+      stub_formula_loader foo
+
+      formula_declared_deps = [Dependency.new("foo")]
+      formula_recursive_deps = [Dependency.new("foo")]
+      formula = instance_double(Formula, deps: formula_declared_deps)
+
+      expected_output = [
+        {
+          "full_name"             => "foo",
+          "version"               => "1.0",
+          "revision"              => 0,
+          "pkg_version"           => "1.0",
+          "declared_directly"     => true,
+          "compatibility_version" => 1,
+        },
+      ]
+      expect(described_class.runtime_deps_hash(formula, formula_recursive_deps)).to eq(expected_output)
+    end
   end
 
-  specify "#cxxstdlib" do
+  specify "#cxxstdlib" do # rubocop:todo RSpec/AggregateExamples
     expect(tab.cxxstdlib.compiler).to eq(:clang)
     expect(tab.cxxstdlib.type).to eq(:libcxx)
   end
 
-  specify "other attributes" do
+  specify "other attributes" do # rubocop:todo RSpec/AggregateExamples
     expect(tab.tap.name).to eq("homebrew/core")
     expect(tab.time).to eq(time)
     expect(tab).not_to be_built_as_bottle
@@ -233,6 +265,7 @@ RSpec.describe Tab do
     expect(tab).not_to be_installed_as_dependency
     expect(tab).to be_installed_on_request
     expect(tab).not_to be_loaded_from_api
+    expect(tab).not_to be_loaded_from_internal_api
   end
 
   describe "::from_file" do
@@ -241,7 +274,7 @@ RSpec.describe Tab do
       tab = described_class.from_file(path)
       source_path = "/usr/local/Library/Taps/homebrew/homebrew-core/Formula/foo.rb"
       runtime_dependencies = [{ "full_name" => "foo", "version" => "1.0" }]
-      changed_files = %w[INSTALL_RECEIPT.json bin/foo]
+      changed_files = %w[INSTALL_RECEIPT.json bin/foo].map { Pathname.new(it) }
 
       expect(tab.used_options.sort).to eq(used_options.sort)
       expect(tab.unused_options.sort).to eq(unused_options.sort)
@@ -251,6 +284,7 @@ RSpec.describe Tab do
       expect(tab).not_to be_installed_as_dependency
       expect(tab).to be_installed_on_request
       expect(tab).not_to be_loaded_from_api
+      expect(tab).not_to be_loaded_from_internal_api
       expect(tab).to be_stable
       expect(tab).not_to be_head
       expect(tab.tap.name).to eq("homebrew/core")
@@ -271,7 +305,7 @@ RSpec.describe Tab do
       tab = described_class.from_file_content(path.read, path)
       source_path = "/usr/local/Library/Taps/homebrew/homebrew-core/Formula/foo.rb"
       runtime_dependencies = [{ "full_name" => "foo", "version" => "1.0" }]
-      changed_files = %w[INSTALL_RECEIPT.json bin/foo]
+      changed_files = %w[INSTALL_RECEIPT.json bin/foo].map { Pathname.new(it) }
 
       expect(tab.used_options.sort).to eq(used_options.sort)
       expect(tab.unused_options.sort).to eq(unused_options.sort)
@@ -281,6 +315,7 @@ RSpec.describe Tab do
       expect(tab).not_to be_installed_as_dependency
       expect(tab).to be_installed_on_request
       expect(tab).not_to be_loaded_from_api
+      expect(tab).not_to be_loaded_from_internal_api
       expect(tab).to be_stable
       expect(tab).not_to be_head
       expect(tab.tap.name).to eq("homebrew/core")
@@ -305,6 +340,7 @@ RSpec.describe Tab do
       expect(tab).not_to be_installed_as_dependency
       expect(tab).not_to be_installed_on_request
       expect(tab).not_to be_loaded_from_api
+      expect(tab).not_to be_loaded_from_internal_api
       expect(tab).to be_stable
       expect(tab).not_to be_head
       expect(tab.tap.name).to eq("homebrew/core")
@@ -486,10 +522,11 @@ RSpec.describe Tab do
 
     it "returns install information for the Tab" do
       tab = described_class.new(
-        poured_from_bottle: true,
-        loaded_from_api:    true,
-        time:               1_720_189_863,
-        used_options:       %w[--with-foo --without-bar],
+        poured_from_bottle:       true,
+        loaded_from_api:          true,
+        loaded_from_internal_api: false,
+        time:                     1_720_189_863,
+        used_options:             %w[--with-foo --without-bar],
       )
       output = "Poured from bottle using the formulae.brew.sh API on #{time_string} " \
                "with: --with-foo --without-bar"
@@ -511,9 +548,19 @@ RSpec.describe Tab do
       expect(tab.to_s).to include("using the formulae.brew.sh API")
     end
 
+    it "includes 'using the internal formulae.brew.sh API' if the formula was installed from the internal API" do
+      tab = described_class.new(loaded_from_api: true, loaded_from_internal_api: true)
+      expect(tab.to_s).to include("using the internal formulae.brew.sh API")
+    end
+
     it "does not include 'using the formulae.brew.sh API' if the formula was not installed from the API" do
       tab = described_class.new(loaded_from_api: false)
       expect(tab.to_s).not_to include("using the formulae.brew.sh API")
+    end
+
+    it "doesn't include 'using the internal formulae.brew.sh API' if the formula wasn't installed via internal API" do
+      tab = described_class.new(loaded_from_api: true, loaded_from_internal_api: false)
+      expect(tab.to_s).not_to include("using the internal formulae.brew.sh API")
     end
 
     it "includes the time value if specified" do

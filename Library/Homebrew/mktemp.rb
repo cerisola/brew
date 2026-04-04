@@ -1,10 +1,14 @@
 # typed: strict
 # frozen_string_literal: true
 
+require "utils/output"
+
 # Performs {Formula#mktemp}'s functionality and tracks the results.
 # Each instance is only intended to be used once.
 # Can also be used to create a temporary directory with the brew instance's group.
 class Mktemp
+  include Utils::Output::Mixin
+
   # Path to the tmpdir used in this run
   sig { returns(T.nilable(Pathname)) }
   attr_reader :tmpdir
@@ -12,7 +16,7 @@ class Mktemp
   sig { params(prefix: String, retain: T::Boolean, retain_in_cache: T::Boolean).void }
   def initialize(prefix, retain: false, retain_in_cache: false)
     @prefix = prefix
-    @retain_in_cache = T.let(retain_in_cache, T::Boolean)
+    @retain_in_cache = retain_in_cache
     @retain = T.let(retain || @retain_in_cache, T::Boolean)
     @quiet = T.let(false, T::Boolean)
     @tmpdir = T.let(nil, T.nilable(Pathname))
@@ -47,7 +51,12 @@ class Mktemp
     "[Mktemp: #{tmpdir} retain=#{@retain} quiet=#{@quiet}]"
   end
 
-  sig { params(chdir: T::Boolean, _block: T.proc.params(arg0: Mktemp).void).void }
+  sig {
+    type_parameters(:U).params(
+      chdir:  T::Boolean,
+      _block: T.proc.params(arg0: Mktemp).returns(T.type_parameter(:U)),
+    ).returns(T.type_parameter(:U))
+  }
   def run(chdir: true, &_block)
     prefix_name = @prefix.tr "@", "AT"
     @tmpdir = if retain_in_cache?

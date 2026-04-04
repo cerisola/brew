@@ -12,7 +12,24 @@ source "${HOMEBREW_LIBRARY}/Homebrew/utils/ruby.sh"
 
 VENDOR_DIR="${HOMEBREW_LIBRARY}/Homebrew/vendor"
 
-# Built from https://github.com/cerisola/homebrew-portable-ruby.
+brew-rs-vendor-up-to-date() {
+  local brew_rs_source_dir="${HOMEBREW_LIBRARY}/Homebrew/rust/brew-rs"
+  local vendor_root="${VENDOR_DIR}/brew-rs"
+  local vendor_binary="${vendor_root}/bin/brew-rs"
+  local cargo_lock_path="${brew_rs_source_dir}/Cargo.lock"
+
+  if [[ -x "${vendor_root}/brew-rs" &&
+        -x "${vendor_binary}" &&
+     "${brew_rs_source_dir}/Cargo.toml" -ot "${vendor_binary}" &&
+     (! -f "${cargo_lock_path}" || "${cargo_lock_path}" -ot "${vendor_binary}") &&
+        -z "$(find "${brew_rs_source_dir}/src" -type f -newer "${vendor_binary}" -print -quit)" ]]
+  then
+    return 0
+  fi
+
+  return 1
+}
+
 set_ruby_variables() {
   # Handle the case where /usr/local/bin/brew is run under arm64.
   # It's a x86_64 installation there (we refuse to install arm64 binaries) so
@@ -48,7 +65,7 @@ set_ruby_variables() {
     ruby_URLs=()
     if [[ -n "${HOMEBREW_ARTIFACT_DOMAIN}" ]]
     then
-      ruby_URLs+=("${HOMEBREW_ARTIFACT_DOMAIN}/v2/homebrew/portable-ruby/portable-ruby/blobs/sha256:${ruby_SHA}")
+      ruby_URLs+=("${HOMEBREW_ARTIFACT_DOMAIN}/v2/homebrew/core/portable-ruby/blobs/sha256:${ruby_SHA}")
       if [[ -n "${HOMEBREW_ARTIFACT_DOMAIN_NO_FALLBACK}" ]]
       then
         ruby_URL="${ruby_URLs[0]}"
@@ -57,11 +74,10 @@ set_ruby_variables() {
     fi
     if [[ -n "${HOMEBREW_BOTTLE_DOMAIN}" ]]
     then
-      ruby_URLs+=("${HOMEBREW_BOTTLE_DOMAIN}/bottles-portable-ruby/${ruby_FILENAME}")
+      ruby_URLs+=("${HOMEBREW_BOTTLE_DOMAIN}/${ruby_FILENAME}")
     fi
     ruby_URLs+=(
-      "https://ghcr.io/v2/homebrew/portable-ruby/portable-ruby/blobs/sha256:${ruby_SHA}"
-      "https://github.com/Homebrew/homebrew-portable-ruby/releases/download/${HOMEBREW_PORTABLE_RUBY_VERSION}/${ruby_FILENAME}"
+      "https://ghcr.io/v2/homebrew/core/portable-ruby/blobs/sha256:${ruby_SHA}"
     )
     ruby_URL="${ruby_URLs[0]}"
   fi
@@ -101,6 +117,7 @@ fetch() {
   local first_try=1
   local vendor_locations
   local temporary_path
+  local curl_exit_code=0
 
   curl_args=()
 
@@ -121,8 +138,13 @@ fetch() {
     --remote-time
     --location
     --user-agent "${HOMEBREW_USER_AGENT_CURL}"
-    --header "Authorization: ${HOMEBREW_GITHUB_PACKAGES_AUTH}"
   )
+
+  if [[ -n "${HOMEBREW_GITHUB_PACKAGES_AUTH}" ]]
+  then
+    curl_args[${#curl_args[*]}]="--header"
+    curl_args[${#curl_args[*]}]="Authorization: ${HOMEBREW_GITHUB_PACKAGES_AUTH}"
+  fi
 
   if [[ -n "${HOMEBREW_QUIET}" ]]
   then
@@ -149,18 +171,26 @@ fetch() {
         # HOMEBREW_CURL is set by brew.sh (and isn't misspelt here)
         # shellcheck disable=SC2153
         "${HOMEBREW_CURL}" "${curl_args[@]}" -C - "${url}" -o "${temporary_path}"
-        if [[ $? -eq 33 ]]
+        curl_exit_code="$?"
+        if [[ "${curl_exit_code}" -eq 33 ]]
         then
           [[ -n "${HOMEBREW_QUIET}" ]] || echo "Trying a full download" >&2
           rm -f "${temporary_path}"
           "${HOMEBREW_CURL}" "${curl_args[@]}" "${url}" -o "${temporary_path}"
+          curl_exit_code="$?"
         fi
       else
         "${HOMEBREW_CURL}" "${curl_args[@]}" "${url}" -o "${temporary_path}"
+        curl_exit_code="$?"
       fi
 
       [[ -f "${temporary_path}" ]] && break
     done
+
+    if [[ "${curl_exit_code}" -ne 0 ]]
+    then
+      rm -f "${temporary_path}"
+    fi
 
     if [[ ! -f "${temporary_path}" ]]
     then
@@ -279,6 +309,10 @@ homebrew-vendor-install() {
   local option
   local url_var
   local sha_var
+  local cargo_lock_path
+  local cargo_path
+  local vendor_binary
+  local vendor_root
 
   unset VENDOR_PHYSICAL_PROCESSOR
   unset VENDOR_PROCESSOR
@@ -323,6 +357,35 @@ homebrew-vendor-install() {
 
   [[ -z "${VENDOR_NAME}" ]] && odie "This command requires a vendor target!"
   [[ -n "${HOMEBREW_DEBUG}" ]] && set -x
+
+  if [[ "${VENDOR_NAME}" == "brew-rs" ]]
+  then
+    [[ -n "${HOMEBREW_DEVELOPER:-}" && -n "${HOMEBREW_EXPERIMENTAL_RUST_FRONTEND:-}" ]] ||
+      odie "brew-rs vendor-install requires HOMEBREW_DEVELOPER=1 and HOMEBREW_EXPERIMENTAL_RUST_FRONTEND=1."
+
+    cargo_path="$(PATH="${HOMEBREW_PATH:-${PATH}}" command -v cargo)"
+    [[ -x "${cargo_path}" ]] || odie "brew-rs vendor-install requires 'cargo' from the 'rust' formula."
+
+    brew_rs_source_dir="${HOMEBREW_LIBRARY}/Homebrew/rust/brew-rs"
+    vendor_root="${VENDOR_DIR}/brew-rs"
+    if brew-rs-vendor-up-to-date
+    then
+      return 0
+    fi
+
+    lock "vendor-install ${VENDOR_NAME}"
+
+    if brew-rs-vendor-up-to-date
+    then
+      return 0
+    fi
+
+    [[ -n "${HOMEBREW_QUIET}" ]] || ohai "Building brew-rs" >&2
+    PATH="${HOMEBREW_PATH:-${PATH}}" "${cargo_path}" install --path "${brew_rs_source_dir}" --locked --force --root "${vendor_root}" \
+      2> >(grep -Fv "be sure to add" >&2) || odie "Failed to build brew-rs!"
+    ln -sfn "bin/brew-rs" "${vendor_root}/brew-rs"
+    return 0
+  fi
 
   if [[ -z "${VENDOR_PHYSICAL_PROCESSOR}" ]]
   then

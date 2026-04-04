@@ -19,7 +19,7 @@ class Object
   end
 end
 
-class Array
+class Array # rubocop:todo Style/OneClassPerFile
   # Returns a deep copy of array.
   #
   #   array = [1, [2, 3]]
@@ -34,7 +34,7 @@ class Array
   end
 end
 
-class Hash
+class Hash # rubocop:todo Style/OneClassPerFile
   # Returns a deep copy of hash.
   #
   #   hash = { a: { b: 'b' } }
@@ -59,7 +59,7 @@ class Hash
   end
 end
 
-class Module
+class Module # rubocop:todo Style/OneClassPerFile
   # Returns a copy of module or class if it's anonymous. If it's
   # named, returns +self+.
   #

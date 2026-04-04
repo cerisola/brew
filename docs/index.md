@@ -14,8 +14,10 @@ last_review_date: "2025-02-08"
 - [FAQ (Frequently Asked Questions)](FAQ.md)
 - [Common Issues](Common-Issues.md)
 - [`brew` Shell Completion](Shell-Completion.md)
+- [Command Not Found](Command-Not-Found.md)
 - [Homebrew on Linux](Homebrew-on-Linux.md)
 - [Homebrew Bundle, `brew bundle` and `Brewfile`](Brew-Bundle-and-Brewfile.md)
+- [Homebrew MCP Server](MCP-Server.md)
 
 - [Bottles (binary packages)](Bottles.md)
 - [Taps (third-party repositories)](Taps.md)
@@ -52,6 +54,7 @@ last_review_date: "2025-02-08"
 - [Node for Formula Authors](Node-for-Formula-Authors.md)
 - [Python for Formula Authors](Python-for-Formula-Authors.md)
 - [`brew livecheck`](Brew-Livecheck.md)
+- [Autobump](Autobump.md)
 - [Migrating a Formula to a Tap](Migrating-A-Formula-To-A-Tap.md)
 - [Renaming a Formula](Rename-A-Formula.md)
 - [Building Against Non-Homebrew Dependencies](Building-Against-Non-Homebrew-Dependencies.md)
@@ -61,7 +64,7 @@ last_review_date: "2025-02-08"
 - [Type Checking with Sorbet](Typechecking.md)
 - [Reproducible Builds](Reproducible-Builds.md)
 
-- [Ruby API Documentation](https://rubydoc.brew.sh) (e.g. for `Formula` etc.)
+- [Ruby API Documentation](/rubydoc/index.html) (e.g. for `Formula` etc.)
 
 ## Maintainers
 
@@ -82,3 +85,6 @@ last_review_date: "2025-02-08"
 - [Homebrew Governance](Homebrew-Governance.md)
 - [Homebrew Leadership Responsibilities](Homebrew-Leadership-Responsibilities.md)
 - [Homebrew Governance Archives](Homebrew-Governance-Archives.md)
+- [Homebrew's Expense and Reimbursement Policy](Expense-and-Reimbursement-Policy.md)
+- [How To Organise the Homebrew AGM](How-To-Organise-the-AGM.md)
+- [Homebrew's Maintainer Stipends and Grants](Maintainer-Stipends-and-Grants.md)

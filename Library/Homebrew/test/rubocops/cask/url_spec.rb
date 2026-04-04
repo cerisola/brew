@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "rubocops/rubocop-cask"
@@ -178,6 +179,64 @@ RSpec.describe RuboCop::Cop::Cask::Url, :config do
       cask "foo" do
         url "https://github.com/Foo/foo/releases/download/v1.2.0/foo-v1.2.0.dmg",
             verified: "github.com/Foo/foo/"
+      end
+    CASK
+  end
+
+  it "reports an offense for an http:// URL in homebrew-cask" do
+    expect_offense <<~CASK, "/homebrew-cask/Casks/f/foo.rb"
+      cask "foo" do
+        url "http://example.com/download/foo-v1.2.0.dmg"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Casks in homebrew/cask should not use http:// URLs
+      end
+    CASK
+  end
+
+  it "autocorrects http:// to https:// in homebrew-cask" do
+    expect_offense <<~CASK, "/homebrew-cask/Casks/f/foo.rb"
+      cask "foo" do
+        url "http://example.com/download/foo-v1.2.0.dmg"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Casks in homebrew/cask should not use http:// URLs
+      end
+    CASK
+
+    expect_correction <<~CASK
+      cask "foo" do
+        url "https://example.com/download/foo-v1.2.0.dmg"
+      end
+    CASK
+  end
+
+  it "reports no offense for http:// URL outside homebrew-cask" do
+    expect_no_offenses <<~CASK, "/homebrew-mytap/Casks/f/foo.rb"
+      cask "foo" do
+        url "http://example.com/download/foo-v1.2.0.dmg"
+      end
+    CASK
+  end
+
+  it "reports no offense for an https:// URL" do
+    expect_no_offenses <<~CASK
+      cask "foo" do
+        url "https://example.com/download/foo-v1.2.0.dmg"
+      end
+    CASK
+  end
+
+  it "reports no offense for deprecated casks" do
+    expect_no_offenses <<~CASK, "/homebrew-cask/Casks/f/foo.rb"
+      cask "foo" do
+        url "http://example.com/download/foo-v1.2.0.dmg"
+        deprecate! date: "2024-01-01", because: :unmaintained
+      end
+    CASK
+  end
+
+  it "reports no offense for disabled casks" do
+    expect_no_offenses <<~CASK, "/homebrew-cask/Casks/f/foo.rb"
+      cask "foo" do
+        url "http://example.com/download/foo-v1.2.0.dmg"
+        disable! date: "2024-01-01", because: :unmaintained
       end
     CASK
   end

@@ -54,10 +54,20 @@ module Homebrew
 
         kegs.freeze.each do |keg|
           keg_only = Formulary.keg_only?(keg.rack)
+          formula = begin
+            keg.to_formula
+          rescue FormulaUnavailableError
+            # Not all kegs may belong to current formulae
+            nil
+          end
+          versioned_keg_only_formula = formula.present? && formula.keg_only_reason&.versioned_formula?
 
           if keg.linked?
             opoo "Already linked: #{keg}"
-            name_and_flag = "#{"--HEAD " if args.HEAD?}#{"--force " if keg_only}#{keg.name}"
+            name_and_flag = +""
+            name_and_flag << "--HEAD " if args.HEAD?
+            name_and_flag << "--force " if keg_only && !versioned_keg_only_formula
+            name_and_flag << keg.name
             puts <<~EOS
               To relink, run:
                 brew unlink #{keg.name} && brew link #{name_and_flag}
@@ -72,15 +82,8 @@ module Homebrew
               puts "Would link:"
             end
             keg.link(**options)
-            puts_keg_only_path_message(keg) if keg_only
+            puts_keg_only_path_message(keg) if keg_only && !versioned_keg_only_formula
             next
-          end
-
-          formula = begin
-            keg.to_formula
-          rescue FormulaUnavailableError
-            # Not all kegs may belong to formulae
-            nil
           end
 
           if keg_only
@@ -94,14 +97,14 @@ module Homebrew
               next
             end
 
-            if !args.force? && (formula.blank? || !formula.keg_only_reason.versioned_formula?)
+            if !args.force? && (formula.nil? || !formula.keg_only_reason.versioned_formula?)
               opoo "#{keg.name} is keg-only and must be linked with `--force`."
               puts_keg_only_path_message(keg)
               next
             end
           end
 
-          Unlink.unlink_versioned_formulae(formula, verbose: args.verbose?) if formula
+          Unlink.unlink_link_overwrite_formulae(formula, verbose: args.verbose?) if formula
 
           keg.lock do
             print "Linking #{keg}... "
@@ -116,7 +119,9 @@ module Homebrew
               puts "#{n} symlinks created."
             end
 
-            puts_keg_only_path_message(keg) if keg_only && !Homebrew::EnvConfig.developer?
+            if keg_only && !versioned_keg_only_formula && !Homebrew::EnvConfig.developer?
+              puts_keg_only_path_message(keg)
+            end
           end
         end
       end

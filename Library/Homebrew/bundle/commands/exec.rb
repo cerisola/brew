@@ -1,4 +1,4 @@
-# typed: false # rubocop:todo Sorbet/TrueSigil
+# typed: true
 # frozen_string_literal: true
 
 require "English"
@@ -6,14 +6,36 @@ require "exceptions"
 require "extend/ENV"
 require "utils"
 require "PATH"
+require "utils/output"
 
 module Homebrew
   module Bundle
     module Commands
       module Exec
+        extend Utils::Output::Mixin
+
         PATH_LIKE_ENV_REGEX = /.+#{File::PATH_SEPARATOR}/
 
-        def self.run(*args, global: false, file: nil, subcommand: "", services: false, check: false)
+        sig {
+          params(
+            args:       String,
+            global:     T::Boolean,
+            file:       T.nilable(String),
+            subcommand: String,
+            services:   T::Boolean,
+            check:      T::Boolean,
+            no_secrets: T::Boolean,
+          ).void
+        }
+        def self.run(
+          *args,
+          global: false,
+          file: nil,
+          subcommand: "",
+          services: false,
+          check: false,
+          no_secrets: false
+        )
           if check
             require "bundle/commands/check"
             Homebrew::Bundle::Commands::Check.run(global:, file:, quiet: true)
@@ -22,12 +44,13 @@ module Homebrew
           # Store the old environment so we can check if things were already set
           # before we start mutating it.
           old_env = ENV.to_h
+          ENV.clear_sensitive_environment! if no_secrets
 
           # Setup Homebrew's ENV extensions
           ENV.activate_extensions!
-          raise UsageError, "No command to execute was specified!" if args.blank?
 
           command = args.first
+          raise UsageError, "No command to execute was specified!" if command.blank?
 
           require "bundle/brewfile"
           @dsl = Brewfile.read(global:, file:)
@@ -54,6 +77,9 @@ module Homebrew
           # Enable compiler flag filtering
           ENV.refurbish_args
 
+          # Add variable to detect being inside a `brew bundle exec` environment
+          ENV["HOMEBREW_INSIDE_BUNDLE"] = "1"
+
           # Set up `nodenv`, `pyenv` and `rbenv` if present.
           env_formulae = %w[nodenv pyenv rbenv]
           ENV.deps.each do |dep|
@@ -64,14 +90,8 @@ module Homebrew
             ENV.prepend_path "PATH", Pathname.new(dep_root)/"shims"
           end
 
-          # Setup pkg-config, if present, to help locate packages
-          # Only need this on Linux as Homebrew provides a shim on macOS
-          # TODO: use extend/OS here
-          # rubocop:todo Homebrew/MoveToExtendOS
-          if OS.linux? && (pkgconf = Formulary.factory("pkgconf")) && pkgconf.any_version_installed?
-            ENV.prepend_path "PATH", pkgconf.opt_bin.to_s
-          end
-          # rubocop:enable Homebrew/MoveToExtendOS
+          # Setup pkgconf, if needed, to help locate packages
+          Bundle.prepend_pkgconf_path_if_needed!
 
           # For commands which aren't either absolute or relative
           # Add the command directory to PATH, since it may get blown away by superenv
@@ -170,15 +190,29 @@ module Homebrew
               end
             end
             return
+          elsif subcommand == "sh"
+            preferred_path = Utils::Shell.preferred_path(default: "/bin/bash")
+            notice = unless Homebrew::EnvConfig.no_env_hints?
+              <<~EOS
+                Your shell has been configured to use a build environment from your `Brewfile`.
+                This should help you build stuff.
+                Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).
+                When done, type `exit`.
+              EOS
+            end
+            ENV["HOMEBREW_FORCE_API_AUTO_UPDATE"] = nil
+            args = [Utils::Shell.shell_with_prompt("brew bundle", preferred_path:, notice:)]
           end
 
           if services
             require "bundle/brew_services"
 
-            exit_code = 0
+            exit_code = T.let(0, Integer)
             run_services(@dsl.entries) do
               Kernel.system(*args)
-              exit_code = $CHILD_STATUS.exitstatus
+              if (system_exit_code = $CHILD_STATUS&.exitstatus)
+                exit_code = system_exit_code
+              end
             end
             exit!(exit_code)
           else
@@ -191,7 +225,7 @@ module Homebrew
             entries: T::Array[Homebrew::Bundle::Dsl::Entry],
             _block:  T.proc.params(
               entry:                Homebrew::Bundle::Dsl::Entry,
-              info:                 T::Hash[String, T.anything],
+              info:                 T::Hash[String, T.untyped],
               service_file:         Pathname,
               conflicting_services: T::Array[T::Hash[String, T.anything]],
             ).void,
@@ -235,7 +269,7 @@ module Homebrew
           )
 
           entries_formulae.filter_map do |entry, formula|
-            service_file = Bundle::BrewServices.versioned_service_file(entry.name)
+            service_file = Bundle::Brew::Services.versioned_service_file(entry.name)
 
             unless service_file&.file?
               prefix = formula.any_installed_prefix
@@ -271,21 +305,21 @@ module Homebrew
           map_service_info(entries) do |entry, info, service_file, conflicting_services|
             # Don't restart if already running this version
             loaded_file = Pathname.new(info["loaded_file"].to_s)
-            next if info["running"] && loaded_file&.file? && loaded_file&.realpath == service_file.realpath
+            next if info["running"] && loaded_file.file? && loaded_file.realpath == service_file.realpath
 
-            if info["running"] && !Bundle::BrewServices.stop(info["name"], keep: true)
+            if info["running"] && !Bundle::Brew::Services.stop(info["name"], keep: true)
               opoo "Failed to stop #{info["name"]} service"
             end
 
             conflicting_services.each do |conflict|
-              if Bundle::BrewServices.stop(conflict["name"], keep: true)
+              if Bundle::Brew::Services.stop(conflict["name"], keep: true)
                 services_to_restart << conflict["name"] if conflict["registered"]
               else
                 opoo "Failed to stop #{conflict["name"]} service"
               end
             end
 
-            unless Bundle::BrewServices.run(info["name"], file: service_file)
+            unless Bundle::Brew::Services.run(info["name"], file: service_file)
               opoo "Failed to start #{info["name"]} service"
             end
 
@@ -301,7 +335,7 @@ module Homebrew
             stop_services(entries_to_stop)
 
             services_to_restart.each do |service|
-              next if Bundle::BrewServices.run(service)
+              next if Bundle::Brew::Services.run(service)
 
               opoo "Failed to restart #{service} service"
             end
@@ -316,7 +350,7 @@ module Homebrew
             # Try avoid services not started by `brew bundle services`
             next if Homebrew::Services::System.launchctl? && info["registered"]
 
-            if info["running"] && !Bundle::BrewServices.stop(info["name"], keep: true)
+            if info["running"] && !Bundle::Brew::Services.stop(info["name"], keep: true)
               opoo "Failed to stop #{info["name"]} service"
             end
           end

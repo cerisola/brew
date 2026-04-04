@@ -35,6 +35,7 @@ module Homebrew
                description: "Use Debian Wheezy container for building the bottle on Linux."
 
         conflicts "--linux", "--linux-self-hosted"
+
         named_args :formula, min: 1
       end
 
@@ -42,7 +43,7 @@ module Homebrew
       def run
         tap = Tap.fetch(args.tap || CoreTap.instance.name)
         user, repo = tap.full_name.split("/")
-        ref = "master"
+        ref = "main"
         workflow = args.workflow || "dispatch-build-bottle.yml"
 
         runners = []
@@ -67,12 +68,12 @@ module Homebrew
         end
 
         if args.linux?
-          runners << "ubuntu-22.04"
+          runners << "ubuntu-latest"
         elsif args.linux_self_hosted?
           runners << "linux-self-hosted-1"
         end
 
-        runners << "ubuntu-22.04-arm" if args.linux_arm64?
+        runners << OS::LINUX_CI_ARM_RUNNER if args.linux_arm64?
 
         if runners.empty?
           raise UsageError, "Must specify `--macos`, `--linux`, `--linux-arm64`, or `--linux-self-hosted` option."

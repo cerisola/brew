@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "rubocops/lines"
@@ -11,7 +12,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
         class Foo < Formula
           desc "foo"
           if OS.linux?
-          ^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `if OS.linux?`, use `on_linux do` instead.
+          ^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of `if OS.linux?`, use `on_linux do`.
             url 'https://brew.sh/linux-1.0.tgz'
           else
             url 'https://brew.sh/linux-1.0.tgz'
@@ -37,7 +38,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
         class Foo < Formula
           desc "foo"
           if OS.mac?
-          ^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `if OS.mac?`, use `on_macos do` instead.
+          ^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of `if OS.mac?`, use `on_macos do`.
             url 'https://brew.sh/mac-1.0.tgz'
           else
             url 'https://brew.sh/linux-1.0.tgz'
@@ -66,7 +67,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           def install
             on_macos do
-            ^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_macos` in `def install`, use `if OS.mac?` instead.
+            ^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_macos` in `def install`, use `if OS.mac?`.
               true
             end
           end
@@ -95,7 +96,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           def install
             on_linux do
-            ^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_linux` in `def install`, use `if OS.linux?` instead.
+            ^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_linux` in `def install`, use `if OS.linux?`.
               true
             end
           end
@@ -124,7 +125,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           test do
             on_macos do
-            ^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_macos` in `test do`, use `if OS.mac?` instead.
+            ^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_macos` in `test do`, use `if OS.mac?`.
               true
             end
           end
@@ -152,7 +153,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
         class Foo < Formula
           desc "foo"
           if Hardware::CPU.arm?
-          ^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `if Hardware::CPU.arm?`, use `on_arm do` instead.
+          ^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of `if Hardware::CPU.arm?`, use `on_arm do`.
             url 'https://brew.sh/linux-1.0.tgz'
           else
             url 'https://brew.sh/linux-1.0.tgz'
@@ -178,7 +179,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
         class Foo < Formula
           desc "foo"
           if Hardware::CPU.intel?
-          ^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `if Hardware::CPU.intel?`, use `on_intel do` instead.
+          ^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of `if Hardware::CPU.intel?`, use `on_intel do`.
             url 'https://brew.sh/mac-1.0.tgz'
           else
             url 'https://brew.sh/linux-1.0.tgz'
@@ -207,7 +208,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           def install
             on_intel do
-            ^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_intel` in `def install`, use `if Hardware::CPU.intel?` instead.
+            ^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_intel` in `def install`, use `if Hardware::CPU.intel?`.
               true
             end
           end
@@ -236,7 +237,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           def install
             on_arm do
-            ^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_arm` in `def install`, use `if Hardware::CPU.arm?` instead.
+            ^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_arm` in `def install`, use `if Hardware::CPU.arm?`.
               true
             end
           end
@@ -265,7 +266,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           test do
             on_intel do
-            ^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_intel` in `test do`, use `if Hardware::CPU.intel?` instead.
+            ^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_intel` in `test do`, use `if Hardware::CPU.intel?`.
               true
             end
           end
@@ -293,7 +294,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
         class Foo < Formula
           desc "foo"
           if MacOS.version == :monterey
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `if MacOS.version == :monterey`, use `on_monterey do` instead.
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of `if MacOS.version == :monterey`, use `on_monterey do`.
             url 'https://brew.sh/linux-1.0.tgz'
           end
         end
@@ -314,7 +315,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
         class Foo < Formula
           desc "foo"
           if MacOS.version <= :monterey
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `if MacOS.version <= :monterey`, use `on_system :linux, macos: :monterey_or_older do` instead.
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of `if MacOS.version <= :monterey`, use `on_system :linux, macos: :monterey_or_older do`.
             url 'https://brew.sh/mac-1.0.tgz'
           end
         end
@@ -335,7 +336,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
         class Foo < Formula
           desc "foo"
           if MacOS.version < :monterey
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `if MacOS.version < :monterey`, use `on_system do` instead.
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of `if MacOS.version < :monterey`, use `on_system do`.
             url 'https://brew.sh/mac-1.0.tgz'
           end
         end
@@ -347,7 +348,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
         class Foo < Formula
           desc "foo"
           if MacOS.version >= :monterey
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `if MacOS.version >= :monterey`, use `on_monterey :or_newer do` instead.
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of `if MacOS.version >= :monterey`, use `on_monterey :or_newer do`.
             url 'https://brew.sh/mac-1.0.tgz'
           else
             url 'https://brew.sh/linux-1.0.tgz'
@@ -361,7 +362,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
         class Foo < Formula
           desc "foo"
           if MacOS.version > :monterey
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `if MacOS.version > :monterey`, use `on_monterey do` instead.
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of `if MacOS.version > :monterey`, use `on_monterey do`.
             url 'https://brew.sh/mac-1.0.tgz'
           end
         end
@@ -376,7 +377,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           def install
             on_monterey do
-            ^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_monterey` in `def install`, use `if MacOS.version == :monterey` instead.
+            ^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_monterey` in `def install`, use `if MacOS.version == :monterey`.
               true
             end
           end
@@ -405,7 +406,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           def install
             on_monterey :or_older do
-            ^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_monterey :or_older` in `def install`, use `if MacOS.version <= :monterey` instead.
+            ^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_monterey :or_older` in `def install`, use `if MacOS.version <= :monterey`.
               true
             end
           end
@@ -434,7 +435,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           def install
             on_monterey :or_newer do
-            ^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_monterey :or_newer` in `def install`, use `if MacOS.version >= :monterey` instead.
+            ^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_monterey :or_newer` in `def install`, use `if MacOS.version >= :monterey`.
               true
             end
           end
@@ -463,7 +464,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           def install
             on_system :linux, macos: :monterey_or_newer do
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_system :linux, macos: :monterey_or_newer` in `def install`, use `if OS.linux? || MacOS.version >= :monterey` instead.
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_system :linux, macos: :monterey_or_newer` in `def install`, use `if OS.linux? || MacOS.version >= :monterey`.
               true
             end
           end
@@ -492,7 +493,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           test do
             on_monterey do
-            ^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_monterey` in `test do`, use `if MacOS.version == :monterey` instead.
+            ^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_monterey` in `test do`, use `if MacOS.version == :monterey`.
               true
             end
           end
@@ -521,7 +522,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::OnSystemConditionals do
 
           test do
             on_system :linux, macos: :monterey do
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Don't use `on_system :linux, macos: :monterey` in `test do`, use `if OS.linux? || MacOS.version == :monterey` instead.
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/OnSystemConditionals: Instead of using `on_system :linux, macos: :monterey` in `test do`, use `if OS.linux? || MacOS.version == :monterey`.
               true
             end
           end

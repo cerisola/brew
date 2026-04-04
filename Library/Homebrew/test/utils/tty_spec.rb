@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 RSpec.describe Tty do
@@ -12,7 +13,7 @@ RSpec.describe Tty do
       expect(described_class.width).to be_a(Integer)
     end
 
-    it "cannot be negative" do
+    it "cannot be negative" do # rubocop:todo RSpec/AggregateExamples
       expect(described_class.width).to be >= 0
     end
   end

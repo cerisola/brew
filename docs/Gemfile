@@ -4,15 +4,29 @@ source "https://rubygems.org"
 
 ruby file: ".ruby-version"
 
-gem "github-pages", group: :jekyll_plugins
+gem "jekyll"
 
-gem "csv"
-gem "faraday-retry"
-gem "logger"
+group :jekyll_plugins do
+  gem "jekyll-optional-front-matter"
+  gem "jekyll-redirect-from"
+  gem "jekyll-relative-links"
+  gem "jekyll-remote-theme"
+  gem "jekyll-seo-tag"
+  gem "jekyll-sitemap"
+  gem "jekyll-titles-from-headings"
+end
+
+gem "redcarpet"
+# Ruby 4.0 support: https://github.com/lsegal/yard/pull/1649
+gem "yard", github: "Bo98/yard", ref: "62a50d2fd54f2d23365b14553323c1f90b946d1f"
+gem "yard-sorbet"
+
+group :development do
+  gem "webrick"
+end
 
 group :test do
   gem "html-proofer"
   gem "mdl"
   gem "rake"
-  gem "webrick"
 end

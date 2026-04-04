@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "rubocops/urls"
@@ -7,12 +8,13 @@ RSpec.describe RuboCop::Cop::FormulaAudit::Urls do
 
   let(:offense_list) do
     [{
-      "url" => "https://ftpmirror.gnu.org/lightning/lightning-2.1.0.tar.gz",
-      "msg" => 'Please use "https://ftp.gnu.org/gnu/lightning/lightning-2.1.0.tar.gz" instead of https://ftpmirror.gnu.org/lightning/lightning-2.1.0.tar.gz.',
+      "url" => "https://ftp.gnu.org/lightning/lightning-2.1.0.tar.gz",
+      "msg" => "https://ftp.gnu.org/lightning/lightning-2.1.0.tar.gz should be: " \
+               "https://ftpmirror.gnu.org/gnu/lightning/lightning-2.1.0.tar.gz",
       "col" => 2,
     }, {
       "url" => "https://fossies.org/linux/privat/monit-5.23.0.tar.gz",
-      "msg" => "Please don't use fossies.org in the url (using as a mirror is fine)",
+      "msg" => "Please don't use \"fossies.org\" in the `url` (using as a mirror is fine)",
       "col" => 2,
     }, {
       "url" => "http://tools.ietf.org/tools/rfcmarkup/rfcmarkup-1.119.tgz",
@@ -20,23 +22,23 @@ RSpec.describe RuboCop::Cop::FormulaAudit::Urls do
       "col" => 2,
     }, {
       "url" => "https://apache.org/dyn/closer.cgi?path=/apr/apr-1.7.0.tar.bz2",
-      "msg" => "https://apache.org/dyn/closer.cgi?path=/apr/apr-1.7.0.tar.bz2 should be " \
-               "`https://www.apache.org/dyn/closer.lua?path=apr/apr-1.7.0.tar.bz2`",
+      "msg" => "https://apache.org/dyn/closer.cgi?path=/apr/apr-1.7.0.tar.bz2 should be: " \
+               "https://www.apache.org/dyn/closer.lua?path=apr/apr-1.7.0.tar.bz2",
       "col" => 2,
     }, {
       "url" => "http://search.mcpan.org/CPAN/authors/id/Z/ZE/ZEFRAM/Perl4-CoreLibs-0.003.tar.gz",
-      "msg" => "http://search.mcpan.org/CPAN/authors/id/Z/ZE/ZEFRAM/Perl4-CoreLibs-0.003.tar.gz should be " \
-               "`https://cpan.metacpan.org/authors/id/Z/ZE/ZEFRAM/Perl4-CoreLibs-0.003.tar.gz`",
+      "msg" => "http://search.mcpan.org/CPAN/authors/id/Z/ZE/ZEFRAM/Perl4-CoreLibs-0.003.tar.gz should be: " \
+               "https://cpan.metacpan.org/authors/id/Z/ZE/ZEFRAM/Perl4-CoreLibs-0.003.tar.gz",
       "col" => 2,
     }, {
       "url" => "http://ftp.gnome.org/pub/GNOME/binaries/mac/banshee/banshee-2.macosx.intel.dmg",
-      "msg" => "http://ftp.gnome.org/pub/GNOME/binaries/mac/banshee/banshee-2.macosx.intel.dmg should be " \
-               "`https://download.gnome.org/binaries/mac/banshee/banshee-2.macosx.intel.dmg`",
+      "msg" => "http://ftp.gnome.org/pub/GNOME/binaries/mac/banshee/banshee-2.macosx.intel.dmg should be: " \
+               "https://download.gnome.org/binaries/mac/banshee/banshee-2.macosx.intel.dmg",
       "col" => 2,
     }, {
       "url" => "git://anonscm.debian.org/users/foo/foostrap.git",
-      "msg" => "git://anonscm.debian.org/users/foo/foostrap.git should be " \
-               "`https://anonscm.debian.org/git/users/foo/foostrap.git`",
+      "msg" => "git://anonscm.debian.org/users/foo/foostrap.git should be: " \
+               "https://anonscm.debian.org/git/users/foo/foostrap.git",
       "col" => 2,
     }, {
       "url" => "ftp://ftp.mirrorservice.org/foo-1.tar.gz",
@@ -44,31 +46,31 @@ RSpec.describe RuboCop::Cop::FormulaAudit::Urls do
       "col" => 2,
     }, {
       "url" => "ftp://ftp.cpan.org/pub/CPAN/foo-1.tar.gz",
-      "msg" => "ftp://ftp.cpan.org/pub/CPAN/foo-1.tar.gz should be `http://search.cpan.org/CPAN/foo-1.tar.gz`",
+      "msg" => "ftp://ftp.cpan.org/pub/CPAN/foo-1.tar.gz should be: http://search.cpan.org/CPAN/foo-1.tar.gz",
       "col" => 2,
     }, {
       "url" => "http://sourceforge.net/projects/something/files/Something-1.2.3.dmg",
-      "msg" => "Use https://downloads.sourceforge.net to get geolocation (url is " \
+      "msg" => "Use \"https://downloads.sourceforge.net\" to get geolocation (`url` is " \
                "http://sourceforge.net/projects/something/files/Something-1.2.3.dmg).",
       "col" => 2,
     }, {
       "url" => "https://downloads.sourceforge.net/project/foo/download",
-      "msg" => "Don't use /download in SourceForge urls (url is " \
+      "msg" => "Don't use \"/download\" in SourceForge URLs (`url` is " \
                "https://downloads.sourceforge.net/project/foo/download).",
       "col" => 2,
     }, {
       "url" => "https://sourceforge.net/project/foo",
-      "msg" => "Use https://downloads.sourceforge.net to get geolocation " \
-               "(url is https://sourceforge.net/project/foo).",
+      "msg" => "Use \"https://downloads.sourceforge.net\" to get geolocation (`url` is " \
+               "https://sourceforge.net/project/foo).",
       "col" => 2,
     }, {
       "url" => "http://prdownloads.sourceforge.net/foo/foo-1.tar.gz",
-      "msg" => "Don't use prdownloads in SourceForge urls " \
-               "(url is http://prdownloads.sourceforge.net/foo/foo-1.tar.gz).",
+      "msg" => "Don't use \"prdownloads\" in SourceForge URLs (`url` is " \
+               "http://prdownloads.sourceforge.net/foo/foo-1.tar.gz).",
       "col" => 2,
     }, {
       "url" => "http://foo.dl.sourceforge.net/sourceforge/foozip/foozip_1.0.tar.bz2",
-      "msg" => "Don't use specific dl mirrors in SourceForge urls (url is " \
+      "msg" => "Don't use specific \"dl\" mirrors in SourceForge URLs (`url` is " \
                "http://foo.dl.sourceforge.net/sourceforge/foozip/foozip_1.0.tar.bz2).",
       "col" => 2,
     }, {
@@ -124,12 +126,12 @@ RSpec.describe RuboCop::Cop::FormulaAudit::Urls do
       "msg" => "Please use https:// for http://github.com/foo/foo5.git",
       "col" => 2,
     }, {
-      "url" => "https://github.com/foo/foobar/archive/master.zip",
+      "url" => "https://github.com/foo/foobar/archive/main.zip",
       "msg" => "Use versioned rather than branch tarballs for stable checksums.",
       "col" => 2,
     }, {
       "url" => "https://github.com/foo/bar/tarball/v1.2.3",
-      "msg" => "Use /archive/ URLs for GitHub tarballs (url is https://github.com/foo/bar/tarball/v1.2.3).",
+      "msg" => "Use /archive/ URLs for GitHub tarballs (`url` is https://github.com/foo/bar/tarball/v1.2.3).",
       "col" => 2,
     }, {
       "url" => "https://codeload.github.com/foo/bar/tar.gz/v0.1.1",
@@ -142,8 +144,8 @@ RSpec.describe RuboCop::Cop::FormulaAudit::Urls do
       "col" => 2,
     }, {
       "url" => "https://central.maven.org/maven2/com/bar/foo/1.1/foo-1.1.jar",
-      "msg" => "https://central.maven.org/maven2/com/bar/foo/1.1/foo-1.1.jar should be " \
-               "`https://search.maven.org/remotecontent?filepath=com/bar/foo/1.1/foo-1.1.jar`",
+      "msg" => "https://central.maven.org/maven2/com/bar/foo/1.1/foo-1.1.jar should be: " \
+               "https://search.maven.org/remotecontent?filepath=com/bar/foo/1.1/foo-1.1.jar",
       "col" => 2,
     }, {
       "url"         => "https://brew.sh/example-darwin.x86_64.tar.gz",
@@ -159,23 +161,31 @@ RSpec.describe RuboCop::Cop::FormulaAudit::Urls do
       "formula_tap" => "homebrew-core",
     }, {
       "url" => "cvs://brew.sh/foo/bar",
-      "msg" => "Use of the cvs:// scheme is deprecated, pass `:using => :cvs` instead",
+      "msg" => "Use of the \"cvs://\" scheme is deprecated, pass `using: :cvs` instead",
       "col" => 2,
     }, {
       "url" => "bzr://brew.sh/foo/bar",
-      "msg" => "Use of the bzr:// scheme is deprecated, pass `:using => :bzr` instead",
+      "msg" => "Use of the \"bzr://\" scheme is deprecated, pass `using: :bzr` instead",
       "col" => 2,
     }, {
       "url" => "hg://brew.sh/foo/bar",
-      "msg" => "Use of the hg:// scheme is deprecated, pass `:using => :hg` instead",
+      "msg" => "Use of the \"hg://\" scheme is deprecated, pass `using: :hg` instead",
       "col" => 2,
     }, {
       "url" => "fossil://brew.sh/foo/bar",
-      "msg" => "Use of the fossil:// scheme is deprecated, pass `:using => :fossil` instead",
+      "msg" => "Use of the \"fossil://\" scheme is deprecated, pass `using: :fossil` instead",
       "col" => 2,
     }, {
       "url" => "svn+http://brew.sh/foo/bar",
-      "msg" => "Use of the svn+http:// scheme is deprecated, pass `:using => :svn` instead",
+      "msg" => "Use of the \"svn+http://\" scheme is deprecated, pass `using: :svn` instead",
+      "col" => 2,
+    }, {
+      "url" => "https://🫠.sh/foo/bar",
+      "msg" => "Please use the ASCII (Punycode-encoded host, URL-encoded path and query) version of https://🫠.sh/foo/bar.",
+      "col" => 2,
+    }, {
+      "url" => "https://ßreｗ.sh/foo/bar",
+      "msg" => "Please use the ASCII (Punycode-encoded host, URL-encoded path and query) version of https://ßreｗ.sh/foo/bar.",
       "col" => 2,
     }]
   end
@@ -200,6 +210,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::Urls do
         offenses = inspect_source(source)
 
         expected_offenses.zip(offenses.reverse).each do |expected, actual|
+          expect(actual).not_to be_nil
           expect(actual.message).to eq(expected[:message])
           expect(actual.severity).to eq(expected[:severity])
           expect(actual.line).to eq(expected[:line])
@@ -235,5 +246,95 @@ RSpec.describe RuboCop::Cop::FormulaAudit::Urls do
         end
       RUBY
     end
+
+    it "does not report offenses that are skipped for `livecheck` block URLs" do
+      source = <<~RUBY
+        class Foo < Formula
+          desc "foo"
+          url "https://brew.sh/test-0.0.1.tgz"
+
+          # This URL will trigger the 'Use "https://downloads.sourceforge.net"
+          # to get geolocation' cop unless it's skipped for the `livecheck`
+          # block URL.
+          livecheck do
+            url "https://sourceforge.net/projects/homebrew/rss?path=/brew"
+          end
+
+          resource "foo" do
+            url "https://brew.sh/foo-1.0.tar.gz"
+
+            # This URL will trigger the 'Use "https://downloads.sourceforge.net"
+            # to get geolocation' cop unless it's skipped for all `livecheck`
+            # block URLs (not just the main `livecheck` block).
+            livecheck do
+              url "https://sourceforge.net/projects/homebrew/rss?path=/resource"
+            end
+          end
+
+          resource "livecheck-url-symbol" do
+            url "https://brew.sh/livecheck-url-no-argument-1.0.tar.gz"
+
+            # URL symbols shouldn't be checked..
+            livecheck do
+              url :url
+            end
+          end
+
+          resource "livecheck-no-url" do
+            url "https://brew.sh/livecheck-no-url-1.0.tar.gz"
+
+            # No URL is present when `skip` is used.
+            livecheck do
+              skip "No version information available"
+            end
+          end
+
+          resource "livecheck-url-no-arg" do
+            url "https://brew.sh/livecheck-url-no-arg-1.0.tar.gz"
+
+            # This shouldn't ever happen but this is simply to exercise a guard.
+            livecheck do
+              url
+            end
+          end
+        end
+      RUBY
+
+      expect(inspect_source(source)).to eq([])
+    end
+  end
+
+  context "when auditing Apache URLs" do
+    let(:expected_url) { "https://www.apache.org/dyn/closer.lua?path=apr/apr-1.7.6.tar.bz2" }
+
+    shared_examples "offense" do |url|
+      it "registers an offense and corrects" do
+        message = "FormulaAudit/Urls: #{url} should be: #{expected_url}"
+
+        expect_offense(<<~RUBY, url:, message:)
+          class Foo < Formula
+            desc "foo"
+            url "#{url}"
+            ^^^^^#{"^" * url.size}^ #{message}
+          end
+        RUBY
+
+        expect_correction(<<~RUBY)
+          class Foo < Formula
+            desc "foo"
+            url "#{expected_url}"
+          end
+        RUBY
+      end
+    end
+
+    it_behaves_like "offense", "https://dist.apache.org/repos/dist/release/apr/apr-1.7.6.tar.bz2"
+    it_behaves_like "offense", "https://dlcdn.apache.org/apr/apr-1.7.6.tar.bz2"
+    it_behaves_like "offense", "https://downloads.apache.org/apr/apr-1.7.6.tar.bz2"
+    it_behaves_like "offense", "https://www.apache.org/dyn/closer.cgi?path=/apr/apr-1.7.6.tar.bz2"
+    it_behaves_like "offense", "https://www.apache.org/dyn/mirrors.cgi?path=apr/apr-1.7.6.tar.bz2"
+    it_behaves_like "offense", "https://www.apache.org/dyn/mirrors.cgi?filename=/apr/apr-1.7.6.tar.bz2"
+    it_behaves_like "offense",
+                    "https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=apr/apr-1.7.6.tar.bz2"
   end
 end

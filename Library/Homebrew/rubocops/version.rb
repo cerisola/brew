@@ -13,15 +13,15 @@ module RuboCop
           version_node = find_node_method_by_name(formula_nodes.body_node, :version)
           return unless version_node
 
-          version = string_content(parameters(version_node).first)
+          version = string_content(parameters(version_node).fetch(0))
 
-          problem "version is set to an empty string" if version.empty?
+          problem "Version is set to an empty string" if version.empty?
 
-          problem "version #{version} should not have a leading 'v'" if version.start_with?("v")
+          problem "Version #{version} should not have a leading 'v'" if version.start_with?("v")
 
           return unless version.match?(/_\d+$/)
 
-          problem "version #{version} should not end with an underline and a number"
+          problem "Version #{version} should not end with an underline and a number"
         end
       end
     end

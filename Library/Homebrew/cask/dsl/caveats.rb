@@ -13,16 +13,23 @@ module Cask
     # to the output by the caller, but that feature is only for the
     # convenience of cask authors.
     class Caveats < Base
+      # Built-in caveats that have runtime conditions (arch, prefix, etc.)
+      # and should not be pre-serialized into the API JSON string.
+      CONDITIONAL_CAVEATS = T.let([:requires_rosetta, :files_in_usr_local].freeze, T::Array[Symbol])
+
+      sig { params(args: T.anything).void }
       def initialize(*args)
         super
-        @built_in_caveats = {}
-        @custom_caveats = []
-        @discontinued = false
+        @built_in_caveats = T.let({}, T::Hash[T::Array[Symbol], String])
+        @custom_caveats = T.let([], T::Array[String])
+        @discontinued = T.let(false, T::Boolean)
+        @invoked_caveats = T.let(Set.new, T::Set[Symbol])
       end
 
       def self.caveat(name, &block)
         define_method(name) do |*args|
           key = [name, *args]
+          @invoked_caveats.add(name)
           text = instance_exec(*args, &block)
           @built_in_caveats[key] = text if text
           :built_in_caveat
@@ -39,12 +46,31 @@ module Cask
         (@custom_caveats + @built_in_caveats.values).join("\n")
       end
 
+      # Returns caveats text excluding conditional built-in caveats.
+      # Used when serializing caveats for the JSON API so that conditional
+      # caveats (like requires_rosetta) are not pre-baked into the string.
+      sig { returns(String) }
+      def to_s_without_conditional
+        unconditional = @built_in_caveats.reject do |key, _|
+          name = key.first
+          name && CONDITIONAL_CAVEATS.include?(name)
+        end
+        (@custom_caveats + unconditional.values).join("\n")
+      end
+
+      sig { params(name: Symbol).returns(T::Boolean) }
+      def invoked?(name)
+        @invoked_caveats.include?(name)
+      end
+
       # Override `puts` to collect caveats.
+      sig { params(args: String).returns(Symbol) }
       def puts(*args)
         @custom_caveats += args
         :built_in_caveat
       end
 
+      sig { params(block: T.proc.returns(T.nilable(T.any(Symbol, String)))).void }
       def eval_caveats(&block)
         result = instance_eval(&block)
         return unless result
@@ -54,7 +80,7 @@ module Cask
       end
 
       caveat :kext do
-        next if MacOS.version < :high_sierra
+        next if MacOS.version < :sonoma
 
         navigation_path = if MacOS.version >= :ventura
           "System Settings → Privacy & Security"

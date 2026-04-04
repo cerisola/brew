@@ -57,6 +57,11 @@ class DevelopmentTools
       :clang
     end
 
+    sig { returns(Version) }
+    def ld64_version
+      Version::NULL
+    end
+
     # Get the Clang version.
     #
     # @api public
@@ -99,6 +104,8 @@ class DevelopmentTools
         else
           Version::NULL
         end
+      rescue FormulaUnavailableError
+        Version::NULL
       end, T.nilable(Version))
     end
 
@@ -109,9 +116,9 @@ class DevelopmentTools
 
     # Get the GCC version.
     #
-    # @api internal
+    # @api public
     sig { params(cc: String).returns(Version) }
-    def gcc_version(cc)
+    def gcc_version(cc = host_gcc_path.to_s)
       (@gcc_version ||= T.let({}, T.nilable(T::Hash[String, Version]))).fetch(cc) do
         path = HOMEBREW_PREFIX/"opt/#{CompilerSelector.preferred_gcc}/bin"/cc
         path = locate(cc) unless path.exist?
@@ -167,11 +174,6 @@ class DevelopmentTools
     sig { returns(T::Boolean) }
     def curl_substitution_required?
       !curl_handles_most_https_certificates? && !HOMEBREW_BREWED_CURL_PATH.exist?
-    end
-
-    sig { returns(T::Boolean) }
-    def subversion_handles_most_https_certificates?
-      true
     end
 
     sig { returns(T::Hash[String, T.nilable(String)]) }

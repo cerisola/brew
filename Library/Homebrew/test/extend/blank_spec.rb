@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "extend/blank"
@@ -5,9 +6,12 @@ require "extend/blank"
 RSpec.describe Object do
   let(:empty_true) do
     Class.new(described_class) do
+      # This API is intentionally non-ideal for testing.
+      # rubocop:disable Naming/PredicateMethod
       def empty?
         0
       end
+      # rubocop:enable Naming/PredicateMethod
     end
   end
   let(:empty_false) do

@@ -1,5 +1,5 @@
 ---
-last_review_date: "2025-03-19"
+last_review_date: "2026-04-04"
 ---
 
 # Homebrew Bundle, `brew bundle` and `Brewfile`
@@ -10,7 +10,7 @@ It uses `Brewfile`s to provide a declarative interface for installing/upgrading 
 
 Rather than specifying the `brew` commands you wish to run, you can specify the state you wish to reach.
 
-See also the [`brew bundle` section of `man brew`](https://docs.brew.sh/Manpage#bundle-subcommand) or `brew bundle --help`.
+See also the [`brew bundle` section of `man brew`](Manpage.md#bundle-subcommand) or `brew bundle --help`.
 
 ## Basic Usage
 
@@ -56,7 +56,7 @@ brew bundle check || brew bundle install
 
 ### Types
 
-As well as supporting formulae (`brew "..."`), you can also use `brew bundle` with casks, taps, Mac App Store apps, VSCode extensions and to start background services with `brew services`.
+As well as supporting formulae (`brew "..."`), you can also use `brew bundle` with casks, taps, Mac App Store apps, VSCode extensions, Go packages, Cargo packages, uv tools, Flatpak packages and krew kubectl plugins and to start background services with `brew services`.
 
 ```ruby
 tap "apple/apple"
@@ -65,6 +65,13 @@ brew "postgresql@16", restart_service: true
 cask "firefox"
 mas "Refined GitHub", id: 1519867270
 vscode "editorconfig.editorconfig"
+go "github.com/charmbracelet/crush"
+cargo "ripgrep"
+uv "mkdocs"
+krew "ctx"
+flatpak "com.visualstudio.code"
+flatpak "org.godotengine.Godot", remote: "flathub-beta", url: "https://dl.flathub.org/beta-repo/"
+flatpak "io.github.dvlv.boxbuddyrs", remote: "flathub-beta"
 ```
 
 Run `brew bundle` again and this outputs:
@@ -77,7 +84,10 @@ Using postgresql@16
 Using firefox
 Using Refined GitHub
 Using editorconfig.editorconfig
-`brew bundle` complete! 6 Brewfile dependencies now installed.
+Using github.com/charmbracelet/crush
+Using ripgrep
+Using mkdocs
+`brew bundle` complete! 9 Brewfile dependencies now installed.
 ```
 
 ### Projects
@@ -86,9 +96,9 @@ Adding a `Brewfile` to a project's repository (like you might a `package.json`, 
 
 It allows you to tell users to run a single command to install all dependencies for a project and start any services.
 
-As Homebrew supports both macOS, Linux and WSL: you can have this single command setup project dependencies on three operating systems and in continuous integration services like GitHub Actions (where it's installed by default on macOS and easily on Linux with [`Homebrew/actions/setup-homebrew`](https://github.com/Homebrew/actions/tree/master/setup-homebrew)).
+As Homebrew supports both macOS, Linux and WSL: you can have this single command setup project dependencies on three operating systems and in continuous integration services like GitHub Actions (where it's installed by default on macOS and easily on Linux with [`Homebrew/actions/setup-homebrew`](https://github.com/Homebrew/actions/tree/HEAD/setup-homebrew)).
 
-See [GitHub's "Scripts To Rule Them All" `script/bootstrap` example](https://github.com/github/scripts-to-rule-them-all/blob/master/script/bootstrap)
+See [GitHub's "Scripts To Rule Them All" `script/bootstrap` example](https://github.com/github/scripts-to-rule-them-all/blob/HEAD/script/bootstrap)
 for how you might use a `Brewfile` and `brew bundle` to install project dependencies with Homebrew.
 
 ### `brew bundle dump`
@@ -201,6 +211,8 @@ If you want to start all the services in your `Brewfile` just during the executi
 brew bundle exec --services
 ```
 
+Note inside `brew bundle exec`, `brew bundle sh` and `brew bundle env` the environment variable `HOMEBREW_INSIDE_BUNDLE` is set to `1` for easy detection.
+
 ### `brew bundle sh`
 
 `brew bundle sh` is like `brew bundle exec` but it runs your interactive shell of choice, like `brew sh`:
@@ -237,6 +249,8 @@ It's also got the same backbone as `brew bundle exec` so the same arguments (e.g
 By default, `brew bundle` will attempt to upgrade all software.
 You can disable this behaviour by passing `--no-upgrade` or with `export HOMEBREW_BUNDLE_NO_UPGRADE=1` in your environment.
 
+This only skips `brew upgrade`. It does not pin versions or add lock file support.
+
 If you do this, you can upgrade everything with:
 
 ```console
@@ -271,7 +285,7 @@ cask_args appdir: "~/Applications", require_sha: true
 # This also runs `brew link --overwrite nginx-full` and `brew services restart nginx-full` afterwards.
 brew "denji/nginx/nginx-full", link: :overwrite, args: ["with-rmtp"], restart_service: :always
 
-# Runs `brew install mysql@5.6`, `brew services restart mysql@5.6` only if it was was installed or upgraded,
+# Runs `brew install mysql@5.6`, `brew services restart mysql@5.6` only if it was installed or upgraded,
 # `brew link mysql@5.6` and `brew unlink mysql` (if `mysql` is installed)
 brew "mysql@5.6", restart_service: :changed, link: true, conflicts_with: ["mysql"]
 
@@ -313,13 +327,15 @@ ENV["SOME_ENV_VAR"] = "some_value"
 
 Homebrew is a [rolling release](https://en.wikipedia.org/wiki/Rolling_release) package manager so it does not support installing arbitrary older versions of software.
 
-`brew bundle` does not have a concept of a "`Brewfile` lock file" that can be used to pin versions like e.g. `package-lock.json` or `Gemfile.lock`.
+`brew bundle` does not and will not have a concept of a "`Brewfile` lock file" that can be used to pin versions like e.g. `package-lock.json` or `Gemfile.lock`.
 
-This must be done with solutions outside or built on top of `brew bundle` instead.
+If you want `brew bundle` to stop upgrading installed dependencies, pass `--no-upgrade` or set `export HOMEBREW_BUNDLE_NO_UPGRADE=1`.
+
+For the tradeoffs and alternatives, see [Locking installed formulae at specific versions](Versions.md#locking-installed-formulae-at-specific-versions).
 
 ## Adding New Packages Support
 
-`brew bundle` currently supports Homebrew, Homebrew Cask, Mac App Store and Visual Studio Code (and forks/variants).
+`brew bundle` currently supports Homebrew, Homebrew Cask, Mac App Store, Visual Studio Code (and forks/variants), Go packages, Cargo packages, uv tools, Flatpak packages and krew kubectl plugins.
 
 We are interested in contributions for other packages' installers/checkers/dumpers but they must:
 
@@ -328,5 +344,3 @@ We are interested in contributions for other packages' installers/checkers/dumpe
 - be able to dump the installed software to a format that can be stored in a `Brewfile`
 - not require `sudo` to install (casks are an exception here)
 - be extremely widely used
-
-Note: based on these criteria, we would not accept e.g. Whalebrew today.

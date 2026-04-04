@@ -66,7 +66,7 @@ module RuboCop
             return if PROVIDED_BY_MACOS_FORMULAE.include? @formula_name
 
             problem "Formulae that are `keg_only :provided_by_macos` should be " \
-                    "added to the `PROVIDED_BY_MACOS_FORMULAE` list (in the Homebrew/brew repo)"
+                    "added to the `PROVIDED_BY_MACOS_FORMULAE` list (in the Homebrew/brew repository)"
           end
         end
       end
@@ -106,17 +106,18 @@ module RuboCop
             @offensive_node = method
             problem "`uses_from_macos` should not be used when Linux is required." if depends_on_linux
 
-            dep = if parameters(method).first.instance_of?(RuboCop::AST::StrNode)
-              parameters(method).first
-            elsif parameters(method).first.instance_of?(RuboCop::AST::HashNode)
-              parameters(method).first.keys.first
+            first_argument = parameters(method).first
+            dep = if first_argument.instance_of?(RuboCop::AST::StrNode)
+              first_argument
+            elsif first_argument.instance_of?(RuboCop::AST::HashNode)
+              first_argument.keys.first
             end
 
             dep_name = string_content(dep)
             next if ALLOWED_USES_FROM_MACOS_DEPS.include? dep_name
             next if ProvidedByMacos::PROVIDED_BY_MACOS_FORMULAE.include? dep_name
 
-            problem "`uses_from_macos` should only be used for macOS dependencies, not #{dep_name}."
+            problem "`uses_from_macos` should only be used for macOS dependencies, not '#{dep_name}'."
           end
         end
       end

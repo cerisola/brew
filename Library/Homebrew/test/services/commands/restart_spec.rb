@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "services/commands/restart"
@@ -13,7 +14,8 @@ RSpec.describe Homebrew::Services::Commands::Restart do
     it "fails with empty list" do
       expect do
         described_class.run([], nil, verbose: false)
-      end.to raise_error UsageError, "Invalid usage: Formula(e) missing, please provide a formula name or use --all"
+      end.to raise_error UsageError,
+                         "Invalid usage: Formula(e) missing, please provide a formula name or use `--all`."
     end
 
     it "starts if services are not loaded" do

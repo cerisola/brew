@@ -1,4 +1,4 @@
-# typed: true # rubocop:todo Sorbet/StrictSigil
+# typed: strict
 # frozen_string_literal: true
 
 require "ast_constants"
@@ -14,13 +14,20 @@ module RuboCop
       class ComponentsOrder < FormulaCop
         extend AutoCorrector
 
+        sig { params(config: T.nilable(RuboCop::Config), options: T.nilable(T::Hash[Symbol, T.anything])).void }
+        def initialize(config = nil, options = nil)
+          super
+          @present_components = T.let(nil, T.nilable(T::Array[T::Array[RuboCop::AST::Node]]))
+          @offensive_nodes = T.let(nil, T.nilable(T::Array[RuboCop::AST::Node]))
+        end
+
         sig { override.params(formula_nodes: FormulaNodes).void }
         def audit_formula(formula_nodes)
           return if (body_node = formula_nodes.body_node).nil?
 
           @present_components, @offensive_nodes = check_order(FORMULA_COMPONENT_PRECEDENCE_LIST, body_node)
 
-          component_problem @offensive_nodes[0], @offensive_nodes[1] if @offensive_nodes
+          component_problem @offensive_nodes.fetch(0), @offensive_nodes.fetch(1) if @offensive_nodes
 
           component_precedence_list = [
             [{ name: :depends_on, type: :method_call }],
@@ -39,10 +46,10 @@ module RuboCop
 
             if on_method_blocks.length > 1
               @offensive_node = on_method_blocks.second
-              problem "there can only be one `#{on_method}` block in a formula."
+              problem "There can only be one `#{on_method}` block in a formula."
             end
 
-            check_on_system_block_content(component_precedence_list, on_method_blocks.first)
+            check_on_system_block_content(component_precedence_list, on_method_blocks.fetch(0))
           end
 
           resource_blocks = find_blocks(body_node, :resource)
@@ -112,20 +119,33 @@ module RuboCop
 
             on_system_blocks.each do |on_method, blocks|
               if blocks.length > 1
-                problem "there can only be one `#{on_method}` block in a resource block."
+                problem "There can only be one `#{on_method}` block in a resource block."
                 next
               end
             end
           end
         end
 
+        sig {
+          params(
+            component_precedence_list: T::Array[T::Array[{ name: Symbol, type: Symbol }]],
+            block:                     RuboCop::AST::BlockNode,
+          ).void
+        }
         def check_block_component_order(component_precedence_list, block)
           @present_components, offensive_node = check_order(component_precedence_list, block.body)
           component_problem(*offensive_node) if offensive_node
         end
 
+        sig {
+          params(
+            component_precedence_list: T::Array[T::Array[{ name: Symbol, type: Symbol }]],
+            on_system_block:           RuboCop::AST::BlockNode,
+          ).void
+        }
         def check_on_system_block_content(component_precedence_list, on_system_block)
-          if on_system_block.body.block_type? && !on_system_methods.include?(on_system_block.body.method_name)
+          if on_system_block.body.block_type? && !on_system_methods.include?(on_system_block.body.method_name) &&
+             on_system_block.body.method_name != :fails_with
             offending_node(on_system_block)
             problem "Nest `#{on_system_block.method_name}` blocks inside `#{on_system_block.body.method_name}` " \
                     "blocks when there is only one inner block." do |corrector|
@@ -144,6 +164,7 @@ module RuboCop
             fails_with
             resource
             patch
+            pour_bottle?
           ]
           on_system_allowed_methods += on_system_methods.map(&:to_s)
           _, offensive_node = check_order(component_precedence_list, on_system_block.body)
@@ -169,6 +190,7 @@ module RuboCop
         # Reorder two nodes in the source, using the corrector instance in autocorrect method.
         # Components of same type are grouped together when rewriting the source.
         # Linebreaks are introduced if components are of two different methods/blocks/multilines.
+        sig { params(corrector: RuboCop::Cop::Corrector, node1: RuboCop::AST::Node, node2: RuboCop::AST::Node).void }
         def reorder_components(corrector, node1, node2)
           # order_idx : node1's index in component_precedence_list
           # curr_p_idx: node1's index in preceding_comp_arr
@@ -177,7 +199,7 @@ module RuboCop
 
           # curr_p_idx.positive? means node1 needs to be grouped with its own kind
           if curr_p_idx.positive?
-            node2 = preceding_comp_arr[curr_p_idx - 1]
+            node2 = preceding_comp_arr.fetch(curr_p_idx - 1)
             indentation = " " * (start_column(node2) - line_start_column(node2))
             line_breaks = node2.multiline? ? "\n\n" : "\n"
             corrector.insert_after(node2.source_range, line_breaks + indentation + node1.source)
@@ -191,12 +213,20 @@ module RuboCop
         end
 
         # Returns precedence index and component's index to properly reorder and group during autocorrect.
+        sig { params(node1: RuboCop::AST::Node).returns([Integer, Integer, T::Array[RuboCop::AST::Node]]) }
         def get_state(node1)
-          @present_components.each_with_index do |comp, idx|
-            return [idx, comp.index(node1), comp] if comp.member?(node1)
+          T.must(@present_components).each_with_index do |comp, idx|
+            return [idx, T.must(comp.index(node1)), comp] if comp.member?(node1)
           end
+          raise "Could not find node1 in present_components"
         end
 
+        sig {
+          params(
+            component_precedence_list: T::Array[T::Array[{ name: Symbol, type: Symbol }]],
+            body_node:                 RuboCop::AST::Node,
+          ).returns(T.nilable([T::Array[T::Array[RuboCop::AST::Node]], T::Array[RuboCop::AST::Node]]))
+        }
         def check_order(component_precedence_list, body_node)
           present_components = component_precedence_list.map do |components|
             components.flat_map do |component|
@@ -227,6 +257,7 @@ module RuboCop
         end
 
         # Method to report and correct component precedence violations.
+        sig { params(component1: RuboCop::AST::Node, component2: RuboCop::AST::Node).void }
         def component_problem(component1, component2)
           return if tap_style_exception? :components_order_exceptions
 

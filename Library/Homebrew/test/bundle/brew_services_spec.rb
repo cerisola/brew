@@ -1,9 +1,10 @@
+# typed: false
 # frozen_string_literal: true
 
 require "bundle"
 require "bundle/brew_services"
 
-RSpec.describe Homebrew::Bundle::BrewServices do
+RSpec.describe Homebrew::Bundle::Brew::Services do
   describe ".started_services" do
     before do
       described_class.reset!
@@ -11,11 +12,35 @@ RSpec.describe Homebrew::Bundle::BrewServices do
 
     it "returns started services" do
       allow(Utils).to receive(:safe_popen_read).and_return <<~EOS
-        nginx  started  homebrew.mxcl.nginx.plist
-        apache stopped  homebrew.mxcl.apache.plist
-        mysql  started  homebrew.mxcl.mysql.plist
+        [
+          {
+            "name": "nginx",
+            "status": "started"
+          },
+          {
+            "name": "apache",
+            "status": "stopped"
+          },
+          {
+            "name": "mysql",
+            "status": "started"
+          }
+        ]
       EOS
       expect(described_class.started_services).to contain_exactly("nginx", "mysql")
+    end
+
+    it "returns empty array when no services exist" do
+      allow(Utils).to receive(:safe_popen_read).and_return("[]\n")
+      expect(described_class.started_services).to eq([])
+    end
+
+    it "exits with error when no daemon manager is available" do
+      allow(Homebrew::Services::System).to receive_messages(launchctl?: false, systemctl?: false)
+      expect do
+        described_class.started_services
+      end.to raise_error(SystemExit)
+        .and output(/supported only on macOS or Linux/).to_stderr
     end
   end
 
@@ -60,6 +85,32 @@ RSpec.describe Homebrew::Bundle::BrewServices do
                                                         verbose: false).and_return(true)
       expect(described_class.restart("nginx")).to be(true)
       expect(described_class.started_services).to include("nginx")
+    end
+  end
+
+  describe "#installed_and_up_to_date?" do
+    subject(:services) { described_class.new }
+
+    before do
+      described_class.reset!
+      allow(described_class).to receive(:started_services).and_return(%w[mailhog])
+      allow(services).to receive(:formula_needs_to_start?).and_return(true)
+      allow(Homebrew::Bundle::Brew).to receive(:formula_oldnames).and_return({})
+    end
+
+    it "matches a tap-qualified formula by base name" do
+      entry = double(name: "some-tap/tap/mailhog", options: { restart_service: true })
+      expect(services.installed_and_up_to_date?(entry)).to be(true)
+    end
+
+    it "matches a non-tap-qualified formula by name" do
+      entry = double(name: "mailhog", options: { restart_service: true })
+      expect(services.installed_and_up_to_date?(entry)).to be(true)
+    end
+
+    it "returns false when service is not started" do
+      entry = double(name: "some-tap/tap/nginx", options: { restart_service: true })
+      expect(services.installed_and_up_to_date?(entry)).to be(false)
     end
   end
 

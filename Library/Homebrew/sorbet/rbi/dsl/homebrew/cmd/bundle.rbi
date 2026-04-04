@@ -18,6 +18,9 @@ class Homebrew::Cmd::Bundle::Args < Homebrew::CLI::Args
   def brews?; end
 
   sig { returns(T::Boolean) }
+  def cargo?; end
+
+  sig { returns(T::Boolean) }
   def cask?; end
 
   sig { returns(T::Boolean) }
@@ -39,28 +42,67 @@ class Homebrew::Cmd::Bundle::Args < Homebrew::CLI::Args
   def file; end
 
   sig { returns(T::Boolean) }
+  def flatpak?; end
+
+  sig { returns(T::Boolean) }
   def force?; end
 
   sig { returns(T::Boolean) }
   def formula?; end
 
   sig { returns(T::Boolean) }
+  def formulae?; end
+
+  sig { returns(T::Boolean) }
+  def g?; end
+
+  sig { returns(T::Boolean) }
   def global?; end
+
+  sig { returns(T::Boolean) }
+  def go?; end
 
   sig { returns(T::Boolean) }
   def install?; end
 
   sig { returns(T::Boolean) }
+  def krew?; end
+
+  sig { returns(T::Boolean) }
   def mas?; end
+
+  sig { returns(T::Boolean) }
+  def no_cargo?; end
+
+  sig { returns(T::Boolean) }
+  def no_flatpak?; end
+
+  sig { returns(T::Boolean) }
+  def no_go?; end
+
+  sig { returns(T::Boolean) }
+  def no_krew?; end
+
+  sig { returns(T::Boolean) }
+  def no_npm?; end
 
   sig { returns(T::Boolean) }
   def no_restart?; end
 
   sig { returns(T::Boolean) }
+  def no_secrets?; end
+
+  sig { returns(T::Boolean) }
   def no_upgrade?; end
 
   sig { returns(T::Boolean) }
+  def no_uv?; end
+
+  sig { returns(T::Boolean) }
   def no_vscode?; end
+
+  sig { returns(T::Boolean) }
+  def npm?; end
 
   sig { returns(T::Boolean) }
   def services?; end
@@ -81,10 +123,10 @@ class Homebrew::Cmd::Bundle::Args < Homebrew::CLI::Args
   def upgrade_formulae; end
 
   sig { returns(T::Boolean) }
-  def vscode?; end
+  def uv?; end
 
   sig { returns(T::Boolean) }
-  def whalebrew?; end
+  def vscode?; end
 
   sig { returns(T::Boolean) }
   def zap?; end

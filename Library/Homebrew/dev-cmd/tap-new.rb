@@ -4,6 +4,7 @@
 require "abstract_command"
 require "erb"
 require "fileutils"
+require "system_command"
 require "tap"
 require "utils/uid"
 
@@ -11,13 +12,13 @@ module Homebrew
   module DevCmd
     class TapNew < AbstractCommand
       include FileUtils
+      include SystemCommand::Mixin
 
       cmd_args do
         usage_banner "`tap-new` [<options>] <user>`/`<repo>"
         description <<~EOS
           Generate the template files for a new tap.
         EOS
-
         switch "--no-git",
                description: "Don't initialize a Git repository for the tap."
         flag   "--pull-label=",
@@ -42,14 +43,13 @@ module Homebrew
 
         titleized_user = tap.user.dup
         titleized_repository = tap.repository.dup
-        titleized_user[0] = titleized_user[0].upcase
-        titleized_repository[0] = titleized_repository[0].upcase
-        root_url = GitHubPackages.root_url(tap.user, "homebrew-#{tap.repository}") if args.github_packages?
+        titleized_user[0] = T.must(titleized_user[0]).upcase
+        titleized_repository[0] = T.must(titleized_repository[0]).upcase
+        # Duplicate assignment to silence `assigned but unused variable` warning
+        root_url = root_url = GitHubPackages.root_url(tap.user, "homebrew-#{tap.repository}") if args.github_packages?
 
         (tap.path/"Formula").mkpath
 
-        # FIXME: https://github.com/errata-ai/vale/issues/818
-        # <!-- vale off -->
         readme = <<~MARKDOWN
           # #{titleized_user} #{titleized_repository}
 
@@ -70,7 +70,6 @@ module Homebrew
 
           `brew help`, `man brew` or check [Homebrew's documentation](https://docs.brew.sh).
         MARKDOWN
-        # <!-- vale on -->
         write_path(tap, "README.md", readme)
 
         tests_yml = <<~ERB
@@ -86,8 +85,12 @@ module Homebrew
             test-bot:
               strategy:
                 matrix:
-                  os: [ ubuntu-22.04, macos-13, macos-15 ]
+                  os: [ macos-15-intel, macos-26 ]
+                  include:
+                    - os: ubuntu-latest
+                      container: ghcr.io/homebrew/brew:main
               runs-on: ${{ matrix.os }}
+              container: ${{ matrix.container }}
               permissions:
                 actions: read
                 checks: read
@@ -101,7 +104,7 @@ module Homebrew
                   id: set-up-homebrew
                   uses: cerisola/actions/setup-homebrew@master
                   with:
-                    token: ${{ github.token }}
+                    token: ${{ secrets.GITHUB_TOKEN }}
 
                 - name: Cache Homebrew Bundler RubyGems
                   uses: actions/cache@v4
@@ -120,13 +123,13 @@ module Homebrew
                   id: base64-encode
                   if: github.event_name == 'pull_request'
                   env:
-                    TOKEN: ${{ github.token }}
+                    TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   run: |
                     base64_token=$(echo -n "${TOKEN}" | base64 | tr -d "\\n")
                     echo "::add-mask::${base64_token}"
                     echo "token=${base64_token}" >> "${GITHUB_OUTPUT}"
           <% end -%>
-                - run: brew test-bot --only-formulae<% if root_url %> --root-url='<%= root_url %>'<% end %>
+                - run: brew test-bot --only-formulae#{" --root-url=#{root_url}" if root_url}
                   if: github.event_name == 'pull_request'
           <% if args.github_packages? -%>
                   env:
@@ -152,7 +155,7 @@ module Homebrew
           jobs:
             pr-pull:
               if: contains(github.event.pull_request.labels.*.name, '<%= label %>')
-              runs-on: ubuntu-22.04
+              runs-on: ubuntu-latest
               permissions:
                 actions: read
                 checks: read
@@ -166,16 +169,16 @@ module Homebrew
                 - name: Set up Homebrew
                   uses: cerisola/actions/setup-homebrew@master
                   with:
-                    token: ${{ github.token }}
+                    token: ${{ secrets.GITHUB_TOKEN }}
 
                 - name: Set up git
                   uses: cerisola/actions/git-user-config@master
 
                 - name: Pull bottles
                   env:
-                    HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
+                    HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           <% if args.github_packages? -%>
-                    HOMEBREW_GITHUB_PACKAGES_TOKEN: ${{ github.token }}
+                    HOMEBREW_GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                     HOMEBREW_GITHUB_PACKAGES_USER: ${{ github.repository_owner }}
           <% end -%>
                     PULL_REQUEST: ${{ github.event.pull_request.number }}
@@ -215,15 +218,14 @@ module Homebrew
             end
 
             # Use the configuration of the original user, which will have author information and signing keys.
-            Utils::UID.drop_euid do
-              env = { HOME: Utils::UID.uid_home }.compact
-              env[:TMPDIR] = nil if (tmpdir = ENV.fetch("TMPDIR", nil)) && !File.writable?(tmpdir)
-              with_env(env) do
-                safe_system "git", *args, "add", "--all"
-                safe_system "git", *args, "commit", "-m", "Create #{tap} tap"
-                safe_system "git", *args, "branch", "-m", branch
-              end
-            end
+            env = { "HOME" => Utils::UID.uid_home }.compact
+            env["TMPDIR"] = nil if (tmpdir = ENV.fetch("TMPDIR", nil)) && !File.writable?(tmpdir)
+            system_command!("git", args: [*args, "add", "--all"], env:,
+                            print_stdout: true, run_as_real_uid: true)
+            system_command!("git", args: [*args, "commit", "-m", "Create #{tap} tap"], env:,
+                            print_stdout: true, run_as_real_uid: true)
+            system_command!("git", args: [*args, "branch", "-m", branch], env:,
+                            print_stdout: true, run_as_real_uid: true)
           end
         end
 

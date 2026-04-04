@@ -4,15 +4,17 @@
 require "url"
 require "checksum"
 require "download_strategy"
+require "utils/output"
 
 module Downloadable
   include Context
+  include Utils::Output::Mixin
   extend T::Helpers
 
   abstract!
   requires_ancestor { Kernel }
 
-  sig { overridable.returns(T.any(NilClass, String, URL)) }
+  sig { overridable.returns(T.nilable(T.any(String, URL))) }
   attr_reader :url
 
   sig { overridable.returns(T.nilable(Checksum)) }
@@ -20,6 +22,20 @@ module Downloadable
 
   sig { overridable.returns(T::Array[String]) }
   attr_reader :mirrors
+
+  sig { overridable.returns(Symbol) }
+  attr_accessor :phase
+
+  sig { void }
+  def downloading! = (@phase = :downloading)
+  sig { void }
+  def downloaded! = (@phase = :downloaded)
+  sig { void }
+  def verifying! = (@phase = :verifying)
+  sig { void }
+  def verified! = (@phase = :verified)
+  sig { void }
+  def extracting! = (@phase = :extracting)
 
   sig { void }
   def initialize
@@ -30,9 +46,10 @@ module Downloadable
     @download_strategy = T.let(nil, T.nilable(T::Class[AbstractDownloadStrategy]))
     @downloader = T.let(nil, T.nilable(AbstractDownloadStrategy))
     @download_name = T.let(nil, T.nilable(String))
+    @phase = T.let(:preparing, Symbol)
   end
 
-  sig { params(other: Object).void }
+  sig { overridable.params(other: Downloadable).void }
   def initialize_dup(other)
     super
     @checksum = @checksum.dup
@@ -48,13 +65,15 @@ module Downloadable
     super
   end
 
-  sig { abstract.returns(String) }
-  def name; end
-
   sig { returns(String) }
-  def download_type
-    class_name = T.let(self.class, T::Class[Downloadable]).name&.split("::")&.last
-    T.must(class_name).gsub(/([[:lower:]])([[:upper:]])/, '\1 \2').downcase
+  def download_queue_name = download_name
+
+  sig { abstract.returns(String) }
+  def download_queue_type; end
+
+  sig(:final) { returns(String) }
+  def download_queue_message
+    "#{download_queue_type} #{download_queue_name}"
   end
 
   sig(:final) { returns(T::Boolean) }
@@ -70,6 +89,18 @@ module Downloadable
   sig { overridable.void }
   def clear_cache
     downloader.clear_cache
+  end
+
+  # Total bytes downloaded if available.
+  sig { overridable.returns(T.nilable(Integer)) }
+  def fetched_size
+    downloader.fetched_size
+  end
+
+  # Total download size if available.
+  sig { overridable.returns(T.nilable(Integer)) }
+  def total_size
+    @total_size ||= T.let(downloader.total_size, T.nilable(Integer))
   end
 
   sig { overridable.returns(T.nilable(Version)) }
@@ -104,6 +135,8 @@ module Downloadable
     ).returns(Pathname)
   }
   def fetch(verify_download_integrity: true, timeout: nil, quiet: false)
+    downloading!
+
     cache.mkpath
 
     begin
@@ -113,6 +146,8 @@ module Downloadable
       raise DownloadError.new(self, e)
     end
 
+    downloaded!
+
     download = cached_download
     verify_download_integrity(download) if verify_download_integrity
     download
@@ -120,9 +155,12 @@ module Downloadable
 
   sig { overridable.params(filename: Pathname).void }
   def verify_download_integrity(filename)
+    verifying!
+
     if filename.file?
       ohai "Verifying checksum for '#{filename.basename}'" if verbose?
       filename.verify_checksum(checksum)
+      verified!
     end
   rescue ChecksumMissingError
     return if silence_checksum_missing_error?
@@ -135,12 +173,32 @@ module Downloadable
     EOS
   end
 
+  sig { returns(Integer) }
+  def hash
+    [self.class, cached_download].hash
+  end
+
+  sig { params(other: Object).returns(T::Boolean) }
+  def eql?(other)
+    return false if self.class != other.class
+
+    other = T.cast(other, Downloadable)
+    cached_download == other.cached_download
+  end
+
+  sig { returns(String) }
+  def to_s
+    short_cached_download = cached_download.to_s
+                                           .delete_prefix("#{HOMEBREW_CACHE}/downloads/")
+    "#<#{self.class}: #{short_cached_download}>"
+  end
+
+  private
+
   sig { overridable.returns(String) }
   def download_name
     @download_name ||= File.basename(determine_url.to_s).freeze
   end
-
-  private
 
   sig { overridable.returns(T::Boolean) }
   def silence_checksum_missing_error?

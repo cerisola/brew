@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "formula"
@@ -176,6 +177,12 @@ RSpec.describe Caveats do
         expect(caveats).to include("keg-only")
       end
 
+      it "omits keg-only caveats when the formula is linked" do
+        allow(f).to receive(:linked?).and_return(true)
+
+        expect(caveats).to be_empty
+      end
+
       it "gives command to be run when f.bin is a directory" do
         Pathname.new(f.bin).mkpath
         expect(caveats).to include(f.opt_bin.to_s)
@@ -242,7 +249,7 @@ RSpec.describe Caveats do
           url "foo-1.0"
         end
       end
-      let(:caveats) { described_class.new(f).caveats }
+      let(:caveats) { described_class.new(f) }
       let(:path) { f.prefix.resolved_path }
 
       let(:bash_completion_dir) { path/"etc/bash_completion.d" }
@@ -261,25 +268,25 @@ RSpec.describe Caveats do
       it "includes where Bash completions have been installed to" do
         bash_completion_dir.mkpath
         FileUtils.touch bash_completion_dir/f.name
-        expect(caveats).to include(HOMEBREW_PREFIX/"etc/bash_completion.d")
+        expect(caveats.completions_and_elisp.join).to include(HOMEBREW_PREFIX/"etc/bash_completion.d")
       end
 
       it "includes where fish completions have been installed to" do
         fish_vendor_completions.mkpath
         FileUtils.touch fish_vendor_completions/f.name
-        expect(caveats).to include(HOMEBREW_PREFIX/"share/fish/vendor_completions.d")
+        expect(caveats.completions_and_elisp.join).to include(HOMEBREW_PREFIX/"share/fish/vendor_completions.d")
       end
 
       it "includes where zsh completions have been installed to" do
         zsh_site_functions.mkpath
         FileUtils.touch zsh_site_functions/f.name
-        expect(caveats).to include(HOMEBREW_PREFIX/"share/zsh/site-functions")
+        expect(caveats.completions_and_elisp.join).to include(HOMEBREW_PREFIX/"share/zsh/site-functions")
       end
 
       it "includes where pwsh completions have been installed to" do
         pwsh_completion_dir.mkpath
         FileUtils.touch pwsh_completion_dir/f.name
-        expect(caveats).to include(HOMEBREW_PREFIX/"share/pwsh/completions")
+        expect(caveats.completions_and_elisp.join).to include(HOMEBREW_PREFIX/"share/pwsh/completions")
       end
     end
   end

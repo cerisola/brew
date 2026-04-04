@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "rubocops/lines"
@@ -12,7 +13,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::MpiCheck do
           desc "foo"
           url 'https://brew.sh/foo-1.0.tgz'
           depends_on "mpich"
-          ^^^^^^^^^^^^^^^^^^ FormulaAudit/MpiCheck: Formulae in homebrew/core should use 'depends_on "open-mpi"' instead of 'depends_on "mpich"'.
+          ^^^^^^^^^^^^^^^^^^ FormulaAudit/MpiCheck: Formulae in homebrew/core should use `depends_on "open-mpi"` instead of `depends_on "mpich"`.
         end
       RUBY
 

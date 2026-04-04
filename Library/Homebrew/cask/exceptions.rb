@@ -17,7 +17,7 @@ module Cask
     def to_s
       <<~EOS
         Problems with multiple casks:
-        #{@errors.map(&:to_s).join("\n")}
+        #{@errors.join("\n")}
       EOS
     end
   end
@@ -104,7 +104,10 @@ module Cask
     sig { returns(String) }
     def to_s
       s = super
-      s += "\nPlease tap it and then try again: brew tap #{tap}" unless tap.installed?
+      unless tap.installed?
+        s += "\nThis command requires the tap #{tap}."
+        s += "\nIf you trust this tap, tap it explicitly and then try again:\n  brew tap #{tap}"
+      end
       s
     end
   end

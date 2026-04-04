@@ -49,7 +49,7 @@ class Object
   end
 end
 
-class NilClass
+class NilClass # rubocop:todo Style/OneClassPerFile
   # `nil` is blank:
   #
   # ```ruby
@@ -62,7 +62,7 @@ class NilClass
   def present? = false # :nodoc:
 end
 
-class FalseClass
+class FalseClass # rubocop:todo Style/OneClassPerFile
   # `false` is blank:
   #
   # ```ruby
@@ -75,7 +75,7 @@ class FalseClass
   def present? = false # :nodoc:
 end
 
-class TrueClass
+class TrueClass # rubocop:todo Style/OneClassPerFile
   # `true` is not blank:
   #
   # ```ruby
@@ -88,7 +88,7 @@ class TrueClass
   def present? = true # :nodoc:
 end
 
-class Array
+class Array # rubocop:todo Style/OneClassPerFile
   # An array is blank if it's empty:
   #
   # ```ruby
@@ -102,7 +102,7 @@ class Array
   def present? = !empty? # :nodoc:
 end
 
-class Hash
+class Hash # rubocop:todo Style/OneClassPerFile
   # A hash is blank if it's empty:
   #
   #
@@ -117,7 +117,7 @@ class Hash
   def present? = !empty? # :nodoc:
 end
 
-class Symbol
+class Symbol # rubocop:todo Style/OneClassPerFile
   # A Symbol is blank if it's empty:
   #
   # ```ruby
@@ -131,7 +131,7 @@ class Symbol
   def present? = !empty? # :nodoc:
 end
 
-class String
+class String # rubocop:todo Style/OneClassPerFile
   BLANK_RE = /\A[[:space:]]*\z/
   # This is a cache that is intentionally mutable
   # rubocop:disable Style/MutableConstant
@@ -171,7 +171,7 @@ class String
   def present? = !blank? # :nodoc:
 end
 
-class Numeric # :nodoc:
+class Numeric # :nodoc: # rubocop:todo Style/OneClassPerFile
   # No number is blank:
   #
   # ```ruby
@@ -185,7 +185,7 @@ class Numeric # :nodoc:
   def present? = true
 end
 
-class Time # :nodoc:
+class Time # :nodoc: # rubocop:todo Style/OneClassPerFile
   # No Time is blank:
   #
   # ```ruby

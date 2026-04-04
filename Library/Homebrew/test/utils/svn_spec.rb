@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "utils/svn"
@@ -47,7 +48,7 @@ RSpec.describe Utils::Svn do
       end
 
       it "returns true when remote exists", :needs_network, :needs_svn do
-        expect(described_class).to be_remote_exists("https://svn.apache.org/repos/asf/openoffice/trunk")
+        expect(described_class).to be_remote_exists("https://svn.code.sf.net/p/ctags/code/trunk")
       end
     end
   end

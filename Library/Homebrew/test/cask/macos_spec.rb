@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 RSpec.describe MacOS, :cask do
@@ -13,7 +14,7 @@ RSpec.describe MacOS, :cask do
     )
   end
 
-  it "says '/Applications' is undeletable" do
+  it "says '/Applications' is undeletable" do # rubocop:todo RSpec/AggregateExamples
     expect(described_class).to be_undeletable(
       "/Applications",
     )
@@ -28,7 +29,7 @@ RSpec.describe MacOS, :cask do
     )
   end
 
-  it "says the home directory is undeletable" do
+  it "says the home directory is undeletable" do # rubocop:todo RSpec/AggregateExamples
     expect(described_class).to be_undeletable(
       Dir.home,
     )
@@ -40,7 +41,7 @@ RSpec.describe MacOS, :cask do
     )
   end
 
-  it "says the user library directory is undeletable" do
+  it "says the user library directory is undeletable" do # rubocop:todo RSpec/AggregateExamples
     expect(described_class).to be_undeletable(
       "#{Dir.home}/Library",
     )
@@ -55,13 +56,13 @@ RSpec.describe MacOS, :cask do
     )
   end
 
-  it "says '/Applications/.app' is deletable" do
+  it "says '/Applications/.app' is deletable" do # rubocop:todo RSpec/AggregateExamples
     expect(described_class).not_to be_undeletable(
       "/Applications/.app",
     )
   end
 
-  it "says '/Applications/SnakeOil Professional.app' is deletable" do
+  it "says '/Applications/SnakeOil Professional.app' is deletable" do # rubocop:todo RSpec/AggregateExamples
     expect(described_class).not_to be_undeletable(
       "/Applications/SnakeOil Professional.app",
     )

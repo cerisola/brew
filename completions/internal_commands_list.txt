@@ -6,6 +6,7 @@
 --prefix
 --repo
 --repository
+--taps
 --version
 -S
 -v
@@ -25,6 +26,7 @@ casks
 cat
 cleanup
 command
+command-not-found-init
 commands
 completions
 config
@@ -51,6 +53,7 @@ generate-cask-api
 generate-cask-ci-matrix
 generate-formula-api
 generate-man-completions
+generate-zap
 gist-logs
 help
 home
@@ -61,6 +64,7 @@ install-bundler-gems
 irb
 lc
 leaves
+lgtm
 link
 linkage
 list
@@ -68,6 +72,7 @@ livecheck
 ln
 log
 ls
+mcp-server
 migrate
 missing
 nodenv-sync
@@ -96,6 +101,7 @@ services
 setup-ruby
 sh
 shellenv
+source
 style
 tab
 tap
@@ -103,6 +109,7 @@ tap-info
 tap-new
 tc
 test
+test-bot
 tests
 typecheck
 unalias
@@ -117,6 +124,7 @@ update
 update-if-needed
 update-license-data
 update-maintainers
+update-perl-resources
 update-python-resources
 update-reset
 update-sponsors
@@ -126,3 +134,6 @@ uses
 vendor-gems
 vendor-install
 verify
+version-install
+which-formula
+which-update

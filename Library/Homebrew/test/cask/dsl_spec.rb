@@ -1,6 +1,7 @@
+# typed: false
 # frozen_string_literal: true
 
-RSpec.describe Cask::DSL, :cask do
+RSpec.describe Cask::DSL, :cask, :no_api do
   let(:cask) { Cask::CaskLoader.load(token) }
   let(:token) { "basic-cask" }
 
@@ -19,25 +20,11 @@ RSpec.describe Cask::DSL, :cask do
       end
     end
 
-    it "prints an error that it has encountered an unexpected method" do
-      expected = Regexp.compile(<<~EOS.lines.map(&:chomp).join)
-        (?m)
-        Error:
-        .*
-        Unexpected method 'future_feature' called on Cask unexpected-method-cask\\.
-        .*
-        https://github.com/cerisola/homebrew-cask#reporting-bugs
-      EOS
-
-      expect do
-        expect { attempt_unknown_method }.not_to output.to_stdout
-      end.to output(expected).to_stderr
-    end
-
-    it "simply warns, instead of throwing an exception" do
-      expect do
-        attempt_unknown_method
-      end.not_to raise_error
+    it "raises a CaskInvalidError" do
+      expect { attempt_unknown_method }.to raise_error(
+        Cask::CaskInvalidError,
+        /undefined method 'future_feature' for Cask 'unexpected-method-cask'/,
+      )
     end
   end
 
@@ -472,8 +459,8 @@ RSpec.describe Cask::DSL, :cask do
       Cask::CaskLoader.load(cask_path("with-conflicts-with"))
     end
 
-    it "installs the dependency of a Cask and the Cask itself" do
-      Cask::Installer.new(local_caffeine).install
+    it "raises an error when a conflicting cask is already installed" do
+      InstallHelper.stub_cask_installation(local_caffeine)
 
       expect(local_caffeine).to be_installed
 
@@ -596,6 +583,31 @@ RSpec.describe Cask::DSL, :cask do
         :binary,
         :postflight,
       ]
+    end
+  end
+
+  describe "rename stanza" do
+    it "allows setting single rename operation" do
+      cask = Cask::Cask.new("rename-cask") do
+        rename "Source*.pkg", "Target.pkg"
+      end
+
+      expect(cask.rename.length).to eq(1)
+      expect(cask.rename.first.from).to eq("Source*.pkg")
+      expect(cask.rename.first.to).to eq("Target.pkg")
+    end
+
+    it "allows setting multiple rename operations" do
+      cask = Cask::Cask.new("multi-rename-cask") do
+        rename "App*.pkg", "App.pkg"
+        rename "Doc*.dmg", "Doc.dmg"
+      end
+
+      expect(cask.rename.length).to eq(2)
+      expect(cask.rename.first.from).to eq("App*.pkg")
+      expect(cask.rename.first.to).to eq("App.pkg")
+      expect(cask.rename.last.from).to eq("Doc*.dmg")
+      expect(cask.rename.last.to).to eq("Doc.dmg")
     end
   end
 end

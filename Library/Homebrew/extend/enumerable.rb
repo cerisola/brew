@@ -32,7 +32,7 @@ module Enumerable
   def compact_blank = T.unsafe(self).reject(&:blank?)
 end
 
-class Hash
+class Hash # rubocop:todo Style/OneClassPerFile
   # {Hash#reject} has its own definition, so this needs one too.
   def compact_blank = reject { |_k, v| T.unsafe(v).blank? }
 end

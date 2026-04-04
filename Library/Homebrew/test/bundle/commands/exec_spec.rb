@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "bundle"
@@ -12,7 +13,7 @@ RSpec.describe Homebrew::Bundle::Commands::Exec do
     end
   end
 
-  context "when a Brewfile is found" do
+  context "when a Brewfile is found", :no_api do
     let(:brewfile_contents) { "brew 'openssl'" }
 
     before do
@@ -60,6 +61,33 @@ RSpec.describe Homebrew::Bundle::Commands::Exec do
 
       it "raises an exception if called without a command" do
         expect { described_class.run }.to raise_error(RuntimeError)
+      end
+
+      describe "--no-secrets" do
+        around do |example|
+          original_env = ENV.to_hash
+          begin
+            example.run
+          ensure
+            ENV.replace(original_env)
+          end
+        end
+
+        it "removes sensitive environment variables when requested" do
+          ENV["SECRET_TOKEN"] = "password"
+
+          described_class.run("/usr/bin/true", subcommand: "exec", no_secrets: true)
+
+          expect(ENV).not_to have_key("SECRET_TOKEN")
+        end
+
+        it "preserves non-sensitive environment variables when removing secrets" do
+          ENV["NORMAL_VAR"] = "value"
+
+          described_class.run("/usr/bin/true", subcommand: "exec", no_secrets: true)
+
+          expect(ENV.fetch("NORMAL_VAR")).to eq("value")
+        end
       end
     end
 
@@ -137,7 +165,7 @@ RSpec.describe Homebrew::Bundle::Commands::Exec do
           plist_name:               "homebrew.mxcl.nginx",
           service_name:             "nginx",
           versioned_formulae_names: [],
-          conflicts:                [instance_double(FormulaConflict, name: "httpd")],
+          conflicts:                [instance_double(Formula::FormulaConflict, name: "httpd")],
           keg_only?:                false,
         )
       end
@@ -198,25 +226,25 @@ RSpec.describe Homebrew::Bundle::Commands::Exec do
             .and_return(services_info_pre.to_json)
 
           # Stop original nginx
-          expect(Homebrew::Bundle::BrewServices).to receive(:stop)
+          expect(Homebrew::Bundle::Brew::Services).to receive(:stop)
             .with("nginx", keep: true).and_return(true).ordered
 
           # Stop nginx conflicts
-          expect(Homebrew::Bundle::BrewServices).to receive(:stop)
+          expect(Homebrew::Bundle::Brew::Services).to receive(:stop)
             .with("httpd", keep: true).and_return(true).ordered
 
           # Start new nginx
-          expect(Homebrew::Bundle::BrewServices).to receive(:run)
+          expect(Homebrew::Bundle::Brew::Services).to receive(:run)
             .with("nginx", file: nginx_service_file).and_return(true).ordered
 
           # No need to stop original redis (not started)
 
           # Stop redis conflicts
-          expect(Homebrew::Bundle::BrewServices).to receive(:stop)
+          expect(Homebrew::Bundle::Brew::Services).to receive(:stop)
             .with("redis@6.2", keep: true).and_return(true).ordered
 
           # Start new redis
-          expect(Homebrew::Bundle::BrewServices).to receive(:run)
+          expect(Homebrew::Bundle::Brew::Services).to receive(:run)
             .with("redis", file: redis_service_file).and_return(true).ordered
 
           # Run exec commands
@@ -228,13 +256,13 @@ RSpec.describe Homebrew::Bundle::Commands::Exec do
             .and_return(services_info_post.to_json)
 
           # Stop new services
-          expect(Homebrew::Bundle::BrewServices).to receive(:stop)
+          expect(Homebrew::Bundle::Brew::Services).to receive(:stop)
             .with("nginx", keep: true).and_return(true).ordered
-          expect(Homebrew::Bundle::BrewServices).to receive(:stop)
+          expect(Homebrew::Bundle::Brew::Services).to receive(:stop)
             .with("redis", keep: true).and_return(true).ordered
 
           # Restart registered services we stopped due to conflicts (skip httpd as not registered)
-          expect(Homebrew::Bundle::BrewServices).to receive(:run).with("redis@6.2").and_return(true).ordered
+          expect(Homebrew::Bundle::Brew::Services).to receive(:run).with("redis@6.2").and_return(true).ordered
 
           described_class.run("/usr/bin/true", services: true)
         end

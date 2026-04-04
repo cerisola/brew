@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "bundle"
@@ -15,7 +16,7 @@ RSpec.describe Homebrew::Bundle::Dsl do
         cask_args appdir: '/Applications'
         tap 'homebrew/cask'
         tap 'telemachus/brew', 'https://telemachus@bitbucket.org/telemachus/brew.git'
-        tap 'auto/update', 'https://bitbucket.org/auto/update.git', force_auto_update: true
+        tap 'auto/update', 'https://bitbucket.org/auto/update.git'
         brew 'imagemagick'
         brew 'mysql@5.6', restart_service: true, link: true, conflicts_with: ['mysql']
         brew 'emacs', args: ['with-cocoa', 'with-gnutls'], link: :overwrite
@@ -23,8 +24,10 @@ RSpec.describe Homebrew::Bundle::Dsl do
         cask 'java' unless system '/usr/libexec/java_home --failfast'
         cask 'firefox', args: { appdir: '~/my-apps/Applications' }
         mas '1Password', id: 443987910
-        whalebrew 'whalebrew/wget'
         vscode 'GitHub.codespaces'
+        go 'github.com/charmbracelet/crush'
+        cargo 'ripgrep'
+        uv 'mkdocs', with: ['mkdocs-material<10']
       EOS
     end
 
@@ -40,10 +43,7 @@ RSpec.describe Homebrew::Bundle::Dsl do
       expect(dsl.entries[0].name).to eql("homebrew/cask")
       expect(dsl.entries[1].name).to eql("telemachus/brew")
       expect(dsl.entries[1].options).to eql(clone_target: "https://telemachus@bitbucket.org/telemachus/brew.git")
-      expect(dsl.entries[2].options).to eql(
-        clone_target:      "https://bitbucket.org/auto/update.git",
-        force_auto_update: true,
-      )
+      expect(dsl.entries[2].options).to eql(clone_target: "https://bitbucket.org/auto/update.git")
       expect(dsl.entries[3].name).to eql("imagemagick")
       expect(dsl.entries[4].name).to eql("mysql@5.6")
       expect(dsl.entries[4].options).to eql(restart_service: true, link: true, conflicts_with: ["mysql"])
@@ -55,8 +55,59 @@ RSpec.describe Homebrew::Bundle::Dsl do
       expect(dsl.entries[8].options).to eql(args: { appdir: "~/my-apps/Applications" }, full_name: "firefox")
       expect(dsl.entries[9].name).to eql("1Password")
       expect(dsl.entries[9].options).to eql(id: 443_987_910)
-      expect(dsl.entries[10].name).to eql("whalebrew/wget")
-      expect(dsl.entries[11].name).to eql("GitHub.codespaces")
+      expect(dsl.entries[10].name).to eql("GitHub.codespaces")
+      expect(dsl.entries[11].name).to eql("github.com/charmbracelet/crush")
+      expect(dsl.entries[12].name).to eql("ripgrep")
+      expect(dsl.entries[13].name).to eql("mkdocs")
+      expect(dsl.entries[13].options).to eql(with: ["mkdocs-material<10"])
+    end
+  end
+
+  context "with multiple cask_args" do
+    subject(:dsl) do
+      dsl_from_string <<~EOS
+        cask_args appdir: '/global-apps'
+        cask_args require_sha: true
+        cask_args appdir: '~/my-apps'
+      EOS
+    end
+
+    it "merges the arguments" do
+      expect(dsl.cask_arguments).to eql(appdir: "~/my-apps", require_sha: true)
+    end
+  end
+
+  context "with flatpak entries" do
+    it "processes flatpak without options" do
+      dsl = dsl_from_string 'flatpak "org.gnome.Calculator"'
+      expect(dsl.entries[0].name).to eql("org.gnome.Calculator")
+      expect(dsl.entries[0].options[:remote]).to eql("flathub")
+    end
+
+    it "processes flatpak with remote option" do
+      dsl = dsl_from_string 'flatpak "com.custom.App", remote: "custom-repo"'
+      expect(dsl.entries[0].name).to eql("com.custom.App")
+      expect(dsl.entries[0].options[:remote]).to eql("custom-repo")
+    end
+
+    it "processes flatpak with explicit flathub remote" do
+      dsl = dsl_from_string 'flatpak "org.gnome.Calculator", remote: "flathub"'
+      expect(dsl.entries[0].name).to eql("org.gnome.Calculator")
+      expect(dsl.entries[0].options[:remote]).to eql("flathub")
+    end
+
+    it "processes flatpak with URL remote" do
+      dsl = dsl_from_string 'flatpak "org.godotengine.Godot", remote: "https://dl.flathub.org/beta-repo/"'
+      expect(dsl.entries[0].name).to eql("org.godotengine.Godot")
+      expect(dsl.entries[0].options[:remote]).to eql("https://dl.flathub.org/beta-repo/")
+    end
+  end
+
+  context "with extension entries" do
+    it "accepts positional option hashes for extensions" do
+      dsl = dsl_from_string 'uv "mkdocs", { with: ["mkdocs-material<10"] }'
+      expect(dsl.entries[0].name).to eql("mkdocs")
+      expect(dsl.entries[0].options).to eql(with: ["mkdocs-material<10"])
     end
   end
 
@@ -76,6 +127,25 @@ RSpec.describe Homebrew::Bundle::Dsl do
       expect { dsl_from_string "brew 'foo', ['bad_option']" }.to raise_error(RuntimeError)
       expect { dsl_from_string "cask 'foo', ['bad_option']" }.to raise_error(RuntimeError)
       expect { dsl_from_string "tap 'foo', ['bad_clone_target']" }.to raise_error(RuntimeError)
+      expect { dsl_from_string "flatpak 'foo', ['bad_option']" }.to raise_error(RuntimeError)
+    end
+
+    it "errors on unknown go options" do
+      expect do
+        dsl_from_string 'go "github.com/charmbracelet/crush", with: ["github.com/charmbracelet/gum"]'
+      end.to raise_error(RuntimeError, /unknown options\(\[:with\]\) for go/)
+    end
+
+    it "errors on invalid uv with options" do
+      expect do
+        dsl_from_string 'uv "mkdocs", with: "mkdocs-material<10"'
+      end.to raise_error(RuntimeError, /options\[:with\].*Array of String objects/)
+      expect do
+        dsl_from_string 'uv "mkdocs", with: [1]'
+      end.to raise_error(RuntimeError, /options\[:with\].*Array of String objects/)
+      expect do
+        dsl_from_string 'uv "mkdocs", with: false'
+      end.to raise_error(RuntimeError, /options\[:with\].*Array of String objects/)
     end
   end
 
@@ -92,14 +162,7 @@ RSpec.describe Homebrew::Bundle::Dsl do
   end
 
   it ".sanitize_cask_name" do
-    allow_any_instance_of(Object).to receive(:opoo)
     expect(described_class.send(:sanitize_cask_name, "homebrew/cask-versions/adoptopenjdk8")).to eql("adoptopenjdk8")
     expect(described_class.send(:sanitize_cask_name, "adoptopenjdk8")).to eql("adoptopenjdk8")
-  end
-
-  it ".pluralize_dependency" do
-    expect(described_class.send(:pluralize_dependency, 0)).to eql("dependencies")
-    expect(described_class.send(:pluralize_dependency, 1)).to eql("dependency")
-    expect(described_class.send(:pluralize_dependency, 5)).to eql("dependencies")
   end
 end

@@ -10,7 +10,7 @@ last_review_date: "2025-02-08"
 
 [`brew test-bot`](Manpage.md#test-bot-options-formula) is what runs the automated review and testing system funded by [our Kickstarter in 2013](https://www.kickstarter.com/projects/homebrew/brew-test-bot).
 
-It comprises three Mac Pros hosting virtual machines, several Intel and M1 Mac minis and some cloud Ubuntu instances that run the [`test-bot.rb`](https://github.com/Homebrew/homebrew-test-bot) external command to perform bottle builds and automated testing of the full lifecycle of any change to Homebrew or its taps.
+It comprises three Mac Pros hosting virtual machines, several Intel and M1 Mac minis and some cloud Ubuntu instances that run the [`test-bot.rb`](https://github.com/Homebrew/brew/blob/HEAD/Library/Homebrew/dev-cmd/test-bot.rb) command to perform bottle builds and automated testing of the full lifecycle of any change to Homebrew or its taps.
 
 ## Pull Requests
 

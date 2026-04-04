@@ -34,7 +34,7 @@ class Object
   def duplicable? = true
 end
 
-class Method
+class Method # rubocop:todo Style/OneClassPerFile
   # Methods are not duplicable:
   #
   # ```ruby
@@ -45,7 +45,7 @@ class Method
   def duplicable? = false
 end
 
-class UnboundMethod
+class UnboundMethod # rubocop:todo Style/OneClassPerFile
   # Unbound methods are not duplicable:
   #
   # ```ruby
@@ -58,7 +58,7 @@ end
 
 require "singleton"
 
-module Singleton
+module Singleton # rubocop:todo Style/OneClassPerFile
   # Singleton instances are not duplicable:
   #
   # ```ruby

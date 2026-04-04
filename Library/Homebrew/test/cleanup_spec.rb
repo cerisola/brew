@@ -1,8 +1,11 @@
+# typed: false
 # frozen_string_literal: true
 
 require "test/support/fixtures/testball"
 require "cleanup"
+require "utils/autoremove"
 require "cask/cache"
+require "uninstall"
 require "fileutils"
 
 RSpec.describe Homebrew::Cleanup do
@@ -92,6 +95,31 @@ RSpec.describe Homebrew::Cleanup do
         cleanup.cleanup_formula formula_zero_dot_two
         expect(cleanup.unremovable_kegs).to contain_exactly(formula_zero_dot_one.installed_kegs[0])
       end
+    end
+  end
+
+  describe "::autoremove" do
+    let(:removable_keg) { instance_double(Keg, name: "libthai") }
+    let(:removable_formula) do
+      instance_double(Formula, name: "libthai", full_name: "libthai", any_installed_keg: removable_keg)
+    end
+
+    before do
+      allow(Formula).to receive(:clear_cache)
+      allow(Formula).to receive(:installed).and_return([removable_formula])
+      allow(Cask::Caskroom).to receive(:casks).and_return([])
+      allow(Homebrew::EnvConfig).to receive(:no_cleanup_formulae).and_return([])
+      allow(Utils::Autoremove).to receive(:removable_formulae).with([removable_formula],
+                                                                    []).and_return([removable_formula])
+      allow(InstalledDependents).to receive(:find_some_installed_dependents)
+        .with([removable_keg])
+        .and_return([[removable_keg], ["pango"]])
+    end
+
+    it "does not print or uninstall formulae required by installed dependents" do
+      expect(Homebrew::Uninstall).not_to receive(:uninstall_kegs)
+
+      expect { described_class.autoremove }.not_to output.to_stdout
     end
   end
 
@@ -276,7 +304,7 @@ RSpec.describe Homebrew::Cleanup do
   end
 
   describe "::cleanup_logs" do
-    let(:path) { (HOMEBREW_LOGS/"delete_me") }
+    let(:path) { HOMEBREW_LOGS/"delete_me" }
 
     before do
       path.mkpath
@@ -408,9 +436,9 @@ RSpec.describe Homebrew::Cleanup do
     end
 
     context "when cleaning old files in HOMEBREW_CACHE" do
-      let(:bottle) { (HOMEBREW_CACHE/"testball--0.0.1.tag.bottle.tar.gz") }
-      let(:testball) { (HOMEBREW_CACHE/"testball--0.0.1") }
-      let(:testball_resource) { (HOMEBREW_CACHE/"testball--rsrc--0.0.1.txt") }
+      let(:bottle) { HOMEBREW_CACHE/"testball--0.0.1.tag.bottle.tar.gz" }
+      let(:testball) { HOMEBREW_CACHE/"testball--0.0.1" }
+      let(:testball_resource) { HOMEBREW_CACHE/"testball--rsrc--0.0.1.txt" }
 
       before do
         FileUtils.touch bottle
@@ -444,13 +472,60 @@ RSpec.describe Homebrew::Cleanup do
         expect(testball_resource).not_to exist
       end
     end
+
+    context "when the cache path is a bottle manifest file" do
+      let(:bottle_manifest_path) { HOMEBREW_CACHE/"testball_bottle_manifest--1.0.bottle_manifest.json" }
+
+      before do
+        HOMEBREW_CACHE.mkpath
+        FileUtils.touch bottle_manifest_path
+        (HOMEBREW_CELLAR/"testball"/"0.1/bin").mkpath
+        FileUtils.touch(CoreTap.instance.new_formula_path("testball"))
+      end
+
+      it "does not remove the file when bottle resource version is nil" do
+        allow(Formulary).to receive(:from_rack).with(HOMEBREW_CELLAR/"testball_bottle_manifest").and_return(nil)
+        allow(Formulary).to receive(:from_rack).and_call_original
+        allow(Formulary).to receive(:from_rack).with(HOMEBREW_CELLAR/"testball").and_wrap_original do |m, *args|
+          formula = m.call(*args)
+          if formula
+            bottle_nil_version = instance_double(Bottle,
+                                                 resource: instance_double(Resource, version: nil),
+                                                 rebuild:  0)
+            allow(formula).to receive(:bottle).and_return(bottle_nil_version)
+          end
+          formula
+        end
+        cleanup.cleanup_cache([{ path: bottle_manifest_path, type: nil }])
+        expect(bottle_manifest_path).to exist
+      end
+
+      it "removes the file when path version differs from bottle version_rebuild" do
+        pathname_mismatch = (HOMEBREW_CACHE/"testball_bottle_manifest--2.0.bottle_manifest.json")
+        FileUtils.touch pathname_mismatch
+        allow(Formulary).to receive(:from_rack).with(HOMEBREW_CELLAR/"testball_bottle_manifest").and_return(nil)
+        allow(Formulary).to receive(:from_rack).and_call_original
+        allow(Formulary).to receive(:from_rack).with(HOMEBREW_CELLAR/"testball").and_wrap_original do |m, *args|
+          formula = m.call(*args)
+          if formula
+            bottle_double = instance_double(Bottle,
+                                            resource: instance_double(Resource, version: Version.new("1.0")),
+                                            rebuild:  0)
+            allow(formula).to receive(:bottle).and_return(bottle_double)
+          end
+          formula
+        end
+        cleanup.cleanup_cache([{ path: pathname_mismatch, type: nil }])
+        expect(pathname_mismatch).not_to exist
+      end
+    end
   end
 
   describe "::cleanup_python_site_packages" do
     context "when cleaning up Python modules" do
-      let(:foo_module) { (HOMEBREW_PREFIX/"lib/python3.99/site-packages/foo") }
-      let(:foo_pycache) { (foo_module/"__pycache__") }
-      let(:foo_pyc) { (foo_pycache/"foo.cypthon-399.pyc") }
+      let(:foo_module) { HOMEBREW_PREFIX/"lib/python3.99/site-packages/foo" }
+      let(:foo_pycache) { foo_module/"__pycache__" }
+      let(:foo_pyc) { foo_pycache/"foo.cypthon-399.pyc" }
 
       before do
         foo_pycache.mkpath

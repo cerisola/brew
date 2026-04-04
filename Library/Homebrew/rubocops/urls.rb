@@ -10,6 +10,7 @@ module RuboCop
       # This cop audits `url`s and `mirror`s in formulae.
       class Urls < FormulaCop
         include UrlHelper
+        extend AutoCorrector
 
         sig { override.params(formula_nodes: FormulaNodes).void }
         def audit_formula(formula_nodes)
@@ -19,12 +20,19 @@ module RuboCop
           mirrors = find_every_func_call_by_name(body_node, :mirror)
 
           # Identify livecheck URLs, to skip some checks for them
-          livecheck_url = if (livecheck = find_every_func_call_by_name(body_node, :livecheck).first) &&
-                             (livecheck_url = find_every_func_call_by_name(livecheck.parent, :url).first)
-            string_content(parameters(livecheck_url).first)
+          livecheck_urls = []
+          find_every_func_call_by_name(body_node, :livecheck).each do |livecheck_node|
+            livecheck_url = find_every_func_call_by_name(livecheck_node.parent, :url).first
+            next unless livecheck_url
+
+            livecheck_url_argument = parameters(livecheck_url).first
+            next unless livecheck_url_argument
+            next if livecheck_url_argument.type == :sym
+
+            livecheck_urls << string_content(livecheck_url_argument)
           end
 
-          audit_url(:formula, urls, mirrors, livecheck_url:)
+          audit_url(:formula, urls, mirrors, livecheck_urls:)
 
           return if formula_tap != "homebrew-core"
 
@@ -37,6 +45,47 @@ module RuboCop
 
             problem "#{url} looks like a binary package, not a source archive; " \
                     "homebrew/core is source-only."
+          end
+        end
+      end
+
+      # This cop makes sure that `url`s use HTTPS.
+      class HttpUrls < FormulaCop
+        extend AutoCorrector
+
+        sig { override.params(formula_nodes: FormulaNodes).void }
+        def audit_formula(formula_nodes)
+          return if (body_node = formula_nodes.body_node).nil?
+          return if formula_tap != "homebrew-core"
+          # TODO: Remove the deprecated/disabled check after homebrew/core has no more
+          # deprecated/disabled formulae using http:// URLs
+          return if method_called_ever?(body_node, :deprecate!) || method_called_ever?(body_node, :disable!)
+
+          # Identify livecheck URLs, to skip checking them
+          livecheck_urls = []
+          find_every_func_call_by_name(body_node, :livecheck).each do |livecheck_node|
+            livecheck_url = find_every_func_call_by_name(livecheck_node.parent, :url).first
+            next unless livecheck_url
+
+            livecheck_url_argument = parameters(livecheck_url).first
+            next unless livecheck_url_argument
+            next if livecheck_url_argument.type == :sym
+
+            livecheck_urls << string_content(livecheck_url_argument)
+          end
+
+          find_every_func_call_by_name(body_node, :url).each do |url_node|
+            url_string_node = parameters(url_node).first
+            next unless url_string_node
+
+            url_string = string_content(url_string_node)
+            next unless url_string.start_with?("http://")
+            next if livecheck_urls.include?(url_string)
+
+            offending_node(url_string_node)
+            problem "Formulae in homebrew/core should not use http:// URLs" do |corrector|
+              corrector.replace(url_string_node.source_range, url_string_node.source.sub("http://", "https://"))
+            end
           end
         end
       end
@@ -54,13 +103,13 @@ module RuboCop
           # Check pypi URLs
           pypi_pattern = %r{^https?://pypi\.python\.org/}
           audit_urls(urls, pypi_pattern) do |_, url|
-            problem "use the `Source` url found on PyPI downloads page (`#{get_pypi_url(url)}`)"
+            problem "Use the \"Source\" URL found on the PyPI downloads page (#{get_pypi_url(url)})"
           end
 
           # Require long files.pythonhosted.org URLs
           pythonhosted_pattern = %r{^https?://files\.pythonhosted\.org/packages/source/}
           audit_urls(urls, pythonhosted_pattern) do |_, url|
-            problem "use the `Source` url found on PyPI downloads page (`#{get_pypi_url(url)}`)"
+            problem "Use the \"Source\" URL found on the PyPI downloads page (#{get_pypi_url(url)})"
           end
         end
 
@@ -80,11 +129,11 @@ module RuboCop
           return if formula_tap != "homebrew-core"
 
           find_method_calls_by_name(body_node, :url).each do |url|
-            next unless string_content(parameters(url).first).match?(/\.git$/)
-            next if url_has_revision?(parameters(url).last)
+            next unless string_content(parameters(url).fetch(0)).match?(/\.git$/)
+            next if url_has_revision?(parameters(url).fetch(-1))
 
             offending_node(url)
-            problem "Formulae in homebrew/core should specify a revision for git URLs"
+            problem "Formulae in homebrew/core should specify a revision for Git URLs"
           end
         end
 
@@ -103,11 +152,11 @@ module RuboCop
           return if formula_tap != "homebrew-core"
 
           find_method_calls_by_name(body_node, :url).each do |url|
-            next unless string_content(parameters(url).first).match?(/\.git$/)
-            next if url_has_tag?(parameters(url).last)
+            next unless string_content(parameters(url).fetch(0)).match?(/\.git$/)
+            next if url_has_tag?(parameters(url).fetch(-1))
 
             offending_node(url)
-            problem "Formulae in homebrew/core should specify a tag for git URLs"
+            problem "Formulae in homebrew/core should specify a tag for Git URLs"
           end
         end
 

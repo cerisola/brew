@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 RSpec.describe Cask::Artifact::Suite, :cask do
@@ -5,7 +6,7 @@ RSpec.describe Cask::Artifact::Suite, :cask do
 
   let(:install_phase) do
     lambda do
-      cask.artifacts.select { |a| a.is_a?(described_class) }.each do |artifact|
+      cask.artifacts.grep(described_class).each do |artifact|
         artifact.install_phase(command: NeverSudoSystemCommand, force: false)
       end
     end

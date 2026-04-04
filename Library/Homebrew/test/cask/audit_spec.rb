@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "cask/audit"
@@ -49,13 +50,11 @@ RSpec.describe Cask::Audit, :cask do
   let(:only) { [] }
   let(:except) { [] }
   let(:strict) { nil }
-  let(:token_conflicts) { nil }
   let(:signing) { nil }
   let(:audit) do
     described_class.new(cask, online:,
                               strict:,
                               new_cask:,
-                              token_conflicts:,
                               signing:,
                               only:,
                               except:)
@@ -69,12 +68,8 @@ RSpec.describe Cask::Audit, :cask do
         expect(audit).to be_online
       end
 
-      it "implies `strict`" do
+      it "implies `strict`" do # rubocop:todo RSpec/AggregateExamples
         expect(audit).to be_strict
-      end
-
-      it "implies `token_conflicts`" do
-        expect(audit.token_conflicts?).to be true
       end
     end
 
@@ -459,6 +454,7 @@ RSpec.describe Cask::Audit, :cask do
 
     describe "signing checks" do
       let(:only) { ["signing"] }
+      let(:tap) { CoreCaskTap.instance }
       let(:download_double) { instance_double(Cask::Download) }
       let(:unpack_double) { instance_double(UnpackStrategy::Zip) }
 
@@ -501,12 +497,53 @@ RSpec.describe Cask::Audit, :cask do
           expect(run).not_to error_with(/Audit\.app/)
         end
       end
+
+      context "when quarantine support is not available" do
+        let(:cask) do
+          tmp_cask "signing-cask-test", <<~RUBY
+            cask 'signing-cask-test' do
+              version '1.0'
+              url "https://brew.sh/"
+              app 'Audit.app'
+            end
+          RUBY
+        end
+
+        before do
+          allow(cask).to receive(:tap).and_return(tap)
+
+          allow(Cask::Quarantine).to receive(:available?).and_return(false)
+        end
+
+        it "skips signing audit with warning" do
+          allow(cask).to receive(:tap).and_return(tap)
+
+          expect(audit).to receive(:odebug).with("Quarantine support is not available, skipping signing audit")
+          expect(run).not_to error_with(/Signature verification failed/)
+        end
+      end
     end
 
-    describe "livecheck should be skipped" do
+    describe "livecheck version validation", :no_api do
       let(:only) { ["livecheck_version"] }
       let(:online) { true }
       let(:message) { /Version '[^']*' differs from '[^']*' retrieved by livecheck\./ }
+
+      context "when `@livecheck_result` is already set" do
+        let(:cask_token) { "basic-cask" }
+
+        it "returns existing `@livecheck_result` value" do
+          audit.instance_variable_set(:@livecheck_result, :auto_detected)
+          expect(run).not_to error_with(message)
+          audit.instance_variable_set(:@livecheck_result, nil)
+        end
+      end
+
+      context "when `cask.version` is not set" do
+        let(:cask_token) { "missing-version" }
+
+        it { is_expected.not_to error_with(message) }
+      end
 
       context "when the Cask has a `livecheck` block using skip" do
         let(:cask_token) { "livecheck-skip" }
@@ -566,6 +603,50 @@ RSpec.describe Cask::Audit, :cask do
         let(:cask_token) { "livecheck-url-unversioned-reference" }
 
         it { is_expected.not_to error_with(message) }
+      end
+
+      context "when `latest_version` returns `nil`" do
+        let(:cask_token) { "basic-cask" }
+
+        it do
+          allow(Homebrew::Livecheck).to receive(:latest_version).and_return(nil)
+          expect(run).to error_with(message)
+        end
+      end
+
+      context "when the Cask is not throttled" do
+        let(:cask_token) { "basic-cask" }
+
+        it do
+          allow(Homebrew::Livecheck).to receive(:latest_version).and_return({
+            latest: Version.new("1.2.3"),
+          })
+          expect(run).not_to error_with(message)
+        end
+      end
+
+      context "when the Cask has a `livecheck` block using `throttle`" do
+        let(:cask_token) { "livecheck-throttle" }
+
+        it do
+          allow(Homebrew::Livecheck).to receive(:latest_version).and_return({
+            latest:           Version.new("1.2.6"),
+            latest_throttled: Version.new("1.2.5"),
+          })
+          expect(run).not_to error_with(message)
+        end
+      end
+
+      context "when the Cask has a `livecheck` block referencing a Cask that uses `throttle`" do
+        let(:cask_token) { "livecheck-throttle-reference" }
+
+        it do
+          allow(Homebrew::Livecheck).to receive(:latest_version).and_return({
+            latest:           Version.new("1.2.6"),
+            latest_throttled: Version.new("1.2.5"),
+          })
+          expect(run).not_to error_with(message)
+        end
       end
     end
 
@@ -834,6 +915,59 @@ RSpec.describe Cask::Audit, :cask do
       end
     end
 
+    describe "conflicts with" do
+      let(:only) { ["conflicts_with"] }
+      let(:tap) { CoreCaskTap.instance }
+
+      context "when the Cask has no conflicts" do
+        let(:cask_token) { "basic-cask" }
+
+        it { is_expected.to pass }
+      end
+
+      context "when all conflicting casks exist" do
+        let(:cask) do
+          tmp_cask "test-conflicts-cask", <<~RUBY
+            cask 'test-conflicts-cask' do
+              version '1.0'
+              url "https://brew.sh/index.html"
+              artifact "example.pdf", target: "/Library/Application Support/example"
+
+              conflicts_with cask: ["foo", "bar"]
+            end
+          RUBY
+        end
+
+        before do
+          allow(audit).to receive(:core_cask_tokens).and_return(%w[foo bar baz qux])
+          allow(cask).to receive(:tap).and_return(tap)
+        end
+
+        it { is_expected.to pass }
+      end
+
+      context "when conflicting casks are missing" do
+        let(:cask) do
+          tmp_cask "test-conflicts-cask", <<~RUBY
+            cask 'test-conflicts-cask' do
+              version '1.0'
+              url "https://brew.sh/index.html"
+              artifact "example.pdf", target: "/Library/Application Support/example"
+
+              conflicts_with cask: ["foo", "foo@1", "bar", "baz"]
+            end
+          RUBY
+        end
+
+        before do
+          allow(audit).to receive(:core_cask_tokens).and_return(["foo", "baz"])
+          allow(cask).to receive(:tap).and_return(tap)
+        end
+
+        it { is_expected.to error_with(/cask conflicts with non-existing cask/) }
+      end
+    end
+
     describe "denylist checks" do
       let(:only) { ["denylist"] }
 
@@ -949,34 +1083,15 @@ RSpec.describe Cask::Audit, :cask do
     end
 
     describe "token conflicts" do
-      let(:only) { ["token_conflicts"] }
       let(:cask_token) { "with-binary" }
-      let(:token_conflicts) { true }
 
       context "when cask token conflicts with a core formula" do
         let(:formula_names) { %w[with-binary other-formula] }
 
-        context "when `--strict` is passed" do
-          let(:strict) { true }
-
-          it "warns about duplicates" do
-            expect(audit).to receive(:core_formula_names).and_return(formula_names)
-            expect(run).to error_with(/possible duplicate/)
-          end
+        it "warns about conflicts" do
+          expect(audit).to receive(:core_formula_names).and_return(formula_names)
+          expect(run).to error_with(/cask token conflicts/)
         end
-
-        context "when `--strict` is not passed" do
-          it "does not warn about duplicates" do
-            expect(audit).to receive(:core_formula_names).and_return(formula_names)
-            expect(run).not_to error_with(/possible duplicate/)
-          end
-        end
-      end
-
-      context "when cask token does not conflict with a core formula" do
-        let(:formula_names) { %w[other-formula] }
-
-        it { is_expected.to pass }
       end
     end
 
@@ -997,7 +1112,7 @@ RSpec.describe Cask::Audit, :cask do
         expect(run).to pass
       end
 
-      it "when download fails it fails" do
+      it "when download fails it fails" do # rubocop:todo RSpec/AggregateExamples
         expect(download_double).to receive(:fetch).and_raise(StandardError.new(message))
         expect(run).to error_with(/#{message}/)
       end

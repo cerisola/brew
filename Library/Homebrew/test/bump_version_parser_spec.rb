@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "bump_version_parser"
@@ -16,21 +17,19 @@ RSpec.describe Homebrew::BumpVersionParser do
     end
   end
 
-  context "when initializing with only an intel version" do
-    it "raises a UsageError" do
-      expect do
-        described_class.new(intel: intel_version)
-      end.to raise_error(UsageError,
-                         "Invalid usage: `--version-arm` must not be empty.")
+  context "when initializing with only an arm version" do
+    let(:new_version_arm) { described_class.new(arm: arm_version) }
+
+    it "correctly parses arm version" do
+      expect(new_version_arm.arm).to eq(Cask::DSL::Version.new(arm_version.to_s))
     end
   end
 
-  context "when initializing with only an arm version" do
-    it "raises a UsageError" do
-      expect do
-        described_class.new(arm: arm_version)
-      end.to raise_error(UsageError,
-                         "Invalid usage: `--version-intel` must not be empty.")
+  context "when initializing with only an intel version" do
+    let(:new_version_intel) { described_class.new(intel: intel_version) }
+
+    it "correctly parses intel version" do
+      expect(new_version_intel.intel).to eq(Cask::DSL::Version.new(intel_version.to_s))
     end
   end
 
@@ -58,12 +57,12 @@ RSpec.describe Homebrew::BumpVersionParser do
       expect(new_version_version.general).to eq(Cask::DSL::Version.new(general_version.to_s))
     end
 
-    it "correctly parses arm version" do
+    it "correctly parses arm version" do # rubocop:todo RSpec/AggregateExamples
       expect(new_version.arm).to eq(Cask::DSL::Version.new(arm_version.to_s))
       expect(new_version_version.arm).to eq(Cask::DSL::Version.new(arm_version.to_s))
     end
 
-    it "correctly parses intel version" do
+    it "correctly parses intel version" do # rubocop:todo RSpec/AggregateExamples
       expect(new_version.intel).to eq(Cask::DSL::Version.new(intel_version.to_s))
       expect(new_version_version.intel).to eq(Cask::DSL::Version.new(intel_version.to_s))
     end

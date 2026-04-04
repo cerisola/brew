@@ -5,18 +5,24 @@ require "cask/cache"
 require "cask/cask"
 require "uri"
 require "utils/curl"
+require "utils/output"
+require "utils/path"
 require "extend/hash/keys"
+require "api"
 
 module Cask
   # Loads a cask from various sources.
   module CaskLoader
     extend Context
+    extend ::Utils::Output::Mixin
 
     ALLOWED_URL_SCHEMES = %w[file].freeze
     private_constant :ALLOWED_URL_SCHEMES
 
     module ILoader
       extend T::Helpers
+      include ::Utils::Output::Mixin
+
       interface!
 
       sig { abstract.params(config: T.nilable(Config)).returns(Cask) }
@@ -27,6 +33,7 @@ module Cask
     class AbstractContentLoader
       include ILoader
       extend T::Helpers
+
       abstract!
 
       sig { returns(String) }
@@ -104,13 +111,19 @@ module Cask
           return
         end
 
-        return if %w[.rb .json].exclude?(path.extname)
         return unless path.expand_path.exist?
-
-        return if Homebrew::EnvConfig.forbid_packages_from_paths? &&
-                  !path.realpath.to_s.start_with?("#{Caskroom.path}/", "#{HOMEBREW_LIBRARY}/Taps/")
+        return if invalid_path?(path)
+        return unless ::Utils::Path.loadable_package_path?(path, :cask)
 
         new(path)
+      end
+
+      sig { params(pathname: Pathname, valid_extnames: T::Array[String]).returns(T::Boolean) }
+      def self.invalid_path?(pathname, valid_extnames: %w[.rb .json])
+        return true if valid_extnames.exclude?(pathname.extname)
+
+        @invalid_basenames ||= %w[INSTALL_RECEIPT.json sbom.spdx.json].freeze
+        @invalid_basenames.include?(pathname.basename.to_s)
       end
 
       attr_reader :token, :path
@@ -121,9 +134,10 @@ module Cask
 
         path = Pathname(path).expand_path
 
-        @token = path.basename(path.extname).to_s
+        @token = path.basename(path.extname).basename(".internal").to_s
         @path = path
         @tap = Tap.from_path(path) || Homebrew::API.tap_from_source_download(path)
+        @from_installed_caskfile = false
       end
 
       sig { override.params(config: T.nilable(Config)).returns(Cask) }
@@ -135,8 +149,26 @@ module Cask
         @content = path.read(encoding: "UTF-8")
         @config = config
 
-        if path.extname == ".json"
-          return FromAPILoader.new(token, from_json: JSON.parse(@content), path:).load(config:)
+        if !self.class.invalid_path?(path, valid_extnames: %w[.json]) &&
+           (from_json = JSON.parse(@content).presence) &&
+           from_json.is_a?(Hash)
+          begin
+            from_internal_json = path.to_s.end_with?(".internal.json")
+            return FromAPILoader.new(
+              token,
+              from_json:,
+              path:,
+              from_installed_caskfile: @from_installed_caskfile,
+              from_internal_json:,
+            ).load(config:)
+          rescue CaskInvalidError => e
+            if @from_installed_caskfile
+              error = CaskUnreadableError.new(token, e.reason)
+              error.set_backtrace e.backtrace
+              raise error
+            end
+            raise
+          end
         end
 
         begin
@@ -147,6 +179,14 @@ module Cask
           error = CaskUnreadableError.new(token, e.message)
           error.set_backtrace e.backtrace
           raise error
+        rescue CaskInvalidError => e # e.g. NoMethodError from removed DSL methods, wrapped
+          # as CaskInvalidError by Cask#refresh before reaching here.
+          if @from_installed_caskfile
+            error = CaskUnreadableError.new(token, e.reason)
+            error.set_backtrace e.backtrace
+            raise error
+          end
+          raise
         end
       end
 
@@ -170,7 +210,7 @@ module Cask
 
         # Cache compiled regex
         @uri_regex ||= begin
-          uri_regex = ::URI::DEFAULT_PARSER.make_regexp
+          uri_regex = ::URI::RFC2396_PARSER.make_regexp
           Regexp.new("\\A#{uri_regex.source}\\Z", uri_regex.options)
         end
 
@@ -198,8 +238,8 @@ module Cask
         if ALLOWED_URL_SCHEMES.exclude?(url.scheme)
           raise UnsupportedInstallationMethod,
                 "Non-checksummed download of #{name} formula file from an arbitrary URL is unsupported! " \
-                "`brew extract` or `brew create` and `brew tap-new` to create a formula file in a tap " \
-                "on GitHub instead."
+                "`brew version-install` to install a formula file from your own custom tap " \
+                "instead."
         end
 
         begin
@@ -284,7 +324,7 @@ module Cask
       sig { returns(Pathname) }
       attr_reader :path
 
-      sig { returns(T.nilable(Hash)) }
+      sig { returns(T.nilable(T::Hash[String, T.untyped])) }
       attr_reader :from_json
 
       sig {
@@ -295,8 +335,8 @@ module Cask
         return if Homebrew::EnvConfig.no_install_from_api?
         return unless ref.is_a?(String)
         return unless (token = ref[HOMEBREW_DEFAULT_TAP_CASK_REGEX, :token])
-        if !Homebrew::API::Cask.all_casks.key?(token) &&
-           !Homebrew::API::Cask.all_renames.key?(token)
+        if Homebrew::API.cask_tokens.exclude?(token) &&
+           !Homebrew::API.cask_renames.key?(token)
           return
         end
 
@@ -306,160 +346,154 @@ module Cask
         new("#{tap}/#{token}")
       end
 
-      sig { params(token: String, from_json: Hash, path: T.nilable(Pathname)).void }
-      def initialize(token, from_json: T.unsafe(nil), path: nil)
+      sig {
+        params(
+          token:                   String,
+          from_json:               T.nilable(T::Hash[String, T.untyped]),
+          path:                    T.nilable(Pathname),
+          from_installed_caskfile: T::Boolean,
+          from_internal_json:      T::Boolean,
+        ).void
+      }
+      def initialize(token, from_json: T.unsafe(nil), path: nil, from_installed_caskfile: false,
+                     from_internal_json: false)
         @token = token.sub(%r{^homebrew/(?:homebrew-)?cask/}i, "")
-        @sourcefile_path = path || Homebrew::API::Cask.cached_json_file_path
+        @sourcefile_path = if path
+          path
+        elsif from_json
+          from_internal_json ? Homebrew::API::Internal.cached_cask_json_file_path : Homebrew::API::Cask.cached_json_file_path
+        else
+          Homebrew::API.cached_cask_json_file_path
+        end
         @path = path || CaskLoader.default_path(@token)
         @from_json = from_json
+        @from_installed_caskfile = from_installed_caskfile
+        @from_internal_json = from_internal_json
       end
 
       def load(config:)
-        json_cask = from_json || Homebrew::API::Cask.all_casks.fetch(token)
+        if (api_source = from_json)
+          if @from_internal_json
+            load_from_internal_json(config:, api_source:)
+          else
+            load_from_json(config:, api_source:)
+          end
+        elsif Homebrew::EnvConfig.use_internal_api?
+          load_from_internal_api(config:)
+        else
+          load_from_api(config:)
+        end
+      end
 
+      private
+
+      def load_from_api(config:)
+        api_source = Homebrew::API::Cask.all_casks.fetch(token)
+        tap_git_head = api_source["tap_git_head"]
+        cask_struct = Homebrew::API::Cask::CaskStructGenerator.generate_cask_struct_hash(
+          api_source, ignore_types: @from_installed_caskfile
+        )
+
+        load_from_struct(config:, cask_struct:, api_source:, tap_git_head:)
+      end
+
+      def load_from_internal_api(config:)
+        cask_struct = Homebrew::API::Internal.cask_struct(token)
+        api_source = Homebrew::API::Internal.cask_hashes.fetch(token)
+        tap_git_head = Homebrew::API::Internal.cask_tap_git_head
+
+        load_from_struct(config:, cask_struct:, api_source:, tap_git_head:, internal_api: true)
+      end
+
+      def load_from_json(config:, api_source:)
+        tap_git_head = api_source["tap_git_head"]
+        cask_struct = Homebrew::API::Cask::CaskStructGenerator.generate_cask_struct_hash(
+          api_source, ignore_types: @from_installed_caskfile
+        )
+
+        load_from_struct(config:, cask_struct:, api_source:, tap_git_head:)
+      end
+
+      def load_from_internal_json(config:, api_source:)
+        api_source = api_source.dup
+        tap_git_head = api_source.delete("tap_git_head")
+        cask_struct = Homebrew::API::CaskStruct.deserialize(api_source)
+
+        load_from_struct(config:, cask_struct:, api_source:, tap_git_head:, internal_api: true)
+      end
+
+      sig {
+        params(
+          config:       T.nilable(Config),
+          cask_struct:  Homebrew::API::CaskStruct,
+          api_source:   T::Hash[String, T.untyped],
+          tap_git_head: T.nilable(String),
+          internal_api: T::Boolean,
+        ).returns(Cask)
+      }
+      def load_from_struct(config:, cask_struct:, api_source:, tap_git_head:, internal_api: false)
         cask_options = {
-          loaded_from_api: true,
-          sourcefile_path: @sourcefile_path,
-          source:          JSON.pretty_generate(json_cask),
+          loaded_from_api:          true,
+          loaded_from_internal_api: internal_api,
+          api_source:,
+          sourcefile_path:          @sourcefile_path,
+          source:                   JSON.pretty_generate(api_source),
           config:,
-          loader:          self,
+          loader:                   self,
         }
 
-        json_cask = Homebrew::API.merge_variations(json_cask).deep_symbolize_keys.freeze
-
-        cask_options[:tap] = Tap.fetch(json_cask[:tap]) if json_cask[:tap].to_s.include?("/")
-
-        user_agent = json_cask.dig(:url_specs, :user_agent)
-        json_cask[:url_specs][:user_agent] = user_agent[1..].to_sym if user_agent && user_agent[0] == ":"
-        if (using = json_cask.dig(:url_specs, :using))
-          json_cask[:url_specs][:using] = using.to_sym
+        if (tap_string = cask_struct.tap_string)
+          cask_options[:tap] = Tap.fetch(tap_string)
         end
 
         api_cask = Cask.new(token, **cask_options) do
-          version json_cask[:version]
+          version cask_struct.version
+          sha256 cask_struct.sha256
 
-          if json_cask[:sha256] == "no_check"
-            sha256 :no_check
-          else
-            sha256 json_cask[:sha256]
-          end
-
-          url json_cask[:url], **json_cask.fetch(:url_specs, {}) if json_cask[:url].present?
-          json_cask[:name]&.each do |cask_name|
+          url(*cask_struct.url_args, **cask_struct.url_kwargs)
+          cask_struct.names.each do |cask_name|
             name cask_name
           end
-          desc json_cask[:desc]
-          homepage json_cask[:homepage]
+          desc cask_struct.desc if cask_struct.desc?
+          homepage cask_struct.homepage if cask_struct.homepage?
 
-          if (deprecation_date = json_cask[:deprecation_date].presence)
-            reason = DeprecateDisable.to_reason_string_or_symbol json_cask[:deprecation_reason], type: :cask
-            deprecate! date: deprecation_date, because: reason
+          deprecate!(**cask_struct.deprecate_args) if cask_struct.deprecate?
+          disable!(**cask_struct.disable_args) if cask_struct.disable?
+
+          auto_updates cask_struct.auto_updates if cask_struct.auto_updates?
+          conflicts_with(**cask_struct.conflicts_with_args) if cask_struct.conflicts?
+
+          cask_struct.renames.each do |from, to|
+            rename from, to
           end
 
-          if (disable_date = json_cask[:disable_date].presence)
-            reason = DeprecateDisable.to_reason_string_or_symbol json_cask[:disable_reason], type: :cask
-            disable! date: disable_date, because: reason
-          end
-
-          auto_updates json_cask[:auto_updates] unless json_cask[:auto_updates].nil?
-          conflicts_with(**json_cask[:conflicts_with]) if json_cask[:conflicts_with].present?
-
-          if json_cask[:depends_on].present?
-            dep_hash = json_cask[:depends_on].to_h do |dep_key, dep_value|
-              # Arch dependencies are encoded like `{ type: :intel, bits: 64 }`
-              # but `depends_on arch:` only accepts `:intel` or `:arm64`
-              if dep_key == :arch
-                next [:arch, :intel] if dep_value.first[:type] == "intel"
-
-                next [:arch, :arm64]
-              end
-
-              next [dep_key, dep_value] if dep_key != :macos
-
-              dep_type = dep_value.keys.first
-              if dep_type == :==
-                version_symbols = dep_value[dep_type].map do |version|
-                  MacOSVersion::SYMBOLS.key(version) || version
-                end
-                next [dep_key, version_symbols]
-              end
-
-              version_symbol = dep_value[dep_type].first
-              version_symbol = MacOSVersion::SYMBOLS.key(version_symbol) || version_symbol
-              [dep_key, "#{dep_type} :#{version_symbol}"]
-            end.compact
-            depends_on(**dep_hash)
-          end
-
-          if json_cask[:container].present?
-            container_hash = json_cask[:container].to_h do |container_key, container_value|
-              next [container_key, container_value] if container_key != :type
-
-              [container_key, container_value.to_sym]
-            end
-            container(**container_hash)
-          end
-
-          json_cask[:artifacts].each do |artifact|
-            # convert generic string replacements into actual ones
-            artifact = cask.loader.from_h_gsubs(artifact, appdir)
-            key = artifact.keys.first
-            if artifact[key].nil?
-              # for artifacts with blocks that can't be loaded from the API
-              send(key) {} # empty on purpose
-            else
-              args = artifact[key]
-              kwargs = if args.last.is_a?(Hash)
-                args.pop
-              else
-                {}
-              end
-              send(key, *args, **kwargs)
+          if cask_struct.depends_on?
+            args = cask_struct.depends_on_args
+            begin
+              depends_on(**args)
+            rescue MacOSVersion::Error => e
+              odebug "Ignored invalid macOS version dependency in cask '#{token}': #{args.inspect} (#{e.message})"
+              nil
             end
           end
 
-          if json_cask[:caveats].present?
-            # convert generic string replacements into actual ones
-            caveats cask.loader.from_h_string_gsubs(json_cask[:caveats], appdir)
+          container(**cask_struct.container_args) if cask_struct.container?
+
+          cask_struct.artifacts(appdir:).each do |key, args, kwargs, block|
+            send(key, *args, **kwargs, &block)
+          end
+
+          caveats cask_struct.caveats(appdir:) if cask_struct.caveats?
+
+          if cask_struct.caveats_rosetta
+            caveats do
+              # Dynamically defined via `caveat :requires_rosetta` — Sorbet can't resolve it.
+              public_send(:requires_rosetta) # rubocop:disable Style/SendWithLiteralMethodName
+            end
           end
         end
-        api_cask.populate_from_api!(json_cask)
+        api_cask.populate_from_api!(cask_struct, tap_git_head:)
         api_cask
-      end
-
-      def from_h_string_gsubs(string, appdir)
-        string.to_s
-              .gsub(HOMEBREW_HOME_PLACEHOLDER, Dir.home)
-              .gsub(HOMEBREW_PREFIX_PLACEHOLDER, HOMEBREW_PREFIX)
-              .gsub(HOMEBREW_CELLAR_PLACEHOLDER, HOMEBREW_CELLAR)
-              .gsub(HOMEBREW_CASK_APPDIR_PLACEHOLDER, appdir)
-      end
-
-      def from_h_array_gsubs(array, appdir)
-        array.to_a.map do |value|
-          from_h_gsubs(value, appdir)
-        end
-      end
-
-      def from_h_hash_gsubs(hash, appdir)
-        hash.to_h.transform_values do |value|
-          from_h_gsubs(value, appdir)
-        end
-      end
-
-      def from_h_gsubs(value, appdir)
-        return value if value.blank?
-
-        case value
-        when Hash
-          from_h_hash_gsubs(value, appdir)
-        when Array
-          from_h_array_gsubs(value, appdir)
-        when String
-          from_h_string_gsubs(value, appdir)
-        else
-          value
-        end
       end
     end
 
@@ -506,7 +540,7 @@ module Cask
         token = if ref.is_a?(String)
           ref
         elsif ref.is_a?(Pathname)
-          ref.basename(ref.extname).to_s
+          ref.basename(ref.extname).basename(".internal").to_s
         end
         return unless token
 
@@ -522,6 +556,7 @@ module Cask
 
         installed_tap = Cask.new(@token).tab.tap
         @tap = installed_tap if installed_tap
+        @from_installed_caskfile = true
       end
     end
 
@@ -571,13 +606,19 @@ module Cask
         new_token = tap.core_cask_tap? ? token : "#{tap}/#{token}"
         type = :rename
       elsif (new_tap_name = tap.tap_migrations[token].presence)
-        new_tap, new_token = Tap.with_cask_token(new_tap_name) || [Tap.fetch(new_tap_name), token]
-        new_tap.ensure_installed!
+        new_tap, new_token = Tap.with_cask_token(new_tap_name)
+        unless new_tap
+          if new_tap_name.include?("/")
+            new_tap = Tap.fetch(new_tap_name)
+            new_token = token
+          else
+            new_tap = tap
+            new_token = new_tap_name
+          end
+        end
         new_tapped_token = "#{new_tap}/#{new_token}"
 
-        if tapped_token == new_tapped_token
-          opoo "Tap migration for #{tapped_token} points to itself, stopping recursion."
-        else
+        if tapped_token != new_tapped_token
           old_token = tap.core_cask_tap? ? token : tapped_token
           return unless (token_tap_type = tap_cask_token_type(new_tapped_token, warn: false))
 
@@ -605,7 +646,7 @@ module Cask
         NullLoader,
       ].each do |loader_class|
         if (loader = loader_class.try_new(ref, warn:))
-          $stderr.puts "#{$PROGRAM_NAME} (#{loader.class}): loading #{ref}" if debug?
+          $stderr.puts "#{$PROGRAM_NAME} (#{loader.class}): loading #{ref}" if verbose? && debug?
           return loader
         end
       end

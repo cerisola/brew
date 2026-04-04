@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 RSpec.describe Cask::Artifact::PostflightBlock, :cask do
@@ -13,7 +14,7 @@ RSpec.describe Cask::Artifact::PostflightBlock, :cask do
         end
       end
 
-      cask.artifacts.select { |a| a.is_a?(described_class) }.each do |artifact|
+      cask.artifacts.grep(described_class).each do |artifact|
         artifact.install_phase(command: NeverSudoSystemCommand, force: false)
       end
 
@@ -34,7 +35,7 @@ RSpec.describe Cask::Artifact::PostflightBlock, :cask do
         end
       end
 
-      cask.artifacts.select { |a| a.is_a?(described_class) }.each do |artifact|
+      cask.artifacts.grep(described_class).each do |artifact|
         artifact.uninstall_phase(command: NeverSudoSystemCommand, force: false)
       end
 

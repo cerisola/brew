@@ -1,5 +1,5 @@
 ---
-last_review_date: "1970-01-01"
+last_review_date: 2026-04-04
 redirect_from:
   - /Tips-N'-Tricks
 ---
@@ -8,7 +8,7 @@ redirect_from:
 
 ## Install previous versions of formulae
 
-Some formulae in `homebrew/core` are made available as [versioned formulae](Versions.md) using a special naming format, e.g. `gcc@9`. If the version you're looking for isn't available, consider using `brew extract`.
+Some formulae in `homebrew/core` are made available as [versioned formulae](Versions.md) using a special naming format, e.g. `gcc@9`. If the version you're looking for isn't available, see [Locking installed formulae at specific versions](Versions.md#locking-installed-formulae-at-specific-versions).
 
 ## Quickly remove something from Homebrew's prefix
 
@@ -26,7 +26,7 @@ Sometimes it's faster to download a file via means other than the strategies tha
 
 Downloads are saved in the `downloads` subdirectory of Homebrew's cache directory (as specified by `brew --cache`, e.g. `~/Library/Caches/Homebrew`) and renamed as `<url-hash>--<formula>-<version>`. The command `brew --cache --build-from-source <formula>` will print the expected path of the cached download, so after downloading the file, you can run `mv the_tarball "$(brew --cache --build-from-source <formula>)"` to relocate it to the cache.
 
-You can also pre-cache the download by using the command `brew fetch <formula>` which also displays the SHA-256 hash. This can be useful for updating formulae to new versions.
+You can also pre-cache the download by using the command `brew fetch <formula>` which also displays its SHA-256 hash. This can be useful for updating formulae to new versions.
 
 ## Install stuff without the Xcode CLT
 
@@ -49,12 +49,17 @@ brew install --only-dependencies <formula>
 $ brew irb
 ==> Interactive Homebrew Shell
 Example commands available with: `brew irb --examples`
-irb(main):001:0> Formulary.factory("ace").methods - Object.methods
-=> [:install, :test, :test_defined?, :sbin, :pkgshare, :elisp,
-:frameworks, :kext_prefix, :any_version_installed?, :etc, :pkgetc,
+brew(main):001> Formulary.factory("ace").methods - Object.methods
+=>
+[:test,
+ :install,
+ :valid_platform?,
 ...
-:on_macos, :on_linux, :debug?, :quiet?, :verbose?, :with_context]
-irb(main):002:0>
+ :debug?,
+ :verbose?,
+ :quiet?]
+ [:install, :test, :test_defined?, :sbin, :pkgshare, :elisp,
+brew(main):002>
 ```
 
 ## Hide the beer mug emoji when finishing a build
@@ -89,6 +94,70 @@ $ brew install --cask --adopt textmate
 🍺  textmate was successfully installed!
 ```
 
+## Define aliases for Homebrew commands
+
+Use [`brew alias`](Manpage.md#alias---edit-aliasaliascommand) to define custom commands that run other commands in `brew` or your shell, similar to the `alias` shell builtin.
+
+```shell
+# Add aliases
+$ brew alias ug='upgrade'
+$ brew alias i='install'
+
+# Print all aliases
+$ brew alias
+
+# Print one alias
+$ brew alias i
+
+# Use your aliases like any other command
+$ brew i git
+
+# Remove an alias
+$ brew unalias i
+
+# Aliases can include other aliases
+$ brew alias show='info'
+$ brew alias print='show'
+$ brew print git # will run `brew info git`
+```
+
+Note that names of stock Homebrew commands can't be used as aliases.
+
+All aliased commands are prefixed with `brew`, unless they start with `!` or `%`:
+
+```shell
+$ brew alias ug='upgrade'
+# `brew ug` → `brew upgrade`
+
+$ brew alias status='!git status'
+# `brew status` → `git status`
+```
+
+You may need single quotes to prevent your shell from interpreting `!`, but `%` will work for both quote types.
+
+```shell
+# Use shell expansion to preserve a local variable
+$ mygit=/path/to/my/git
+$ brew alias git="%$mygit"
+# `brew git status` → `/path/to/my/git status`
+```
+
+Aliases can be opened in `$EDITOR` with the `--edit` flag.
+
+```shell
+# Edit alias 'brew foo', creating if necessary
+$ brew alias --edit foo
+# Create and edit alias 'brew foo'
+$ brew alias --edit foo=bar
+
+# This works too
+$ brew alias foo --edit
+$ brew alias foo=bar --edit
+
+# Open all aliases in $EDITOR
+$ brew alias --edit
+```
+
 ## Editor plugins
 
 ### Visual Studio Code
@@ -119,7 +188,7 @@ Terminal needs an extra hint on where to find manpages installed by Homebrew bec
 
 ```sh
 sudo mkdir -p /usr/local/etc/man.d
-echo "MANPATH /opt/homebrew/share/man" | sudo tee -a /usr/local/etc/man.d/homebrew.man.conf
+echo "MANPATH $(brew --prefix)/share/man" | sudo tee -a /usr/local/etc/man.d/homebrew.man.conf
 ```
 
 If you're using Homebrew on macOS Intel, you should also fix permissions afterwards with:
@@ -128,22 +197,42 @@ If you're using Homebrew on macOS Intel, you should also fix permissions afterwa
 sudo chown -R "${USER}" /usr/local/etc
 ```
 
-## Use a caching proxy or mirror for Homebrew bottles
+## Use a caching proxy or mirror for Homebrew and data
 
-You can configure Homebrew to retrieve bottles from a caching proxy or mirror.
+You can configure Homebrew to retrieve bottles and the JSON API from a caching proxy or mirror.
 
-For example, in JFrog's Artifactory, accessible at `https://artifacts.example.com`,
-configure a new "remote" repository with `homebrew` as the "repository key" and `https://ghcr.io` as the URL.
+For example, in JFrog's Artifactory, accessible at `https://artifacts.example.com`:
+
+- For the bottles, configure a new "remote" repository with `homebrew` as the "repository key" and `https://ghcr.io` (GitHub Packages) as the URL.
+  Set the cache expiry to a reasonable length relative to available storage capacity.
+- For the JSON API, configure a new "remote" repository with `homebrew-json-api` as the "repository key" and `https://formulae.brew.sh/api` as the URL.
+  Set the cache expiry to 15 minutes.
 
 Then, set these environment variables for Homebrew to retrieve from the caching proxy.
 
 ```sh
-export HOMEBREW_ARTIFACT_DOMAIN=https://artifacts.example.com/artifactory/homebrew/
+export HOMEBREW_API_DOMAIN=https://artifacts.example.com/artifactory/homebrew-formulae-api
+export HOMEBREW_ARTIFACT_DOMAIN=https://artifacts.example.com/artifactory/homebrew
 export HOMEBREW_ARTIFACT_DOMAIN_NO_FALLBACK=1
 export HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN="$(printf 'anonymous:' | base64)"
 ```
 
-## Loading Homebrew from the same dotfiles on different operating systems
+It's also possible to use an internal mirror of `Homebrew/brew`
+by setting an environment variable before running the Homebrew installer:
+
+```sh
+export HOMEBREW_BREW_GIT_REMOTE=https://git.example.com/Homebrew-mirrors/brew-mirror
+```
+
+Other artifact repositories like Sonatype Nexus Repository Manager doesn't support explicit anonymous auth and
+still raise an 401 Unauthorized error, even when public read access is allowed. To mitigate this, set these environment
+variables for Homebrew to omit the Authorization header when accessing the artifact repository:
+
+```sh
+export HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN=none
+```
+
+## Load Homebrew from the same dotfiles on different operating systems
 
 Some users may want to use the same shell initialization files on macOS and Linux.
 Use this to detect the likely Homebrew installation directory and load Homebrew when it's found.

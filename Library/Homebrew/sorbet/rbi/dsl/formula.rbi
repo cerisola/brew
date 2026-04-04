@@ -9,6 +9,9 @@ class Formula
   sig { params(args: T.untyped, block: T.untyped).returns(T.untyped) }
   def allow_network_access!(*args, &block); end
 
+  sig { params(args: T.untyped, block: T.untyped).returns(T.untyped) }
+  def api_source(*args, &block); end
+
   sig { params(args: T.untyped, block: T.untyped).returns(T::Boolean) }
   def autobump?(*args, &block); end
 
@@ -39,6 +42,9 @@ class Formula
   sig { params(args: T.untyped, block: T.untyped).returns(T.untyped) }
   def deny_network_access!(*args, &block); end
 
+  sig { params(args: T.untyped, block: T.untyped).returns(T.untyped) }
+  def deprecate_args(*args, &block); end
+
   sig { params(args: T.untyped, block: T.untyped).returns(T::Boolean) }
   def deprecated?(*args, &block); end
 
@@ -65,6 +71,9 @@ class Formula
 
   sig { params(args: T.untyped, block: T.untyped).returns(T.untyped) }
   def desc(*args, &block); end
+
+  sig { params(args: T.untyped, block: T.untyped).returns(T.untyped) }
+  def disable_args(*args, &block); end
 
   sig { params(args: T.untyped, block: T.untyped).returns(T.untyped) }
   def disable_date(*args, &block); end
@@ -107,6 +116,9 @@ class Formula
 
   sig { params(args: T.untyped, block: T.untyped).returns(T::Boolean) }
   def loaded_from_api?(*args, &block); end
+
+  sig { params(args: T.untyped, block: T.untyped).returns(T::Boolean) }
+  def loaded_from_internal_api?(*args, &block); end
 
   sig { params(args: T.untyped, block: T.untyped).returns(T::Boolean) }
   def network_access_allowed?(*args, &block); end

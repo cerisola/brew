@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "services/commands/list"
@@ -16,6 +17,13 @@ RSpec.describe Homebrew::Services::Commands::List do
         allow($stderr).to receive(:tty?).and_return(true)
         described_class.run
       end.to output(a_string_including("No services available to control with `brew services`")).to_stderr
+    end
+
+    it "outputs empty JSON array with empty list and --json" do
+      expect(Homebrew::Services::Formulae).to receive(:services_list).and_return([])
+      expect do
+        described_class.run(json: true)
+      end.to output("[]\n").to_stdout
     end
 
     it "succeeds with list" do

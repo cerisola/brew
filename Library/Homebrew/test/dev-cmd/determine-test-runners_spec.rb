@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "dev-cmd/determine-test-runners"
@@ -5,7 +6,7 @@ require "cmd/shared_examples/args_parse"
 
 RSpec.describe Homebrew::DevCmd::DetermineTestRunners do
   def get_runners(file)
-    runner_line = File.open(file).first
+    runner_line = File.open(file, &:first)
     json_text = runner_line[/runners=(.*)/, 1]
     runner_hash = JSON.parse(json_text)
     runner_hash.map { |item| item["runner"].delete_suffix(ephemeral_suffix) }
@@ -16,7 +17,8 @@ RSpec.describe Homebrew::DevCmd::DetermineTestRunners do
     FileUtils.rm_f github_output
   end
 
-  let(:linux_runner) { "ubuntu-22.04" }
+  let(:arm_linux_runner) { OS::LINUX_CI_ARM_RUNNER }
+  let(:linux_runner) { "ubuntu-latest" }
   # We need to make sure we write to a different path for each example.
   let(:github_output) { "#{TEST_TMPDIR}/github_output#{DetermineRunnerTestHelper.new.number}" }
   let(:ephemeral_suffix) { "-12345" }
@@ -41,6 +43,7 @@ RSpec.describe Homebrew::DevCmd::DetermineTestRunners do
     end
 
     out << linux_runner
+    out << arm_linux_runner
 
     out
   end

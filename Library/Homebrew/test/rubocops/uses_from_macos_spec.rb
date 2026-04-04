@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 require "rubocops/uses_from_macos"
@@ -13,7 +14,7 @@ RSpec.describe RuboCop::Cop::FormulaAudit::UsesFromMacos do
           homepage "https://brew.sh"
 
           uses_from_macos "postgresql"
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/UsesFromMacos: `uses_from_macos` should only be used for macOS dependencies, not postgresql.
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/UsesFromMacos: `uses_from_macos` should only be used for macOS dependencies, not 'postgresql'.
         end
       RUBY
     end
@@ -25,10 +26,10 @@ RSpec.describe RuboCop::Cop::FormulaAudit::UsesFromMacos do
           homepage "https://brew.sh"
 
           uses_from_macos "boost"
-          ^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/UsesFromMacos: `uses_from_macos` should only be used for macOS dependencies, not boost.
+          ^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/UsesFromMacos: `uses_from_macos` should only be used for macOS dependencies, not 'boost'.
           uses_from_macos "bzip2"
           uses_from_macos "postgresql"
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/UsesFromMacos: `uses_from_macos` should only be used for macOS dependencies, not postgresql.
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/UsesFromMacos: `uses_from_macos` should only be used for macOS dependencies, not 'postgresql'.
           uses_from_macos "zlib"
         end
       RUBY

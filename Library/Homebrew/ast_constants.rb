@@ -14,6 +14,7 @@ FORMULA_COMPONENT_PRECEDENCE_LIST = T.let([
   [{ name: :license, type: :method_call }],
   [{ name: :revision, type: :method_call }],
   [{ name: :version_scheme, type: :method_call }],
+  [{ name: :compatibility_version, type: :method_call }],
   [{ name: :head,      type: :method_call }],
   [{ name: :stable,    type: :block_call }],
   [{ name: :livecheck, type: :block_call }],
@@ -38,11 +39,13 @@ FORMULA_COMPONENT_PRECEDENCE_LIST = T.let([
   [{ name: :on_arm, type: :block_call }],
   [{ name: :on_intel, type: :block_call }],
   [{ name: :conflicts_with, type: :method_call }],
+  [{ name: :preserve_rpath, type: :method_call }],
   [{ name: :skip_clean, type: :method_call }],
   [{ name: :cxxstdlib_check, type: :method_call }],
   [{ name: :link_overwrite, type: :method_call }],
   [{ name: :fails_with, type: :method_call }, { name: :fails_with, type: :block_call }],
-  [{ name: :go_resource, type: :block_call }, { name: :resource, type: :block_call }],
+  [{ name: :pypi_packages, type: :method_call }],
+  [{ name: :resource, type: :block_call }],
   [{ name: :patch, type: :method_call }, { name: :patch, type: :block_call }],
   [{ name: :needs, type: :method_call }],
   [{ name: :allow_network_access!, type: :method_call }],
@@ -52,4 +55,4 @@ FORMULA_COMPONENT_PRECEDENCE_LIST = T.let([
   [{ name: :caveats, type: :method_definition }],
   [{ name: :plist_options, type: :method_call }, { name: :plist, type: :method_definition }],
   [{ name: :test, type: :block_call }],
-].freeze, T::Array[[{ name: Symbol, type: Symbol }]])
+].freeze, T::Array[T::Array[{ name: Symbol, type: Symbol }]])

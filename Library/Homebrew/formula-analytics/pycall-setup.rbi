@@ -1,7 +1,7 @@
-# typed: strict
+# typed: true
 
 class InfluxDBClient3
-  def self.initialize(*args); end
+  def initialize(*args); end
 
   def query(*args); end
 end

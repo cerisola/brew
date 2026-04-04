@@ -1,3 +1,4 @@
+# typed: false
 # frozen_string_literal: true
 
 RSpec.describe Cask::Cask, :cask do
@@ -37,22 +38,34 @@ RSpec.describe Cask::Cask, :cask do
     it "returns an instance of the Cask from a specific file location" do
       c = Cask::CaskLoader.load("#{tap_path}/Casks/local-caffeine.rb")
       expect(c).to be_a(described_class)
+      expect(c).not_to be_loaded_from_api
+      expect(c).not_to be_loaded_from_internal_api
       expect(c.token).to eq("local-caffeine")
     end
 
     it "returns an instance of the Cask from a JSON file" do
       c = Cask::CaskLoader.load("#{TEST_FIXTURE_DIR}/cask/caffeine.json")
       expect(c).to be_a(described_class)
+      expect(c).to be_loaded_from_api
+      expect(c).not_to be_loaded_from_internal_api
       expect(c.token).to eq("caffeine")
     end
 
-    it "returns an instance of the Cask from a URL", :needs_utils_curl, :no_api do
+    it "returns an instance of the Cask from an internal JSON file" do
+      c = Cask::CaskLoader.load("#{TEST_FIXTURE_DIR}/cask/caffeine.internal.json")
+      expect(c).to be_a(described_class)
+      expect(c).to be_loaded_from_api
+      expect(c).to be_loaded_from_internal_api
+      expect(c.token).to eq("caffeine")
+    end
+
+    it "returns an instance of the Cask from a URL", :needs_utils_curl do
       c = Cask::CaskLoader.load("file://#{tap_path}/Casks/local-caffeine.rb")
       expect(c).to be_a(described_class)
       expect(c.token).to eq("local-caffeine")
     end
 
-    it "raises an error when failing to download a Cask from a URL", :needs_utils_curl, :no_api do
+    it "raises an error when failing to download a Cask from a URL", :needs_utils_curl do
       expect do
         Cask::CaskLoader.load("file://#{tap_path}/Casks/notacask.rb")
       end.to raise_error(Cask::CaskUnavailableError)
@@ -255,6 +268,17 @@ RSpec.describe Cask::Cask, :cask do
     end
   end
 
+  describe "#rename_list" do
+    subject(:cask) { Cask::CaskLoader.load("many-renames") }
+
+    it "returns the correct rename list" do
+      expect(cask.rename_list).to eq([
+        { from: "Foobar.app", to: "Foo.app" },
+        { from: "Foo.app", to: "Bar.app" },
+      ])
+    end
+  end
+
   describe "#uninstall_flight_blocks?" do
     matcher :have_uninstall_flight_blocks do
       match do |actual|
@@ -288,12 +312,92 @@ RSpec.describe Cask::Cask, :cask do
     end
   end
 
+  describe "#contains_os_specific_artifacts?" do
+    it "returns false when there are no OSes defined" do
+      cask = described_class.new("test-no-os") do
+        version "0.0.1,2"
+
+        url "https://brew.sh/test-0.0.1.dmg"
+        name "Test"
+        desc "Test cask"
+        homepage "https://brew.sh"
+      end
+
+      expect(cask.contains_os_specific_artifacts?).to be false
+    end
+
+    it "returns false when there are no artifacts" do
+      cask = described_class.new("test-os-no-artifacts") do
+        os macos: "mac", linux: "Linux"
+        version "0.0.1,2"
+
+        url "https://brew.sh/test-0.0.1.dmg"
+        name "Test"
+        desc "Test cask"
+        homepage "https://brew.sh"
+      end
+
+      expect(cask.contains_os_specific_artifacts?).to be false
+    end
+
+    it "returns false when there are scoped app" do
+      cask = described_class.new("test-macos-app-artifact") do
+        version "0.0.1,2"
+
+        url "https://brew.sh/test-0.0.1.dmg"
+        name "Test"
+        desc "Test cask"
+        homepage "https://brew.sh"
+
+        on_macos do
+          app "Test.app"
+        end
+      end
+
+      expect(cask.contains_os_specific_artifacts?).to be false
+    end
+
+    it "returns false when version is only defined in on_* blocks and referenced at top level" do
+      cask = described_class.new("test-version-in-on-blocks") do
+        on_monterey :or_newer do
+          version "2.0"
+        end
+        on_big_sur :or_older do
+          version "1.0"
+        end
+
+        url "https://brew.sh/test-#{version.major}.dmg"
+        name "Test"
+        desc "Test cask"
+        homepage "https://brew.sh"
+      end
+
+      expect(cask.contains_os_specific_artifacts?).to be false
+    end
+
+    it "returns true when there are unscoped app artifacts" do
+      cask = described_class.new("test-os-app-artifact") do
+        os macos: "mac", linux: "Linux"
+        version "0.0.1,2"
+
+        url "https://brew.sh/test-0.0.1.dmg"
+        name "Test"
+        desc "Test cask"
+        homepage "https://brew.sh"
+
+        app "Test.app"
+      end
+
+      expect(cask.contains_os_specific_artifacts?).to be true
+    end
+  end
+
   describe "#to_h" do
     let(:expected_json) { (TEST_FIXTURE_DIR/"cask/everything.json").read.strip }
 
     context "when loaded from cask file" do
       it "returns expected hash" do
-        allow(MacOS).to receive(:version).and_return(MacOSVersion.new("13"))
+        allow(MacOS).to receive(:version).and_return(MacOSVersion.new("14"))
 
         cask = Cask::CaskLoader.load("everything")
 
@@ -324,6 +428,9 @@ RSpec.describe Cask::Cask, :cask do
     let(:expected_versions_variations) do
       <<~JSON
         {
+          "tahoe": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin/1.2.3/intel.zip"
+          },
           "sequoia": {
             "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin/1.2.3/intel.zip"
           },
@@ -350,26 +457,6 @@ RSpec.describe Cask::Cask, :cask do
             "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin/1.0.0/intel.zip",
             "version": "1.0.0",
             "sha256": "1866dfa833b123bb8fe7fa7185ebf24d28d300d0643d75798bc23730af734216"
-          },
-          "mojave": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin/1.0.0/intel.zip",
-            "version": "1.0.0",
-            "sha256": "1866dfa833b123bb8fe7fa7185ebf24d28d300d0643d75798bc23730af734216"
-          },
-          "high_sierra": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin/1.0.0/intel.zip",
-            "version": "1.0.0",
-            "sha256": "1866dfa833b123bb8fe7fa7185ebf24d28d300d0643d75798bc23730af734216"
-          },
-          "sierra": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin/1.0.0/intel.zip",
-            "version": "1.0.0",
-            "sha256": "1866dfa833b123bb8fe7fa7185ebf24d28d300d0643d75798bc23730af734216"
-          },
-          "el_capitan": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine/darwin/1.0.0/intel.zip",
-            "version": "1.0.0",
-            "sha256": "1866dfa833b123bb8fe7fa7185ebf24d28d300d0643d75798bc23730af734216"
           }
         }
       JSON
@@ -377,6 +464,10 @@ RSpec.describe Cask::Cask, :cask do
     let(:expected_sha256_variations) do
       <<~JSON
         {
+          "tahoe": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel.zip",
+            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
+          },
           "sequoia": {
             "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel.zip",
             "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
@@ -398,22 +489,6 @@ RSpec.describe Cask::Cask, :cask do
             "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
           },
           "catalina": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel.zip",
-            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
-          },
-          "mojave": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel.zip",
-            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
-          },
-          "high_sierra": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel.zip",
-            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
-          },
-          "sierra": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel.zip",
-            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
-          },
-          "el_capitan": {
             "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel.zip",
             "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
           }
@@ -423,6 +498,10 @@ RSpec.describe Cask::Cask, :cask do
     let(:expected_sha256_variations_os) do
       <<~JSON
         {
+          "tahoe": {
+            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel-darwin.zip",
+            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
+          },
           "sequoia": {
             "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel-darwin.zip",
             "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
@@ -444,22 +523,6 @@ RSpec.describe Cask::Cask, :cask do
             "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
           },
           "catalina": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel-darwin.zip",
-            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
-          },
-          "mojave": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel-darwin.zip",
-            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
-          },
-          "high_sierra": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel-darwin.zip",
-            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
-          },
-          "sierra": {
-            "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel-darwin.zip",
-            "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
-          },
-          "el_capitan": {
             "url": "file://#{TEST_FIXTURE_DIR}/cask/caffeine-intel-darwin.zip",
             "sha256": "8c62a2b791cf5f0da6066a0a4b6e85f62949cd60975da062df44adf887f4370b"
           },
@@ -521,6 +584,23 @@ RSpec.describe Cask::Cask, :cask do
       expect(h).to be_a(Hash)
       expect(h["artifacts"].first[:binary].first).to eq "$APPDIR/some/path"
       expect(h["caveats"]).to eq "$HOMEBREW_PREFIX and /$HOME\n"
+    end
+
+    context "when loaded from json file" do
+      let(:expected_json) { (TEST_FIXTURE_DIR/"cask/everything-with-variations.json").read.strip }
+
+      it "returns expected hash with variations" do
+        expect(Homebrew::API::Cask).not_to receive(:source_download)
+        cask = Cask::CaskLoader::FromAPILoader.new("everything-with-variations", from_json: JSON.parse(expected_json))
+                                              .load(config: nil)
+
+        hash = cask.to_hash_with_variations
+
+        expect(cask.loaded_from_api?).to be true
+        expect(cask.loaded_from_internal_api?).to be false
+        expect(hash).to be_a(Hash)
+        expect(JSON.pretty_generate(hash)).to eq(expected_json)
+      end
     end
   end
 end

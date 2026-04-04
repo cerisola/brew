@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./bin/brew style --changed --fix"
+          },
+          {
+            "type": "command",
+            "command": "./bin/brew typecheck"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./bin/brew tests --changed",
+            "timeout": 360
+          }
+        ]
+      }
+    ]
+  }
+}
