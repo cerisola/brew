@@ -9,20 +9,20 @@ RSpec.describe Homebrew::Cmd::Source do
 
   it "opens the Homebrew repo when no formula is specified", :integration_test do
     expect { brew "source", "HOMEBREW_BROWSER" => "echo" }
-      .to output(%r{https://github\.com/Homebrew/brew}).to_stdout
+      .to output(%r{https://github\.com/cerisola/brew}).to_stdout
       .and not_to_output.to_stderr
       .and be_a_success
   end
 
   describe "#github_repo_url" do
     it "extracts repository URL from GitHub URL" do
-      expect(described_class.new([]).send(:github_repo_url, "https://github.com/Homebrew/brew.git"))
-        .to eq("https://github.com/Homebrew/brew")
+      expect(described_class.new([]).send(:github_repo_url, "https://github.com/cerisola/brew.git"))
+        .to eq("https://github.com/cerisola/brew")
     end
 
     it "handles GitHub archive URLs" do
-      expect(described_class.new([]).send(:github_repo_url, "https://github.com/Homebrew/testball/archive/refs/tags/v0.1.tar.gz"))
-        .to eq("https://github.com/Homebrew/testball")
+      expect(described_class.new([]).send(:github_repo_url, "https://github.com/cerisola/testball/archive/refs/tags/v0.1.tar.gz"))
+        .to eq("https://github.com/cerisola/testball")
     end
 
     it "returns nil for non-GitHub URLs" do
@@ -122,8 +122,8 @@ RSpec.describe Homebrew::Cmd::Source do
 
   describe "#url_to_repo" do
     it "returns GitHub repo URL for GitHub URLs" do
-      expect(described_class.new([]).send(:url_to_repo, "https://github.com/Homebrew/brew"))
-        .to eq("https://github.com/Homebrew/brew")
+      expect(described_class.new([]).send(:url_to_repo, "https://github.com/cerisola/brew"))
+        .to eq("https://github.com/cerisola/brew")
     end
 
     it "returns GitLab repo URL for GitLab URLs" do

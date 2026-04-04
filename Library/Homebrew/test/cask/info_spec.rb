@@ -245,7 +245,7 @@ RSpec.describe Cask::Info, :cask do
         Installed
         #{caskroom}/2.61 (0B)
           Installed using the internal formulae.brew.sh API on #{Time.at(time).strftime("%Y-%m-%d at %H:%M:%S")}
-        From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/l/local-transmission.rb
+        From: https://github.com/cerisola/homebrew-cask/blob/HEAD/Casks/l/local-transmission.rb
         ==> Name
         Transmission
         ==> Description

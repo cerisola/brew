@@ -12,7 +12,7 @@ RSpec.describe Homebrew::Livecheck::Strategy::GithubReleases do
       short_tag_archive: "https://github.com/abc/def/archive/v1.2.3.tar.gz",
       long_tag_archive:  "https://github.com/abc/def/archive/refs/tags/1.2.3.tar.gz",
       repository_upload: "https://github.com/downloads/abc/def/ghi-1.2.3.tar.gz",
-      brew_tag_archive:  "https://github.com/Homebrew/brew/archive/1.2.3.tar.gz",
+      brew_tag_archive:  "https://github.com/cerisola/brew/archive/1.2.3.tar.gz",
     }
   end
   let(:non_github_url) { "https://brew.sh/test" }
@@ -27,7 +27,7 @@ RSpec.describe Homebrew::Livecheck::Strategy::GithubReleases do
         repository: "def",
       },
       brew: {
-        url:        "https://api.github.com/repos/Homebrew/brew/releases",
+        url:        "https://api.github.com/repos/cerisola/brew/releases",
         username:   "Homebrew",
         repository: "brew",
       },

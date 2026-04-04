@@ -132,7 +132,7 @@ RSpec.describe Homebrew::Cmd::InstallCmd do
 
       repo_path.cd do
         system "git", "-c", "init.defaultBranch=master", "init"
-        system "git", "remote", "add", "origin", "https://github.com/Homebrew/homebrew-foo"
+        system "git", "remote", "add", "origin", "https://github.com/cerisola/homebrew-foo"
         FileUtils.touch "bin/something.bin"
         FileUtils.touch "README"
         system "git", "add", "--all"
