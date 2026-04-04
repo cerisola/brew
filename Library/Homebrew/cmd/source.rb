@@ -24,7 +24,7 @@ module Homebrew
       sig { override.void }
       def run
         if args.no_named?
-          exec_browser "https://github.com/Homebrew/brew"
+          exec_browser "https://github.com/cerisola/brew"
           return
         end
 
