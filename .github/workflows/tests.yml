@@ -39,7 +39,7 @@ jobs:
           cask: false
 
       - name: Cache Bundler RubyGems
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ steps.set-up-homebrew.outputs.gems-path }}
           key: ${{ runner.os }}-rubygems-syntax-${{ steps.set-up-homebrew.outputs.gems-hash }}
@@ -55,7 +55,7 @@ jobs:
           workflow-key: tests-syntax
 
       - name: Cache style cache
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/Homebrew/style
           key: syntax-style-cache-${{ github.sha }}
@@ -93,7 +93,7 @@ jobs:
           cask: true
 
       - name: Cache Bundler RubyGems
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ steps.set-up-homebrew.outputs.gems-path }}
           key: ${{ runner.os }}-rubygems-tap-syntax-${{ steps.set-up-homebrew.outputs.gems-hash }}
@@ -103,7 +103,7 @@ jobs:
         run: brew install-bundler-gems --groups=style
 
       - name: Cache style cache
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/Library/Caches/Homebrew/style
           key: tap-syntax-style-cache-${{ github.sha }}
@@ -249,7 +249,7 @@ jobs:
           cask: false
 
       - name: Cache Bundler RubyGems
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ steps.set-up-homebrew.outputs.gems-path }}
           key: ${{ matrix.runs-on }}-tests-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
@@ -264,7 +264,7 @@ jobs:
         run: mkdir tests
 
       - name: Cache parallel tests log
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: tests
           key: ${{ runner.os }}-${{ matrix.test-flags }}-parallel_runtime_rspec-${{ github.sha }}
@@ -484,7 +484,7 @@ jobs:
 
       - name: Cache Homebrew Bundler RubyGems
         id: cache
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ steps.set-up-homebrew.outputs.gems-path }}
           key: ${{ runner.os }}-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
