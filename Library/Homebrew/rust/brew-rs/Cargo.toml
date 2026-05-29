@@ -8,7 +8,7 @@ rust-version = "1.85"
 # Ergonomic error propagation for the CLI and command dispatch layers.
 anyhow = "1.0.100"
 # Download multiple bottles in parallel without hand-rolled worker plumbing.
-rayon = "1.11.0"
+rayon = "1.12.0"
 # Supports `brew search /REGEX/` matching.
 regex = "1.12.2"
 # Perform bottle and API downloads over HTTP(S).
@@ -18,7 +18,7 @@ rust-fuzzy-search = "0.1.1"
 # Deserialize structured Homebrew API and metadata payloads.
 serde = { version = "1.0.228", features = ["derive"] }
 # Read and write JSON API cache entries and command output.
-serde_json = "1.0.145"
+serde_json = "1.0.150"
 # Verify downloaded payloads against Homebrew's SHA-256 metadata.
 sha2 = "0.11.0"
 # Parse file:// and HTTPS bottle URLs consistently.
