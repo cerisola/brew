@@ -87,7 +87,7 @@ jobs:
         run: rm -f "${RUNNER_TEMP}/${TEMPORARY_CERTIFICATE_FILE}"
 
       - name: Checkout another Homebrew to brew subdirectory
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: brew
           fetch-depth: 0
@@ -160,7 +160,7 @@ jobs:
           subject-path: Homebrew-${{ steps.homebrew-version.outputs.version }}.pkg
 
       - name: Upload installer to GitHub Actions
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Homebrew-${{ steps.homebrew-version.outputs.version }}.pkg
           path: Homebrew-${{ steps.homebrew-version.outputs.version }}.pkg
@@ -246,7 +246,7 @@ jobs:
     steps:
       - name: Checkout Homebrew/brew
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
           persist-credentials: false
